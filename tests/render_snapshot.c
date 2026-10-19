@@ -1,16 +1,17 @@
-/* Renders one frame of a cube on a grid through a hidden window and saves
- * it as a BMP, then checks the frame is not blank. Needs a GPU. */
+/* Drives the car on the test track for a few seconds through a hidden
+ * window, renders one frame, saves it as a BMP and checks it is not
+ * blank. Needs a GPU, so it is not part of `make test`. */
 #include <SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "driving_stage.h"
 #include "log.h"
-#include "mesh_data.h"
 #include "renderer.h"
 #include "window.h"
 
 static int save_bmp(const char* path, int width, int height, uint8_t* rgba) {
-  /* GL rows are bottom-up; flip into the surface. */
   SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
   if (!surface) return 0;
   for (int y = 0; y < height; y++)
@@ -23,51 +24,49 @@ static int save_bmp(const char* path, int width, int height, uint8_t* rgba) {
 
 int main(int argc, char* argv[]) {
   const char* path = argc > 1 ? argv[1] : "snapshot.bmp";
+  float seconds = argc > 2 ? (float)atof(argv[2]) : 4.0f;
+  float steering = argc > 3 ? (float)atof(argv[3]) : 0.0f;
+  const char* city = argc > 4 ? argv[4] : NULL;
   window_options_t options = window_default_options("snapshot");
   options.hidden = true;
   options.vsync = false;
-  options.width = 640;
-  options.height = 360;
+  options.width = 960;
+  options.height = 540;
   window_t window;
   if (!window_open(&window, options)) return EXIT_FAILURE;
   renderer_t* renderer = renderer_create(window.drawable_width, window.drawable_height);
   if (!renderer) return EXIT_FAILURE;
+  stage_options_t stage_options = {city ? SCENE_CITY : SCENE_TEST_TRACK, city, NULL, true, true};
+  driving_stage_t stage;
+  if (!driving_stage_init(&stage, &window, renderer, NULL, stage_options)) return EXIT_FAILURE;
 
-  mesh_data_t cube = mesh_data_create();
-  mesh_data_add_box(&cube, vec3(0, 1, 0), vec3(1, 1, 1));
-  mesh_handle_t cube_mesh = renderer_upload_mesh(renderer, &cube);
-  mesh_data_t grid = mesh_data_create();
-  mesh_data_add_grid(&grid, 20, 2);
-  mesh_handle_t grid_mesh = renderer_upload_mesh(renderer, &grid);
-
-  render_camera_t camera = {vec3(6, 4, 8), vec3(0, 1, 0), vec3(0, 1, 0), 1.0f, 0.1f, 200.0f};
-  render_environment_t environment = {vec3(0.4f, 1.0f, 0.3f), vec3(1, 0.95f, 0.85f), 0.35f,
-                                      vec3(0.55f, 0.7f, 0.9f), 60.0f, 180.0f};
-  renderer_begin_frame(renderer, camera, environment);
-  renderer_draw_mesh(renderer, grid_mesh, material_plain(vec3(0.35f, 0.4f, 0.35f)), mat4_identity());
-  renderer_draw_mesh(renderer, cube_mesh, material_plain(vec3(0.8f, 0.2f, 0.15f)), mat4_identity());
-  renderer_draw_line(renderer, vec3(0, 0, 0), vec3(3, 0, 0), vec3(1, 0, 0));
-  renderer_draw_line(renderer, vec3(0, 0, 0), vec3(0, 3, 0), vec3(0, 1, 0));
-  renderer_draw_line(renderer, vec3(0, 0, 0), vec3(0, 0, 3), vec3(0, 0, 1));
-  renderer_draw_text(renderer, 10, 10, 3, vec3(1, 1, 1), "SNAPSHOT 123 KM/H");
-  renderer_end_frame(renderer);
+  driving_input_t input = {1.0f, 0.0f, steering, false};
+  int steps = (int)(seconds * 120);
+  for (int i = 0; i < steps; i++) {
+    driving_stage_step(&stage, input, 1.0f / 120.0f);
+    if (i % 2 == 0) {
+      const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);
+      chase_camera_update(&stage.camera, transform_at(body->position, body->rotation), body->velocity,
+                          stage.physics, 1.0f / 60.0f);
+    }
+  }
+  stage.fps = 60;
+  driving_stage_render(&stage);
 
   int width = window.drawable_width, height = window.drawable_height;
   uint8_t* pixels = malloc((size_t)width * height * 4);
   renderer_read_pixels(renderer, pixels, (size_t)width * height * 4);
-  int status = EXIT_SUCCESS;
-  uint8_t* centre = pixels + ((height / 2) * width + width / 2) * 4;
-  if (!(centre[0] > centre[1] && centre[0] > centre[2])) {
-    LOG_ERROR("snapshot", "centre pixel is not the red cube: %d %d %d", centre[0], centre[1], centre[2]);
-    status = EXIT_FAILURE;
-  }
+  long distinct = 0;
+  for (int i = 1; i < width * height; i++)
+    if (memcmp(pixels + i * 4, pixels + (i - 1) * 4, 3) != 0) distinct++;
+  int status = distinct > width * height / 20 ? EXIT_SUCCESS : EXIT_FAILURE;
+  if (status != EXIT_SUCCESS) LOG_ERROR("snapshot", "the frame looks blank");
   if (!save_bmp(path, width, height, pixels)) status = EXIT_FAILURE;
   render_stats_t stats = renderer_stats(renderer);
-  LOG_INFO("snapshot", "%s: %dx%d, %d draw calls, %d triangles", path, width, height,
-           stats.draw_calls, stats.triangles);
+  LOG_INFO("snapshot", "%s: %dx%d, %d draws, %d triangles, car at %.1f km/h after %.1f s", path,
+           width, height, stats.draw_calls, stats.triangles, vehicle_speed_kmh(&stage.vehicle), seconds);
   free(pixels);
-  mesh_data_free(&cube);
-  mesh_data_free(&grid);
+  driving_stage_destroy(&stage);
   renderer_destroy(renderer);
   window_close(&window);
   return status;
