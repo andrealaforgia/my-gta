@@ -17,9 +17,7 @@ SDL2_CONFIG = os.environ.get("SDL2_CONFIG") or (
 
 GROUPS = (
     "math",
-    "clock",
-    "input",
-    "config",
+    "core",
     "physics",
     "vehicle",
     "camera",
