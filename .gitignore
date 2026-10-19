@@ -1,0 +1,16 @@
+gta-like
+render_snapshot
+city-import
+city-generate
+city-validate
+snapshot.bmp
+engine.wav
+*.o
+*.d
+*.a
+*.dSYM
+**/.DS_Store
+__pycache__/
+data/*
+!data/README.md
+assets_cooked/
