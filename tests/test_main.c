@@ -12,6 +12,7 @@ typedef struct {
 static const test_group_t groups[] = {
     {"math", run_math_tests},
     {"core", run_core_tests},
+    {"mesh", run_mesh_tests},
 };
 
 int main(int argc, char* argv[]) {

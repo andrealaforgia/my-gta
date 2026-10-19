@@ -18,6 +18,7 @@ SDL2_CONFIG = os.environ.get("SDL2_CONFIG") or (
 GROUPS = (
     "math",
     "core",
+    "mesh",
     "physics",
     "vehicle",
     "camera",
