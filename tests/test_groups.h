@@ -5,4 +5,6 @@ void run_core_tests(void);
 void run_mesh_tests(void);
 void run_physics_tests(void);
 void run_vehicle_tests(void);
+void run_camera_tests(void);
+void run_audio_tests(void);
 #endif  // TESTS_TEST_GROUPS_H_

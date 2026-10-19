@@ -15,6 +15,8 @@ static const test_group_t groups[] = {
     {"mesh", run_mesh_tests},
     {"physics", run_physics_tests},
     {"vehicle", run_vehicle_tests},
+    {"camera", run_camera_tests},
+    {"audio", run_audio_tests},
 };
 
 int main(int argc, char* argv[]) {
