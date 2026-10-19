@@ -115,6 +115,8 @@ void physics_apply_force(physics_world_t* world, body_handle_t body, vec3_t forc
 /* World-space force at a point given in the body frame. */
 void physics_apply_force_at_point(physics_world_t* world, body_handle_t body, vec3_t force,
                                   vec3_t local_point);
+void physics_apply_force_at_world_point(physics_world_t* world, body_handle_t body,
+                                        vec3_t force, vec3_t world_point);
 void physics_apply_impulse_at_point(physics_world_t* world, body_handle_t body, vec3_t impulse,
                                     vec3_t world_point);
 vec3_t physics_body_velocity_at_point(const rigid_body_t* body, vec3_t world_point);

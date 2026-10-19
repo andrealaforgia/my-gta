@@ -204,6 +204,14 @@ void physics_apply_force_at_point(physics_world_t* world, body_handle_t handle, 
   body->torque = vec3_add(body->torque, vec3_cross(arm, force));
 }
 
+void physics_apply_force_at_world_point(physics_world_t* world, body_handle_t handle,
+                                        vec3_t force, vec3_t world_point) {
+  rigid_body_t* body = physics_body(world, handle);
+  if (!body) return;
+  body->force = vec3_add(body->force, force);
+  body->torque = vec3_add(body->torque, vec3_cross(vec3_sub(world_point, body->position), force));
+}
+
 static vec3_t inverse_inertia_apply(const rigid_body_t* body, vec3_t v) {
   vec3_t local = quat_rotate(quat_conjugate(body->rotation), v);
   local = vec3_multiply(local, body->inverse_inertia_local);
