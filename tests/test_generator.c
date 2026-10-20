@@ -158,11 +158,19 @@ static void road_ribbons_have_their_width_and_roofs_their_height(void) {
   assert(near_to(bounds.max.z - bounds.min.z, 9.0f,
                  0.05f)); /* an east-west road, 9 m wide */
   assert(near(bounds.min.y, 0.06f));
+  /* A rectangular footprint gets a hipped roof: eaves at the wall height,
+   * a ridge above it, two hips and two long slopes plus the underside of
+   * the eaves. */
   const city_part_t* roof = part_for(&package, "roof", 201);
-  assert(roof && roof->mesh.vertex_count == 4 &&
-         mesh_data_triangle_count(&roof->mesh) == 2);
-  for (size_t v = 0; v < roof->mesh.vertex_count; v++)
-    assert(near(roof->mesh.vertices[v].position.y, 12));
+  assert(roof && mesh_data_triangle_count(&roof->mesh) == 8);
+  aabb_t roof_bounds = mesh_data_bounds(&roof->mesh);
+  assert(near(roof_bounds.min.y, 12) && roof_bounds.max.y > 13.0f &&
+         roof_bounds.max.y < 17.0f);
+  /* The L-shaped footprint stays flat at its height. */
+  const city_part_t* flat = part_for(&package, "roof", 203);
+  assert(flat && mesh_data_triangle_count(&flat->mesh) == 4);
+  aabb_t flat_bounds = mesh_data_bounds(&flat->mesh);
+  assert(near(flat_bounds.min.y, flat_bounds.max.y));
   const city_part_t* walls = part_for(&package, "facade", 201);
   if (!walls) {
     for (int i = 0; i < 4 && !walls; i++) {
@@ -277,7 +285,8 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
           strcmp(part->material, "trunk") == 0 ||
           strcmp(part->material, "leaves") == 0)
         continue;
-      bool flat = strncmp(part->material, "facade", 6) != 0;
+      bool flat = strncmp(part->material, "facade", 6) != 0 &&
+                  strcmp(part->material, "roof") != 0; /* eaves face down */
       for (size_t i = 0; i + 2 < part->mesh.index_count; i += 3) {
         vec3_t a = part->mesh.vertices[part->mesh.indices[i]].position;
         vec3_t b = part->mesh.vertices[part->mesh.indices[i + 1]].position;

@@ -106,7 +106,12 @@ the physics world with the layer and friction given.
   texture repeat per `window_width` and `storey_height`, an ear-clipped
   roof. Courtyards are bridged into the outline before ear clipping
   (`tools/common/triangulate.c`) and get walls that face into the
-  courtyard. Facade variant is a stable hash of the source id. Both are
+  courtyard. A footprint without a courtyard that fills at least 82% of
+  its minimum bounding rectangle gets a hipped roof instead: eaves 0.35 m
+  beyond the rectangle at the wall height, a ridge along the long side
+  raised by 0.6 of the half span (at most 4 m), two slopes, two hips and
+  the underside of the eaves. In central Pordenone that is about six
+  buildings in ten. Facade variant is a stable hash of the source id. Both are
   colliders on the building layer.
 - Ground tiles cover every chunk cell at y = 0 with grass.
 - The spawn is the midpoint of the longest segment of the longest

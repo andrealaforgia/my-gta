@@ -827,6 +827,111 @@ static bool add_walls(city_part_t* walls, const local_point_t* ring,
   return true;
 }
 
+/* The smallest rectangle around a footprint, found by trying every edge
+ * direction. `axis` runs along the long side. */
+typedef struct {
+  vec2_t axis;
+  vec2_t across;
+  double along_min, along_max, across_min, across_max;
+  double area;
+} bounding_rectangle_t;
+
+static bounding_rectangle_t bounding_rectangle(const local_point_t* points,
+                                               size_t count) {
+  bounding_rectangle_t best;
+  best.area = 1e300;
+  for (size_t i = 0; i < count; i++) {
+    vec2_t axis = v2_normalize(v2_sub(points[(i + 1) % count], points[i]));
+    if (v2_length(axis) < 0.5) continue;
+    vec2_t across = v2_right(axis);
+    double a0 = 1e300, a1 = -1e300, c0 = 1e300, c1 = -1e300;
+    for (size_t k = 0; k < count; k++) {
+      double a = points[k].x * axis.x + points[k].z * axis.z;
+      double c = points[k].x * across.x + points[k].z * across.z;
+      a0 = fmin(a0, a), a1 = fmax(a1, a), c0 = fmin(c0, c), c1 = fmax(c1, c);
+    }
+    double area = (a1 - a0) * (c1 - c0);
+    if (area < best.area) {
+      best.axis = axis, best.across = across;
+      best.along_min = a0, best.along_max = a1, best.across_min = c0,
+      best.across_max = c1;
+      best.area = area;
+    }
+  }
+  if (best.along_max - best.along_min < best.across_max - best.across_min) {
+    /* Swap so the axis follows the long side. */
+    bounding_rectangle_t swapped = best;
+    swapped.axis = best.across, swapped.across = v2_right(best.across);
+    swapped.along_min = best.across_min, swapped.along_max = best.across_max;
+    swapped.across_min = -best.along_max, swapped.across_max = -best.along_min;
+    best = swapped;
+  }
+  return best;
+}
+
+static vec3_t rectangle_point(const bounding_rectangle_t* r, double along,
+                              double across, float y) {
+  return vec3((float)(r->axis.x * along + r->across.x * across), y,
+              (float)(r->axis.z * along + r->across.z * across));
+}
+
+/* A hipped roof with eaves on footprints that nearly fill their bounding
+ * rectangle and have no courtyard. Sets *done when it built one. */
+static bool add_hipped_roof(city_part_t* roof, const city_building_t* building,
+                            float h, const city_generator_options_t* o,
+                            bool* done) {
+  *done = false;
+  if (building->hole_count > 0 || building->point_count < 4) return true;
+  bounding_rectangle_t r =
+      bounding_rectangle(building->points, building->point_count);
+  double footprint =
+      fabs(polygon_signed_area(building->points, building->point_count));
+  if (r.area <= 0 || footprint / r.area < 0.82) return true;
+  const double eaves = 0.35;
+  double a0 = r.along_min - eaves, a1 = r.along_max + eaves;
+  double c0 = r.across_min - eaves, c1 = r.across_max + eaves;
+  double half_span = (c1 - c0) * 0.5, mid = (c0 + c1) * 0.5;
+  double inset = fmin(half_span, (a1 - a0) * 0.5);
+  float rise = (float)fmin(half_span * 0.6, 4.0);
+  float ridge_y = h + rise;
+  vec3_t e00 = rectangle_point(&r, a0, c0, h),
+         e10 = rectangle_point(&r, a1, c0, h);
+  vec3_t e11 = rectangle_point(&r, a1, c1, h),
+         e01 = rectangle_point(&r, a0, c1, h);
+  vec3_t r0 = rectangle_point(&r, a0 + inset, mid, ridge_y);
+  vec3_t r1 = rectangle_point(&r, a1 - inset, mid, ridge_y);
+  float s = 0.4f;
+  uint32_t base = (uint32_t)roof->mesh.vertex_count;
+  vec3_t corners[6] = {e00, e10, e11, e01, r0, r1};
+  double us[6] = {a0, a1, a1, a0, a0 + inset, a1 - inset};
+  double vs[6] = {c0, c0, c1, c1, mid, mid};
+  for (int i = 0; i < 6; i++)
+    if (!add_vertex(&roof->mesh, corners[i], vec3(0, 1, 0), (float)(us[i] * s),
+                    (float)(vs[i] * s)))
+      return false;
+  vec3_t up = vec3(0, 1, 0);
+  /* Two long slopes, two hips, and the underside of the eaves facing down. */
+  if (!add_face(&roof->mesh, base + 0, base + 1, base + 5, up) ||
+      !add_face(&roof->mesh, base + 0, base + 5, base + 4, up) ||
+      !add_face(&roof->mesh, base + 2, base + 3, base + 4, up) ||
+      !add_face(&roof->mesh, base + 2, base + 4, base + 5, up) ||
+      !add_face(&roof->mesh, base + 1, base + 2, base + 5, up) ||
+      !add_face(&roof->mesh, base + 3, base + 0, base + 4, up))
+    return false;
+  uint32_t under = (uint32_t)roof->mesh.vertex_count;
+  vec3_t down = vec3(0, -1, 0);
+  for (int i = 0; i < 4; i++)
+    if (!add_vertex(&roof->mesh, corners[i], down, (float)(us[i] * s),
+                    (float)(vs[i] * s)))
+      return false;
+  if (!add_face(&roof->mesh, under + 0, under + 1, under + 2, down) ||
+      !add_face(&roof->mesh, under + 0, under + 2, under + 3, down))
+    return false;
+  (void)o;
+  *done = true;
+  return true;
+}
+
 static bool generate_building(layout_t* layout, const city_building_t* building,
                               city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -853,6 +958,14 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
     if (!add_walls(walls, building->holes[hole].points,
                    building->holes[hole].count, h, o))
       return false;
+  bool hipped = false;
+  if (!add_hipped_roof(roof, building, h, o, &hipped)) return false;
+  if (hipped) {
+    finish_part(chunk, walls);
+    finish_part(chunk, roof);
+    stats->buildings++;
+    return true;
+  }
   size_t merged_capacity = count + 2 * building->hole_count;
   for (size_t hole = 0; hole < building->hole_count; hole++)
     merged_capacity += building->holes[hole].count;
