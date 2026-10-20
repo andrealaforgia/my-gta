@@ -45,6 +45,10 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   chase_camera_reset(&stage->camera, transform_at(stage->scene.spawn_position,
                                                   stage->scene.spawn_rotation));
   stage->clock = frame_clock_create(PHYSICS_STEP, MAX_CATCH_UP);
+  if (stage->scene.map.size > 0)
+    stage->map_texture =
+        renderer_upload_texture(renderer, stage->scene.map.size,
+                                stage->scene.map.size, stage->scene.map.pixels);
   if (audio && options.muted) audio_device_toggle_mute(audio);
   LOG_INFO("stage", "%s loaded, car '%s' at (%.1f, %.1f, %.1f)",
            stage->scene.name, params.name, stage->scene.spawn_position.x,
@@ -55,6 +59,8 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
 void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
+    if (stage->map_texture.id)
+      renderer_release_texture(stage->renderer, stage->map_texture);
     scene_release(&stage->scene, stage->renderer);
   }
   world_destroy(&stage->world);
@@ -96,14 +102,14 @@ static transform_t car_transform(driving_stage_t* stage, float alpha) {
 void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
                            double frame_seconds) {
   double started = platform_seconds();
-  int steps =
-      frame_clock_advance(&stage->clock, stage->paused ? 0.0 : frame_seconds);
+  int steps = frame_clock_advance(
+      &stage->clock, stage->paused || stage->map_open ? 0.0 : frame_seconds);
   for (int i = 0; i < steps; i++)
     driving_stage_step(stage, input, (float)PHYSICS_STEP);
   stage->physics_ms = (platform_seconds() - started) * 1000.0;
   send_audio_state(stage);
   const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);
-  if (body && !stage->paused)
+  if (body && !stage->paused && !stage->map_open)
     chase_camera_update(&stage->camera,
                         car_transform(stage, (float)stage->clock.alpha),
                         body->velocity, stage->physics, (float)frame_seconds);
@@ -154,6 +160,67 @@ static void draw_debug(driving_stage_t* stage, transform_t chassis) {
                        vec3_add_scaled(contact->point, contact->normal, 0.5f),
                        vec3(1, 0.5f, 0));
   }
+}
+
+/* M: the city as a dark translucent panel, north up, with the car on it. */
+static void draw_map(driving_stage_t* stage) {
+  renderer_t* r = stage->renderer;
+  float width = (float)stage->window->drawable_width;
+  float height = (float)stage->window->drawable_height;
+  float scale = width / 640.0f;
+  if (scale < 2) scale = 2;
+  texture_handle_t none = {0};
+  renderer_draw_screen_image(r, none, 0, 0, width, height,
+                             vec3(0.16f, 0.16f, 0.17f), 0.78f);
+  const city_map_t* map = &stage->scene.map;
+  if (map->size == 0) {
+    renderer_draw_text(r, width / 2 - 70 * scale, height / 2, scale * 2,
+                       vec3(0.9f, 0.9f, 0.9f), "NO MAP HERE");
+    return;
+  }
+  float side = fminf(width, height) * 0.86f;
+  float left = (width - side) * 0.5f, top = (height - side) * 0.5f;
+  renderer_draw_screen_image(r, stage->map_texture, left, top, side, side,
+                             vec3(1, 1, 1), 0.92f);
+  /* The car: a dot with a nose pointing the way it faces. */
+  transform_t chassis = car_transform(stage, 1.0f);
+  vec3_t forward = quat_rotate(chassis.rotation, vec3(0, 0, -1));
+  float pixels_per_metre = side / map->extent;
+  float cx = left + (chassis.position.x - map->min_x) * pixels_per_metre;
+  float cy = top + (chassis.position.z - map->min_z) * pixels_per_metre;
+  float length = sqrtf(forward.x * forward.x + forward.z * forward.z);
+  float dx = length > 1e-4f ? forward.x / length : 0;
+  float dz = length > 1e-4f ? forward.z / length : -1;
+  float arm = 7 * scale;
+  vec3_t red = vec3(1.0f, 0.15f, 0.1f), white = vec3(1, 1, 1);
+  renderer_draw_screen_line(r, cx - dx * arm, cy - dz * arm,
+                            cx + dx * arm * 1.6f, cy + dz * arm * 1.6f,
+                            3 * scale, white);
+  renderer_draw_screen_line(r, cx - dx * arm, cy - dz * arm,
+                            cx + dx * arm * 1.6f, cy + dz * arm * 1.6f,
+                            1.6f * scale, red);
+  renderer_draw_screen_line(r, cx + dx * arm * 1.6f, cy + dz * arm * 1.6f,
+                            cx + dx * arm * 0.6f - dz * arm * 0.7f,
+                            cy + dz * arm * 0.6f + dx * arm * 0.7f,
+                            1.6f * scale, red);
+  renderer_draw_screen_line(r, cx + dx * arm * 1.6f, cy + dz * arm * 1.6f,
+                            cx + dx * arm * 0.6f + dz * arm * 0.7f,
+                            cy + dz * arm * 0.6f - dx * arm * 0.7f,
+                            1.6f * scale, red);
+  /* Title, north marker and a 100 m scale bar. */
+  vec3_t light = vec3(0.92f, 0.92f, 0.92f);
+  renderer_draw_text(r, left, top - 14 * scale, scale * 1.6f, light,
+                     stage->scene.name);
+  renderer_draw_text(r, left + side - 150 * scale, top - 14 * scale,
+                     scale * 1.2f, vec3(0.7f, 0.7f, 0.7f), "M CLOSE");
+  renderer_draw_text(r, left + side * 0.5f - 3 * scale, top + 4 * scale,
+                     scale * 1.8f, vec3(1, 0.9f, 0.4f), "N");
+  float bar = 100.0f * pixels_per_metre;
+  renderer_draw_screen_line(r, left + 8 * scale, top + side - 10 * scale,
+                            left + 8 * scale + bar, top + side - 10 * scale,
+                            2 * scale, white);
+  renderer_draw_text(r, left + 8 * scale, top + side - 26 * scale, scale, white,
+                     "100 M");
 }
 
 static void draw_hud(driving_stage_t* stage) {
@@ -227,7 +294,7 @@ static void draw_hud(driving_stage_t* stage) {
   float bottom = (float)stage->window->drawable_height - 12 * scale;
   renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
                      "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P PAUSE  F1 "
-                     "DEBUG  M MUTE  F11 FULLSCREEN  ESC QUIT");
+                     "DEBUG  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
 }
 
 void driving_stage_render(driving_stage_t* stage) {
@@ -238,7 +305,10 @@ void driving_stage_render(driving_stage_t* stage) {
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis);
   if (stage->show_debug) draw_debug(stage, chassis);
-  draw_hud(stage);
+  if (stage->map_open)
+    draw_map(stage);
+  else
+    draw_hud(stage);
   renderer_end_frame(r);
 }
 
@@ -254,6 +324,7 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
                                     stage->vehicle.spawn_rotation));
   }
   if (events.toggle_pause) stage->paused = !stage->paused;
+  if (events.toggle_map) stage->map_open = !stage->map_open;
   if (events.toggle_debug) stage->show_debug = !stage->show_debug;
   if (events.toggle_fullscreen) {
     window_toggle_fullscreen(stage->window);

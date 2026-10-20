@@ -84,6 +84,16 @@ void renderer_draw_box_outline(renderer_t* renderer, mat4_t model,
 /* Screen-space text in a built-in 5x7 font; x, y in pixels from top-left. */
 void renderer_draw_text(renderer_t* renderer, float x, float y, float scale,
                         vec3_t color, const char* text);
+/* A textured rectangle in pixels from the top-left, tinted and blended with
+ * the given alpha over the scene and under the text. A texture handle of id
+ * 0 draws a plain tinted rectangle. At most 8 per frame. */
+void renderer_draw_screen_image(renderer_t* renderer, texture_handle_t texture,
+                                float x, float y, float width, float height,
+                                vec3_t tint, float alpha);
+/* A solid line of the given thickness in pixels, drawn with the text. */
+void renderer_draw_screen_line(renderer_t* renderer, float x0, float y0,
+                               float x1, float y1, float thickness,
+                               vec3_t color);
 void renderer_end_frame(renderer_t* renderer);
 
 mat4_t renderer_view_projection(const renderer_t* renderer);

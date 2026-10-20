@@ -15,6 +15,7 @@ void scene_release(scene_t* scene, renderer_t* renderer) {
   for (int i = 0; i < scene->mesh_count; i++)
     renderer_release_mesh(renderer, scene->meshes[i]);
   scene->mesh_count = 0;
+  city_map_free(&scene->map);
 }
 
 static material_t textured(texture_handle_t texture, vec3_t tint,

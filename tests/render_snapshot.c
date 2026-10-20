@@ -76,6 +76,7 @@ int main(int argc, char* argv[]) {
     }
   }
   stage.fps = 60;
+  stage.map_open = getenv("SNAPSHOT_MAP") != NULL;
   if (overhead > 0) {
     const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);
     /* A hair south of straight down keeps north at the top of the frame. */

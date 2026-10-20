@@ -52,7 +52,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 ## Controls
 
 Arrows or WASD drive and steer, space handbrake, R reset to the spawn,
-P pause, C re-centre the camera, F1 debug overlay, M mute, F11 fullscreen,
+P pause, C re-centre the camera, F1 debug overlay, M city map (pauses), N mute, F11 fullscreen,
 Esc quit. A game controller steers with the left stick, accelerates and
 brakes with the triggers, A handbrake, Y reset, Start pause. Holding the
 brake at a standstill engages reverse; the throttle brings you back.

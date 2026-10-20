@@ -43,6 +43,8 @@ typedef struct {
   chase_camera_t camera;
   frame_clock_t clock;
   bool paused;
+  bool map_open; /* M: the city map over a paused game */
+  texture_handle_t map_texture;
   bool show_debug;
   bool quit;
   float simulated_seconds;

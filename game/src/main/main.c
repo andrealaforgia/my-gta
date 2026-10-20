@@ -31,7 +31,7 @@ static void print_help(void) {
       "  --help\n\n"
       "Controls: arrows or WASD drive, space handbrake, R reset, P pause, C "
       "re-centre\n"
-      "the camera, F1 debug, M mute, F11 fullscreen, Esc quit. A game "
+      "the camera, F1 debug, M map, N mute, F11 fullscreen, Esc quit. A game "
       "controller\n"
       "steers with the left stick, triggers for throttle and brake, A "
       "handbrake,\n"

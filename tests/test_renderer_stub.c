@@ -92,6 +92,27 @@ void renderer_draw_text(renderer_t* r, float x, float y, float s, vec3_t c,
   (void)c;
   (void)t;
 }
+void renderer_draw_screen_image(renderer_t* r, texture_handle_t t, float x,
+                                float y, float w, float h, vec3_t c, float a) {
+  (void)r;
+  (void)t;
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)c;
+  (void)a;
+}
+void renderer_draw_screen_line(renderer_t* r, float x0, float y0, float x1,
+                               float y1, float t, vec3_t c) {
+  (void)r;
+  (void)x0;
+  (void)y0;
+  (void)x1;
+  (void)y1;
+  (void)t;
+  (void)c;
+}
 void renderer_end_frame(renderer_t* r) { (void)r; }
 mat4_t renderer_view_projection(const renderer_t* r) {
   return r->view_projection;

@@ -29,6 +29,7 @@ GROUPS = (
     "junction",
     "generator",
     "citydrive",
+    "citymap",
 )
 
 

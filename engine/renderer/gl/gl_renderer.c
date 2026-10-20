@@ -19,6 +19,7 @@
 #define MAX_TEXTURES 256
 #define MAX_LINE_VERTICES (1 << 16)
 #define MAX_TEXT_VERTICES (1 << 17)
+#define MAX_SCREEN_IMAGES 8
 #define MAX_DRAWS (1 << 15)
 #define SHADOW_MAP_SIZE 2048
 
@@ -39,6 +40,13 @@ typedef struct {
 } text_vertex_t;
 
 typedef struct {
+  uint32_t texture; /* 0 for the white texture */
+  float x, y, width, height;
+  vec3_t tint;
+  float alpha;
+} screen_image_t;
+
+typedef struct {
   uint32_t mesh;
   material_t material;
   mat4_t model;
@@ -54,6 +62,9 @@ struct renderer {
   line_vertex_t* line_vertices;
   size_t line_count;
   GLuint text_vao, text_vbo;
+  GLuint image_program, image_vao, image_vbo;
+  screen_image_t images[MAX_SCREEN_IMAGES];
+  size_t image_count;
   text_vertex_t* text_vertices;
   size_t text_count;
   mat4_t view, projection, view_projection;
@@ -182,6 +193,29 @@ static const char* text_vertex_source =
     "  gl_Position = vec4(ndc, 0.0, 1.0);\n"
     "}\n";
 
+static const char* image_vertex_source =
+    "#version 410 core\n"
+    "layout(location = 0) in vec2 in_position;\n"
+    "layout(location = 1) in vec2 in_uv;\n"
+    "uniform vec2 u_viewport;\n"
+    "out vec2 v_uv;\n"
+    "void main() {\n"
+    "  v_uv = in_uv;\n"
+    "  vec2 ndc = vec2(in_position.x / u_viewport.x * 2.0 - 1.0, 1.0 - "
+    "in_position.y / u_viewport.y * 2.0);\n"
+    "  gl_Position = vec4(ndc, 0.0, 1.0);\n"
+    "}\n";
+
+static const char* image_fragment_source =
+    "#version 410 core\n"
+    "in vec2 v_uv;\n"
+    "uniform sampler2D u_texture;\n"
+    "uniform vec3 u_tint;\n"
+    "uniform float u_alpha;\n"
+    "out vec4 out_color;\n"
+    "void main() { out_color = vec4(texture(u_texture, v_uv).rgb * u_tint, "
+    "u_alpha); }\n";
+
 static const char* shadow_vertex_source =
     "#version 410 core\n"
     "layout(location = 0) in vec3 in_position;\n"
@@ -252,11 +286,13 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   r->shadow_program =
       link_program(shadow_vertex_source, shadow_fragment_source, "shadow");
   r->line_vertices = malloc(MAX_LINE_VERTICES * sizeof(line_vertex_t));
+  r->image_program =
+      link_program(image_vertex_source, image_fragment_source, "image");
   r->text_vertices = malloc(MAX_TEXT_VERTICES * sizeof(text_vertex_t));
   r->draws = malloc(MAX_DRAWS * sizeof(draw_t));
   if (!r->mesh_program || !r->line_program || !r->text_program ||
-      !r->shadow_program || !r->line_vertices || !r->text_vertices ||
-      !r->draws) {
+      !r->image_program || !r->shadow_program || !r->line_vertices ||
+      !r->text_vertices || !r->draws) {
     renderer_destroy(r);
     return NULL;
   }
@@ -308,6 +344,18 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   glEnableVertexAttribArray(1);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(text_vertex_t),
                         (void*)offsetof(text_vertex_t, color));
+  glBindVertexArray(0);
+
+  glGenVertexArrays(1, &r->image_vao);
+  glGenBuffers(1, &r->image_vbo);
+  glBindVertexArray(r->image_vao);
+  glBindBuffer(GL_ARRAY_BUFFER, r->image_vbo);
+  glBufferData(GL_ARRAY_BUFFER, 6 * 4 * sizeof(float), NULL, GL_STREAM_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                        (void*)(2 * sizeof(float)));
   glBindVertexArray(0);
 
   static const uint8_t white[4] = {255, 255, 255, 255};
@@ -473,6 +521,7 @@ void renderer_begin_frame(renderer_t* r, render_camera_t camera,
   r->view_projection = mat4_multiply(r->projection, r->view);
   r->line_count = 0;
   r->text_count = 0;
+  r->image_count = 0;
   r->draw_count = 0;
   memset(&r->stats, 0, sizeof(r->stats));
   r->stats.meshes_uploaded = r->meshes_uploaded;
@@ -643,6 +692,64 @@ void renderer_draw_text(renderer_t* r, float x, float y, float scale,
   }
 }
 
+void renderer_draw_screen_image(renderer_t* r, texture_handle_t texture,
+                                float x, float y, float width, float height,
+                                vec3_t tint, float alpha) {
+  if (r->image_count >= MAX_SCREEN_IMAGES) return;
+  screen_image_t image = {texture.id, x, y, width, height, tint, alpha};
+  r->images[r->image_count++] = image;
+}
+
+void renderer_draw_screen_line(renderer_t* r, float x0, float y0, float x1,
+                               float y1, float thickness, vec3_t color) {
+  float dx = x1 - x0, dy = y1 - y0;
+  float length = sqrtf(dx * dx + dy * dy);
+  if (length < 1e-4f || r->text_count + 6 > MAX_TEXT_VERTICES) return;
+  float nx = -dy / length * thickness * 0.5f,
+        ny = dx / length * thickness * 0.5f;
+  text_vertex_t a = {x0 + nx, y0 + ny, color}, b = {x1 + nx, y1 + ny, color},
+                c = {x1 - nx, y1 - ny, color}, d = {x0 - nx, y0 - ny, color};
+  r->text_vertices[r->text_count++] = a;
+  r->text_vertices[r->text_count++] = b;
+  r->text_vertices[r->text_count++] = c;
+  r->text_vertices[r->text_count++] = a;
+  r->text_vertices[r->text_count++] = c;
+  r->text_vertices[r->text_count++] = d;
+}
+
+static void draw_screen_images(renderer_t* r) {
+  if (r->image_count == 0) return;
+  glUseProgram(r->image_program);
+  glUniform2f(glGetUniformLocation(r->image_program, "u_viewport"),
+              (float)r->width, (float)r->height);
+  glUniform1i(glGetUniformLocation(r->image_program, "u_texture"), 0);
+  glBindVertexArray(r->image_vao);
+  glBindBuffer(GL_ARRAY_BUFFER, r->image_vbo);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  for (size_t i = 0; i < r->image_count; i++) {
+    const screen_image_t* im = &r->images[i];
+    float x0 = im->x, y0 = im->y, x1 = im->x + im->width,
+          y1 = im->y + im->height;
+    float quad[24] = {x0, y0, 0, 0, x1, y0, 1, 0, x1, y1, 1, 1,
+                      x0, y0, 0, 0, x1, y1, 1, 1, x0, y1, 0, 1};
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(quad), quad);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, im->texture && im->texture < MAX_TEXTURES &&
+                                         r->textures[im->texture]
+                                     ? r->textures[im->texture]
+                                     : r->white_texture);
+    glUniform3f(glGetUniformLocation(r->image_program, "u_tint"), im->tint.x,
+                im->tint.y, im->tint.z);
+    glUniform1f(glGetUniformLocation(r->image_program, "u_alpha"), im->alpha);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    r->stats.draw_calls++;
+  }
+  glDisable(GL_BLEND);
+}
+
 void renderer_end_frame(renderer_t* r) {
   if (shadows_enabled(r))
     shadow_pass(r);
@@ -663,6 +770,7 @@ void renderer_end_frame(renderer_t* r) {
     glDrawArrays(GL_LINES, 0, (GLsizei)r->line_count);
     r->stats.draw_calls++;
   }
+  draw_screen_images(r);
   if (r->text_count > 0) {
     glUseProgram(r->text_program);
     glUniform2f(glGetUniformLocation(r->text_program, "u_viewport"),

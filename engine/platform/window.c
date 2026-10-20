@@ -97,6 +97,9 @@ static void handle_key(window_events_t* events, SDL_Scancode key) {
       events->toggle_fullscreen = true;
       break;
     case SDL_SCANCODE_M:
+      events->toggle_map = true;
+      break;
+    case SDL_SCANCODE_N:
       events->toggle_mute = true;
       break;
     default:

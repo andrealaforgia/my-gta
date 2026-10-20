@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 
+#include "city_map.h"
 #include "physics_world.h"
 #include "renderer.h"
 #include "textures.h"
@@ -23,6 +24,7 @@ typedef struct {
   mesh_handle_t meshes[SCENE_MAX_MESHES];
   int mesh_count;
   char name[64];
+  city_map_t map; /* the pause-screen map; size 0 on the test track */
 } scene_t;
 
 typedef struct {
