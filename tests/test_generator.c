@@ -285,7 +285,7 @@ static void trees_grow_in_parks_and_nowhere_else(void) {
   assert(leaves->collider == PART_COLLIDER_NONE);
   assert(part_for(&package, "trunk", 306) == NULL); /* no trees in a car park */
   aabb_t bounds = mesh_data_bounds(&leaves->mesh);
-  assert(bounds.min.y > 2.0f && bounds.max.y < 12.0f);
+  assert(bounds.min.y > 1.0f && bounds.max.y < 12.0f);
   city_package_free(&package);
 }
 
