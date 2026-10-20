@@ -204,6 +204,8 @@ uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns) {
                                    (unsigned)(y / cell_h), seed + 5) *
                                  0.15f;
           put(pixels, x, y, sky * 0.55f, sky * 0.65f, sky * 0.9f);
+          /* Alpha marks glass: at night some panes are lit from inside. */
+          pixels[(y * TEXTURE_SIZE + x) * 4 + 3] = 0;
         }
       }
     }

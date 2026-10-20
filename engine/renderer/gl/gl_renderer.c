@@ -116,6 +116,7 @@ static const char* mesh_fragment_source =
     "uniform float u_metallic;\n"
     "uniform float u_roughness;\n"
     "uniform float u_emissive;\n"
+    "uniform float u_window_glow;\n"
     "uniform int u_has_texture;\n"
     "uniform sampler2D u_texture;\n"
     "uniform vec3 u_light_direction;\n"
@@ -145,7 +146,12 @@ static const char* mesh_fragment_source =
     "}\n"
     "void main() {\n"
     "  vec3 albedo = u_base_color;\n"
-    "  if (u_has_texture == 1) albedo *= texture(u_texture, v_uv).rgb;\n"
+    "  float pane = 1.0;\n"
+    "  if (u_has_texture == 1) {\n"
+    "    vec4 texel = texture(u_texture, v_uv);\n"
+    "    albedo *= texel.rgb;\n"
+    "    pane = texel.a;\n"
+    "  }\n"
     "  vec3 n = normalize(v_normal);\n"
     "  vec3 l = normalize(u_light_direction);\n"
     "  vec3 v = normalize(u_eye - v_world_position);\n"
@@ -162,6 +168,14 @@ static const char* mesh_fragment_source =
     "             + (diffuse * n_dot_l + specular_tint * spec * n_dot_l) * "
     "u_light_color * shadow;\n"
     "  color += albedo * u_emissive;\n"
+    "  if (u_window_glow > 0.0 && pane < 0.5) {\n"
+    "    vec3 cell = floor(vec3(v_world_position.x + v_world_position.z, "
+    "v_world_position.y, 0.0) * vec3(0.33, 0.3, 1.0));\n"
+    "    float h = fract(sin(dot(cell.xy, vec2(12.9898, 78.233))) * "
+    "43758.5453);\n"
+    "    float lit = step(0.52, h) * u_window_glow;\n"
+    "    color = mix(color, vec3(1.0, 0.78, 0.42) * (0.7 + 0.5 * h), lit);\n"
+    "  }\n"
     "  if (u_spot_intensity > 0.0) {\n"
     "    vec3 to_point = v_world_position - u_spot_position;\n"
     "    float d = length(to_point);\n"
@@ -630,6 +644,8 @@ static void draw_list(renderer_t* r, GLuint program, bool bind_materials) {
                   material->roughness);
       glUniform1f(glGetUniformLocation(program, "u_emissive"),
                   material->emissive);
+      glUniform1f(glGetUniformLocation(program, "u_window_glow"),
+                  material->window_glow);
       bool textured = material->texture.id != 0 &&
                       material->texture.id < MAX_TEXTURES &&
                       r->textures[material->texture.id] != 0;

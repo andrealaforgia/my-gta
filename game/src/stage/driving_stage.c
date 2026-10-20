@@ -392,8 +392,11 @@ void driving_stage_render(driving_stage_t* stage) {
   environment.spot_intensity = 2.2f * night;
   for (size_t i = 0; i < stage->world.capacity; i++) {
     entity_t* entity = &stage->world.entities[i];
-    if (entity->used && strncmp(entity->label, "lamp_light", 10) == 0)
+    if (!entity->used) continue;
+    if (strncmp(entity->label, "lamp_light", 10) == 0)
       entity->material.emissive = 2.4f * night;
+    else if (strncmp(entity->label, "facade", 6) == 0)
+      entity->material.window_glow = night;
   }
   renderer_begin_frame(r, chase_camera_render(&stage->camera), environment);
   stage->last_drawn = world_render(&stage->world, r);

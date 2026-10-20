@@ -31,7 +31,10 @@ typedef struct {
   float metallic;
   float roughness;
   texture_handle_t texture;
-  float emissive; /* 0..: the colour added unlit, for lamps and lit windows */
+  float emissive; /* 0..: the colour added unlit, for lamps */
+  /* 0..1: how many of the panes a texture marks as glass (alpha 0) are lit
+   * from inside, chosen per window by position. */
+  float window_glow;
 } material_t;
 
 typedef struct {
