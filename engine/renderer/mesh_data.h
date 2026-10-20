@@ -42,6 +42,13 @@ bool mesh_data_add_box(mesh_data_t* mesh, vec3_t center, vec3_t half_extents);
 /* A cylinder along the local X axis (a wheel), centred at center. */
 bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius,
                               float width, int segments);
+/* A rounded body: `rings` bands from pole to pole, `segments` around, radii
+ * along x, y and z; smooth normals, anticlockwise outward. */
+bool mesh_data_add_ellipsoid(mesh_data_t* mesh, vec3_t center, vec3_t radii,
+                             int rings, int segments);
+/* A cylinder standing on `base` with its axis up, closed top and bottom. */
+bool mesh_data_add_cylinder_y(mesh_data_t* mesh, vec3_t base, float radius,
+                              float height, int segments);
 bool mesh_data_add_grid(mesh_data_t* mesh, float half_size, float spacing);
 /* Splits triangles at the midpoint of their longest edge until every edge
  * is at most max_edge long; winding, normals and uvs are interpolated. */

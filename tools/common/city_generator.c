@@ -1125,6 +1125,27 @@ static bool point_inside(local_point_t p, const local_point_t* ring,
 
 /* Trees on a jittered grid inside a park: a trunk with a collider and a
  * canopy of three boxes. Deterministic from the area's source id. */
+/* A tree: a slim trunk and a crown of two overlapping rounded masses, one
+ * leaning a little to a side that the seed picks. */
+static bool add_tree_geometry(city_part_t* trunks, city_part_t* leaves,
+                              local_point_t p, float height, float crown,
+                              uint64_t seed) {
+  if (!mesh_data_add_cylinder_y(&trunks->mesh, vec3((float)p.x, 0, (float)p.z),
+                                0.16f, height * 0.85f, 6))
+    return false;
+  float lean_x = (float)((seed >> 8) % 100) / 100.0f - 0.5f;
+  float lean_z = (float)((seed >> 16) % 100) / 100.0f - 0.5f;
+  vec3_t top = vec3((float)p.x, height, (float)p.z);
+  return mesh_data_add_ellipsoid(
+             &leaves->mesh, vec3_add(top, vec3(0, crown * 0.45f, 0)),
+             vec3(crown * 1.15f, crown * 1.0f, crown * 1.15f), 4, 7) &&
+         mesh_data_add_ellipsoid(
+             &leaves->mesh,
+             vec3_add(top, vec3(lean_x * crown * 1.3f, crown * 0.8f,
+                                lean_z * crown * 1.3f)),
+             vec3(crown * 0.8f, crown * 0.75f, crown * 0.8f), 4, 7);
+}
+
 static bool generate_trees(layout_t* layout, const city_area_t* area,
                            city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -1167,23 +1188,9 @@ static bool generate_trees(layout_t* layout, const city_area_t* area,
       for (int k = 0; k < 4 && fits; k++)
         fits = point_inside(margin[k], area->points, area->point_count);
       if (!fits) continue;
-      float height = 4.5f + (float)((seed >> 40) % 300) / 100.0f;
-      float crown = 1.6f + (float)((seed >> 50) % 100) / 100.0f;
-      if (!mesh_data_add_box(&trunks->mesh,
-                             vec3((float)p.x, height * 0.5f, (float)p.z),
-                             vec3(0.18f, height * 0.5f, 0.18f)))
-        return false;
-      vec3_t top = vec3((float)p.x, height, (float)p.z);
-      if (!mesh_data_add_box(&leaves->mesh,
-                             vec3_add(top, vec3(0, crown * 0.5f, 0)),
-                             vec3(crown * 0.8f, crown * 0.9f, crown * 0.8f)) ||
-          !mesh_data_add_box(&leaves->mesh,
-                             vec3_add(top, vec3(0, crown * 0.6f, 0)),
-                             vec3(crown * 0.7f, crown * 0.6f, crown * 0.7f)) ||
-          !mesh_data_add_box(
-              &leaves->mesh,
-              vec3_add(top, vec3(crown * 0.5f, -crown * 0.2f, crown * 0.3f)),
-              vec3(crown * 0.6f, crown * 0.5f, crown * 0.6f)))
+      float height = 3.2f + (float)((seed >> 40) % 220) / 100.0f;
+      float crown = 2.0f + (float)((seed >> 50) % 100) / 100.0f;
+      if (!add_tree_geometry(trunks, leaves, p, height, crown, seed))
         return false;
       planted++;
     }
@@ -1218,18 +1225,9 @@ static bool generate_street_trees(layout_t* layout, const city_model_t* model,
     trunks = &chunk->parts[chunk->part_count - 2];
     uint64_t seed = (uint64_t)(t + 1) * 0x9e3779b97f4a7c15ull;
     seed ^= seed >> 12, seed ^= seed << 25, seed ^= seed >> 27;
-    float height = 5.0f + (float)((seed >> 40) % 300) / 100.0f;
-    float crown = 1.8f + (float)((seed >> 50) % 100) / 100.0f;
-    vec3_t top = vec3((float)p.x, height, (float)p.z);
-    if (!mesh_data_add_box(&trunks->mesh,
-                           vec3((float)p.x, height * 0.5f, (float)p.z),
-                           vec3(0.18f, height * 0.5f, 0.18f)) ||
-        !mesh_data_add_box(&leaves->mesh,
-                           vec3_add(top, vec3(0, crown * 0.5f, 0)),
-                           vec3(crown * 0.8f, crown * 0.9f, crown * 0.8f)) ||
-        !mesh_data_add_box(&leaves->mesh,
-                           vec3_add(top, vec3(0, crown * 0.6f, 0)),
-                           vec3(crown * 0.7f, crown * 0.6f, crown * 0.7f)))
+    float height = 3.6f + (float)((seed >> 40) % 220) / 100.0f;
+    float crown = 2.1f + (float)((seed >> 50) % 100) / 100.0f;
+    if (!add_tree_geometry(trunks, leaves, p, height, crown, seed))
       return false;
     finish_part(chunk, trunks);
     finish_part(chunk, leaves);

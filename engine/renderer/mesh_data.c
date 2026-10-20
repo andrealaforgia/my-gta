@@ -224,3 +224,86 @@ bool mesh_data_subdivide(mesh_data_t* mesh, float max_edge) {
   *mesh = out;
   return true;
 }
+
+bool mesh_data_add_ellipsoid(mesh_data_t* mesh, vec3_t center, vec3_t radii,
+                             int rings, int segments) {
+  if (rings < 2 || segments < 3) return false;
+  uint32_t base = (uint32_t)mesh->vertex_count;
+  for (int r = 0; r <= rings; r++) {
+    float phi = (float)M_PI * (float)r / (float)rings; /* 0 at the top pole */
+    for (int s = 0; s <= segments; s++) {
+      float theta = 2.0f * (float)M_PI * (float)s / (float)segments;
+      vec3_t unit =
+          vec3(sinf(phi) * cosf(theta), cosf(phi), sinf(phi) * sinf(theta));
+      vertex_t v;
+      v.position =
+          vec3(center.x + unit.x * radii.x, center.y + unit.y * radii.y,
+               center.z + unit.z * radii.z);
+      /* The normal of an ellipsoid is the unit point over the radii. */
+      v.normal = vec3_normalize(
+          vec3(unit.x / radii.x, unit.y / radii.y, unit.z / radii.z));
+      v.u = (float)s / (float)segments;
+      v.v = (float)r / (float)rings;
+      if (!mesh_data_add_vertex(mesh, v)) return false;
+    }
+  }
+  uint32_t row = (uint32_t)segments + 1;
+  for (int r = 0; r < rings; r++) {
+    for (int s = 0; s < segments; s++) {
+      uint32_t a = base + (uint32_t)r * row + (uint32_t)s;
+      uint32_t b = a + 1, c = a + row, d = c + 1;
+      /* Anticlockwise seen from outside: round, then down. */
+      if (r > 0 && !mesh_data_add_triangle(mesh, a, b, c)) return false;
+      if (r < rings - 1 && !mesh_data_add_triangle(mesh, b, d, c)) return false;
+    }
+  }
+  return true;
+}
+
+bool mesh_data_add_cylinder_y(mesh_data_t* mesh, vec3_t base, float radius,
+                              float height, int segments) {
+  if (segments < 3) return false;
+  uint32_t start = (uint32_t)mesh->vertex_count;
+  for (int s = 0; s <= segments; s++) {
+    float theta = 2.0f * (float)M_PI * (float)s / (float)segments;
+    vec3_t out = vec3(cosf(theta), 0, sinf(theta));
+    vertex_t bottom = {
+        vec3(base.x + out.x * radius, base.y, base.z + out.z * radius), out,
+        (float)s / (float)segments, 0};
+    vertex_t top = {
+        vec3(base.x + out.x * radius, base.y + height, base.z + out.z * radius),
+        out, (float)s / (float)segments, 1};
+    if (!mesh_data_add_vertex(mesh, bottom) || !mesh_data_add_vertex(mesh, top))
+      return false;
+  }
+  for (int s = 0; s < segments; s++) {
+    uint32_t a = start + (uint32_t)s * 2, b = a + 1, c = a + 2, d = a + 3;
+    /* Outward faces anticlockwise from outside: bottom a, then c, then top. */
+    if (!mesh_data_add_triangle(mesh, a, b, c) ||
+        !mesh_data_add_triangle(mesh, c, b, d))
+      return false;
+  }
+  for (int cap = 0; cap < 2; cap++) {
+    float y = base.y + (cap ? height : 0.0f);
+    vec3_t normal = vec3(0, cap ? 1.0f : -1.0f, 0);
+    uint32_t centre_index = (uint32_t)mesh->vertex_count;
+    vertex_t middle = {vec3(base.x, y, base.z), normal, 0.5f, 0.5f};
+    if (!mesh_data_add_vertex(mesh, middle)) return false;
+    uint32_t ring = (uint32_t)mesh->vertex_count;
+    for (int s = 0; s < segments; s++) {
+      float theta = 2.0f * (float)M_PI * (float)s / (float)segments;
+      vertex_t v = {
+          vec3(base.x + cosf(theta) * radius, y, base.z + sinf(theta) * radius),
+          normal, 0, 0};
+      if (!mesh_data_add_vertex(mesh, v)) return false;
+    }
+    for (int s = 0; s < segments; s++) {
+      uint32_t a = ring + (uint32_t)s,
+               b = ring + (uint32_t)((s + 1) % segments);
+      if (!(cap ? mesh_data_add_triangle(mesh, centre_index, b, a)
+                : mesh_data_add_triangle(mesh, centre_index, a, b)))
+        return false;
+    }
+  }
+  return true;
+}

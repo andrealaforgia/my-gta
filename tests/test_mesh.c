@@ -81,6 +81,46 @@ static void a_large_triangle_is_subdivided_until_its_edges_are_short(void) {
   mesh_data_free(&mesh);
 }
 
+static void an_ellipsoid_is_round_closed_and_faces_outward(void) {
+  mesh_data_t mesh = mesh_data_create();
+  vec3_t centre = vec3(3, 5, -2), radii = vec3(2, 3, 1.5f);
+  assert(mesh_data_add_ellipsoid(&mesh, centre, radii, 5, 8));
+  /* Pole to pole: 2 x 8 cap triangles and 3 x 8 x 2 in the belts. */
+  assert(mesh_data_triangle_count(&mesh) == 2 * 8 + 3 * 8 * 2);
+  aabb_t bounds = mesh_data_bounds(&mesh);
+  assert(near_to(bounds.max.y - bounds.min.y, 6.0f, 0.01f));
+  assert(near_to(bounds.max.x - bounds.min.x, 4.0f, 0.4f));
+  for (size_t v = 0; v < mesh.vertex_count; v++) {
+    vec3_t p = vec3_sub(mesh.vertices[v].position, centre);
+    float f = (p.x * p.x) / (radii.x * radii.x) +
+              (p.y * p.y) / (radii.y * radii.y) +
+              (p.z * p.z) / (radii.z * radii.z);
+    assert(near_to(f, 1.0f, 1e-3f));                  /* on the surface */
+    assert(vec3_dot(mesh.vertices[v].normal, p) > 0); /* normal points out */
+  }
+  for (size_t i = 0; i + 2 < mesh.index_count; i += 3) {
+    vec3_t a = mesh.vertices[mesh.indices[i]].position;
+    vec3_t b = mesh.vertices[mesh.indices[i + 1]].position;
+    vec3_t c = mesh.vertices[mesh.indices[i + 2]].position;
+    vec3_t face = vec3_cross(vec3_sub(b, a), vec3_sub(c, a));
+    vec3_t middle = vec3_scale(vec3_add(vec3_add(a, b), c), 1.0f / 3.0f);
+    assert(vec3_dot(face, vec3_sub(middle, centre)) > 0); /* wound outward */
+  }
+  mesh_data_free(&mesh);
+}
+
+static void an_upright_cylinder_has_its_height_and_radius(void) {
+  mesh_data_t mesh = mesh_data_create();
+  assert(mesh_data_add_cylinder_y(&mesh, vec3(1, 0, 1), 0.25f, 4.0f, 6));
+  aabb_t bounds = mesh_data_bounds(&mesh);
+  assert(near_to(bounds.min.y, 0.0f, 1e-4f) &&
+         near_to(bounds.max.y, 4.0f, 1e-4f));
+  assert(near_to(bounds.max.x - bounds.min.x, 0.5f, 0.06f));
+  assert(mesh_data_triangle_count(&mesh) ==
+         6 * 2 + 6 + 6); /* sides, top, bottom */
+  mesh_data_free(&mesh);
+}
+
 static void the_font_covers_digits_and_capitals(void) {
   for (char c = '0'; c <= '9'; c++) assert(font5x7_has_glyph(c));
   for (char c = 'A'; c <= 'Z'; c++) assert(font5x7_has_glyph(c));
@@ -95,5 +135,7 @@ void run_mesh_tests(void) {
   RUN(a_wheel_cylinder_spans_its_width_and_radius);
   RUN(meshes_append_with_rebased_indices);
   RUN(a_large_triangle_is_subdivided_until_its_edges_are_short);
+  RUN(an_ellipsoid_is_round_closed_and_faces_outward);
+  RUN(an_upright_cylinder_has_its_height_and_radius);
   RUN(the_font_covers_digits_and_capitals);
 }
