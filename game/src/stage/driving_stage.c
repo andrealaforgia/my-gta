@@ -64,6 +64,8 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     if (stage->people)
       stage->people_meshes = pedestrian_meshes_create(renderer);
   }
+  skid_marks_reset(&stage->skid_marks);
+  stage->skid_strip = skid_mark_mesh_create(renderer);
   stage->hour = options.start_hour;
   stage->hour_seconds = options.hour_seconds;
   if (stage->scene.map.size > 0)
@@ -80,6 +82,7 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
 void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
+    renderer_release_mesh(stage->renderer, stage->skid_strip);
     traffic_destroy(stage->traffic, stage->physics);
     if (stage->people)
       pedestrian_meshes_destroy(&stage->people_meshes, stage->renderer);
@@ -135,6 +138,11 @@ static void send_audio_state(driving_stage_t* stage) {
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt) {
   vehicle_update(&stage->vehicle, stage->physics, input, dt);
+  for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
+    const wheel_state_t* wheel = &stage->vehicle.wheels[i];
+    skid_marks_wheel(&stage->skid_marks, i, wheel->contact_point,
+                     wheel->grounded && wheel->skidding);
+  }
   if (stage->traffic) {
     const rigid_body_t* player =
         physics_body(stage->physics, stage->vehicle.body);
@@ -407,7 +415,13 @@ void driving_stage_next_vehicle(driving_stage_t* stage) {
 }
 
 render_camera_t driving_stage_camera(const driving_stage_t* stage) {
-  if (stage->view_mode == 0) return chase_camera_render(&stage->camera);
+  if (stage->view_mode == 0) {
+    /* The world rushes past: the view opens up a little with speed. */
+    render_camera_t view = chase_camera_render(&stage->camera);
+    float speed = fabsf(vehicle_forward_speed(&stage->vehicle));
+    view.fov_y += fminf(speed * 0.004f, 0.14f);
+    return view;
+  }
   transform_t chassis =
       car_transform((driving_stage_t*)stage, (float)stage->clock.alpha);
   /* Left-hand drive: the driver sits left of centre, eyes just above the
@@ -455,6 +469,8 @@ void driving_stage_render(driving_stage_t* stage) {
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
+  skid_marks_draw(&stage->skid_marks, stage->skid_strip, r,
+                  stage->camera.position, 90.0f);
   if (stage->has_fleet) {
     vec3_t eye = stage->camera.position;
     parked_cars_draw(&stage->parked, &stage->fleet, r, eye, 170.0f, night);

@@ -8,6 +8,7 @@
 #include "fleet.h"
 #include "parked_cars.h"
 #include "pedestrians.h"
+#include "skid_marks.h"
 #include "test_groups.h"
 #include "test_support.h"
 #include "traffic.h"
@@ -340,7 +341,43 @@ static void people_are_drawn_only_when_near(void) {
   renderer_destroy(renderer);
 }
 
+static void sliding_wheels_leave_marks_that_overwrite_the_oldest(void) {
+  static skid_marks_t marks;
+  skid_marks_reset(&marks);
+  /* Rolling: nothing. */
+  for (int i = 0; i < 10; i++)
+    skid_marks_wheel(&marks, 0, vec3(i * 0.5f, 0, 0), false);
+  assert(marks.count == 0);
+  /* Sliding: a mark per hop after the first contact. */
+  for (int i = 0; i < 10; i++)
+    skid_marks_wheel(&marks, 0, vec3(i * 0.5f, 0, 0), true);
+  assert(marks.count == 9);
+  assert(near_to(marks.marks[0].from.x, 0.0f, 1e-4f) &&
+         near_to(marks.marks[0].to.x, 0.5f, 1e-4f));
+  /* Tiny hops wait until the wheel has gone on, and a leap starts again. */
+  skid_marks_wheel(&marks, 1, vec3(0, 0, 0), true);
+  skid_marks_wheel(&marks, 1, vec3(0.01f, 0, 0), true);
+  assert(marks.count == 9);
+  skid_marks_wheel(&marks, 1, vec3(50, 0, 0), true);
+  assert(marks.count == 9);
+  /* The oldest are overwritten once full. */
+  for (int i = 0; i < SKID_MARK_CAPACITY + 50; i++)
+    skid_marks_wheel(&marks, 2, vec3(i * 0.3f, 0, 5), true);
+  assert(marks.count == SKID_MARK_CAPACITY);
+  /* Drawn when near. */
+  renderer_t* renderer = renderer_create(64, 64);
+  mesh_handle_t strip = skid_mark_mesh_create(renderer);
+  assert(strip.id);
+  int near_drawn = skid_marks_draw(&marks, strip, renderer, vec3(0, 1, 5), 40);
+  int far_drawn =
+      skid_marks_draw(&marks, strip, renderer, vec3(900, 1, 900), 40);
+  assert(near_drawn > 5 && far_drawn == 0);
+  renderer_release_mesh(renderer, strip);
+  renderer_destroy(renderer);
+}
+
 void run_traffic_tests(void) {
+  RUN(sliding_wheels_leave_marks_that_overwrite_the_oldest);
   RUN(people_walk_on_the_pavements_at_a_walking_pace);
   RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);
   RUN(a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk);

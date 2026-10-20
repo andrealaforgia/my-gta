@@ -19,6 +19,7 @@
 #include "physics_world.h"
 #include "renderer.h"
 #include "scene.h"
+#include "skid_marks.h"
 #include "textures.h"
 #include "traffic.h"
 #include "vehicle.h"
@@ -54,6 +55,8 @@ typedef struct {
   bool paused;
   float hour; /* time of day, 0..24 */
   float hour_seconds;
+  skid_marks_t skid_marks;
+  mesh_handle_t skid_strip;
   fleet_t fleet;
   bool has_fleet;
   parked_cars_t parked;

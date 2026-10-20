@@ -60,6 +60,8 @@ typedef struct {
 /* Bounds on the car's height: the flat city sits at 0, the hill 100 m up. */
 static float drive_floor = -0.5f, drive_ceiling = 5.0f;
 
+static int test_traffic_cars = 0, test_pedestrians = 0;
+
 static void start_in(city_run_t* run, const char* directory) {
   bool hilly = directory == hill_directory;
   drive_floor = hilly ? 80.0f : -0.5f;
@@ -68,8 +70,9 @@ static void start_in(city_run_t* run, const char* directory) {
   run->window.drawable_width = 1280;
   run->window.drawable_height = 720;
   run->renderer = renderer_create(1280, 720);
-  stage_options_t options = {SCENE_CITY, directory, NULL, false, true,
-                             10.0f,      0.0f,      0,    0};
+  stage_options_t options = {
+      SCENE_CITY,        directory,       NULL, false, true, 10.0f, 0.0f,
+      test_traffic_cars, test_pedestrians};
   assert(driving_stage_init(&run->stage, &run->window, run->renderer, NULL,
                             options));
 }
@@ -230,6 +233,46 @@ static void v_swaps_the_car_for_the_next_one_where_it_stands(void) {
   stop(&run);
 }
 
+static void a_busy_city_runs_for_a_minute_without_trouble(void) {
+  test_traffic_cars = 20;
+  test_pedestrians = 40;
+  city_run_t run;
+  start(&run);
+  assert(run.stage.traffic && run.stage.people);
+  assert(run.stage.parked.count > 0 || run.stage.scene.parked_count == 0);
+  assert(traffic_car_count(run.stage.traffic) == 20);
+  driving_input_t throttle = {0.6f, 0, 0.1f, false};
+  for (int second = 0; second < 60; second++) {
+    drive(&run, throttle, 1.0f);
+    /* Whatever the car runs into, nothing goes wrong. */
+    for (size_t i = 0; i < traffic_car_count(run.stage.traffic); i++) {
+      traffic_car_t c = traffic_car(run.stage.traffic, i);
+      assert(isfinite(c.position.x) && isfinite(c.position.z) &&
+             c.speed < 14.0f);
+    }
+    if (second % 15 == 14) {
+      driving_input_t reverse = {0, 1, -0.3f, false};
+      drive(&run, reverse, 2.0f);
+    }
+  }
+  test_traffic_cars = 0;
+  test_pedestrians = 0;
+  stop(&run);
+}
+
+static void the_chase_view_widens_with_speed(void) {
+  city_run_t run;
+  start(&run);
+  driving_input_t idle = {0, 0, 0, false};
+  drive(&run, idle, 0.5f);
+  float standing = driving_stage_camera(&run.stage).fov_y;
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&run, throttle, 8.0f);
+  float moving = driving_stage_camera(&run.stage).fov_y;
+  assert(moving > standing + 0.03f && moving < standing + 0.2f);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -254,5 +297,7 @@ void run_citydrive_tests(void) {
   RUN(the_town_sounds_follow_the_time_of_day);
   RUN(the_driver_sees_from_inside_and_from_the_bonnet);
   RUN(v_swaps_the_car_for_the_next_one_where_it_stands);
+  RUN(a_busy_city_runs_for_a_minute_without_trouble);
+  RUN(the_chase_view_widens_with_speed);
   RUN(the_map_and_the_pause_silence_the_engine);
 }
