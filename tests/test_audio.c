@@ -281,7 +281,32 @@ static void the_church_bell_strikes_the_hour_in_a_ringing_tone(void) {
   audio_mixer_trigger_bell(&mixer, 1);
 }
 
+static void rain_is_a_soft_wash_that_is_louder_in_heavier_rain(void) {
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  state.engine_running = false;
+  float out[RATE];
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE) < 1e-4f);
+  state.rain = 0.4f;
+  render(&mixer, state, out, RATE);
+  render(&mixer, state, out, RATE);
+  float light = rms(out, RATE);
+  state.rain = 1.0f;
+  render(&mixer, state, out, RATE);
+  render(&mixer, state, out, RATE);
+  float heavy = rms(out, RATE);
+  assert(light > 0.002f && heavy > light * 1.5f && heavy < 0.12f);
+  /* It is mostly high, hushing sound, with nothing sung in it. */
+  assert(treble_share(out, RATE) > 0.1f);
+  float best = 0;
+  for (int lag = RATE / 1200; lag < RATE / 200; lag++)
+    best = fmaxf(best, tonality_at(out, RATE, lag));
+  assert(best < 0.6f);
+}
+
 void run_audio_tests(void) {
+  RUN(rain_is_a_soft_wash_that_is_louder_in_heavier_rain);
   RUN(the_town_has_a_background_that_is_quiet_and_goes_with_the_level);
   RUN(crickets_sing_by_night_in_a_high_steady_note);
   RUN(the_church_bell_strikes_the_hour_in_a_ringing_tone);

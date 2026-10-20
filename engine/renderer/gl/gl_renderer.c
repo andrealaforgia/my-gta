@@ -61,6 +61,8 @@ struct renderer {
   GLuint line_vao, line_vbo;
   line_vertex_t* line_vertices;
   size_t line_count;
+  line_vertex_t* tested_vertices;
+  size_t tested_count;
   GLuint text_vao, text_vbo;
   GLuint image_program, image_vao, image_vbo;
   screen_image_t images[MAX_SCREEN_IMAGES];
@@ -154,7 +156,7 @@ static const char* mesh_fragment_source =
     "  }\n"
     "  vec3 n = normalize(v_normal);\n"
     "  bool shiny = u_roughness < 0.25 && u_metallic > 0.3;\n"
-    "  if (shiny && n.y > 0.9) {\n"
+    "  if (shiny && u_roughness < 0.15 && n.y > 0.9) {\n"
     "    n = normalize(n + vec3(0.05 * sin(v_world_position.x * 1.9 + "
     "v_world_position.z * 0.7), 0.0,\n"
     "                           0.05 * sin(v_world_position.z * 1.4 - "
@@ -177,7 +179,7 @@ static const char* mesh_fragment_source =
     "  if (shiny) {\n"
     "    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 4.0);\n"
     "    color = mix(color, u_sky_color * (0.35 + 0.65 * u_ambient / 0.3), "
-    "0.15 + 0.65 * fresnel);\n"
+    "0.06 + 0.5 * fresnel);\n"
     "  }\n"
     "  color += albedo * u_emissive;\n"
     "  if (u_window_glow > 0.0 && pane < 0.5) {\n"
@@ -380,6 +382,7 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   glGenVertexArrays(1, &r->sky_vao);
   r->image_program =
       link_program(image_vertex_source, image_fragment_source, "image");
+  r->tested_vertices = malloc(MAX_LINE_VERTICES * sizeof(line_vertex_t));
   r->text_vertices = malloc(MAX_TEXT_VERTICES * sizeof(text_vertex_t));
   r->draws = malloc(MAX_DRAWS * sizeof(draw_t));
   if (!r->mesh_program || !r->line_program || !r->text_program ||
@@ -493,6 +496,7 @@ void renderer_destroy(renderer_t* r) {
   if (r->line_program) glDeleteProgram(r->line_program);
   if (r->text_program) glDeleteProgram(r->text_program);
   free(r->line_vertices);
+  free(r->tested_vertices);
   free(r->text_vertices);
   free(r);
 }
@@ -612,6 +616,7 @@ void renderer_begin_frame(renderer_t* r, render_camera_t camera,
                                    camera.far_plane);
   r->view_projection = mat4_multiply(r->projection, r->view);
   r->line_count = 0;
+  r->tested_count = 0;
   r->text_count = 0;
   r->image_count = 0;
   r->draw_count = 0;
@@ -769,6 +774,13 @@ void renderer_draw_line(renderer_t* r, vec3_t a, vec3_t b, vec3_t color) {
   r->line_vertices[r->line_count++] = vb;
 }
 
+void renderer_draw_line_tested(renderer_t* r, vec3_t a, vec3_t b, vec3_t c) {
+  if (!r->tested_vertices || r->tested_count + 2 > MAX_LINE_VERTICES) return;
+  line_vertex_t va = {a, c}, vb = {b, c};
+  r->tested_vertices[r->tested_count++] = va;
+  r->tested_vertices[r->tested_count++] = vb;
+}
+
 void renderer_draw_box_outline(renderer_t* r, mat4_t model, vec3_t h,
                                vec3_t color) {
   vec3_t corners[8];
@@ -879,6 +891,20 @@ void renderer_end_frame(renderer_t* r) {
   else
     r->light_view_projection = mat4_identity();
   main_pass(r);
+  if (r->tested_count > 0) {
+    glUseProgram(r->line_program);
+    glUniformMatrix4fv(
+        glGetUniformLocation(r->line_program, "u_view_projection"), 1, GL_FALSE,
+        r->view_projection.m);
+    glBindVertexArray(r->line_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, r->line_vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    (GLsizeiptr)(r->tested_count * sizeof(line_vertex_t)),
+                    r->tested_vertices);
+    glEnable(GL_DEPTH_TEST);
+    glDrawArrays(GL_LINES, 0, (GLsizei)r->tested_count);
+    r->stats.draw_calls++;
+  }
   if (r->line_count > 0) {
     glUseProgram(r->line_program);
     glUniformMatrix4fv(

@@ -6,7 +6,7 @@
 #define CYLINDERS 4
 
 audio_state_t audio_state_default(void) {
-  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0};
+  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0, 0};
   return state;
 }
 
@@ -213,6 +213,14 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     float cricket = sinf(2.0f * (float)M_PI * mixer->cricket_phase) *
                     (mixer->cricket_gate < 0.55f ? 1.0f : 0.0f) * 0.02f *
                     mixer->night_smoothed * mixer->city_smoothed;
+    /* Rain: a wash of high noise with a patter of drops in it. */
+    mixer->rain_smoothed =
+        smooth(mixer->rain_smoothed, s->rain, smoothing * 0.2f);
+    float drop = noise(mixer);
+    mixer->rain_lowpass = smooth(mixer->rain_lowpass, drop, 0.35f);
+    float wash = (drop - mixer->rain_lowpass) * 0.5f; /* highs only */
+    float patter = (noise(mixer) > 0.985f ? 1.0f : 0.0f) * noise(mixer) * 0.5f;
+    float rain = (wash * 0.09f + patter * 0.05f) * mixer->rain_smoothed;
     /* The bell: a strike every three seconds, each ringing out. */
     mixer->bell_timer -= dt;
     mixer->bell_age += dt;
@@ -235,7 +243,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       bell *= 0.16f;
     }
     out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
-                        bird + cricket + bell) *
+                        bird + cricket + bell + rain) *
                        gain);
   }
 }

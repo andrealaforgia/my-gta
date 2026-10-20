@@ -78,7 +78,38 @@ static void the_bell_strikes_the_hour_by_day_and_stays_quiet_at_night(void) {
   assert(daylight_bell_strikes(22.99f, 23.01f) == 0);
 }
 
+static void rain_greys_the_day_closes_the_fog_and_hides_the_stars(void) {
+  render_environment_t clear = daylight_environment(13.0f);
+  render_environment_t rain = clear;
+  daylight_apply_weather(&rain, 1.0f);
+  /* No rain changes nothing. */
+  render_environment_t none = clear;
+  daylight_apply_weather(&none, 0.0f);
+  assert(vec3_distance(none.sky_color, clear.sky_color) < 1e-6f);
+  assert(near_to(none.fog_end, clear.fog_end, 1e-3f));
+  /* Heavy rain: duller light, a grey sky with less blue in it, a nearer fog. */
+  assert(luminance(rain.color) < luminance(clear.color) * 0.6f);
+  assert(luminance(rain.sky_color) < luminance(clear.sky_color));
+  assert(rain.sky_color.z - rain.sky_color.x <
+         clear.sky_color.z - clear.sky_color.x);
+  assert(rain.fog_end < clear.fog_end * 0.5f &&
+         rain.fog_start < clear.fog_start);
+  assert(rain.sun_disc < 0.05f);
+  assert(rain.ambient >
+         clear.ambient * 0.8f); /* overcast light is soft, not dark */
+  /* At night the stars go behind the cloud. */
+  render_environment_t night = daylight_environment(1.0f);
+  assert(night.star_level > 0.9f);
+  daylight_apply_weather(&night, 1.0f);
+  assert(night.star_level < 0.05f);
+  /* In between is in between. */
+  render_environment_t half = clear;
+  daylight_apply_weather(&half, 0.5f);
+  assert(half.fog_end < clear.fog_end && half.fog_end > rain.fog_end);
+}
+
 void run_daylight_tests(void) {
+  RUN(rain_greys_the_day_closes_the_fog_and_hides_the_stars);
   RUN(the_bell_strikes_the_hour_by_day_and_stays_quiet_at_night);
   RUN(noon_is_bright_with_the_sun_overhead);
   RUN(midnight_is_dark_with_stars_and_lit_lamps);

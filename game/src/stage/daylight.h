@@ -20,4 +20,8 @@ float daylight_sun_height(float hour);
  * `before` to `now`: the hour's number, on the hours from 7 to 22. */
 int daylight_bell_strikes(float before, float now);
 
+/* Overcast and rain, 0 clear to 1 pouring: a greyer, dimmer day with the
+ * fog drawn in, no sun disc and no stars. */
+void daylight_apply_weather(render_environment_t* environment, float rain);
+
 #endif  // GAME_SRC_STAGE_DAYLIGHT_H_

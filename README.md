@@ -60,6 +60,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | V | swap to the next car: hatchback, saloon, van, city car |
 | M | the city map over a paused game, with street names and your position |
 | P | pause |
+| T | rain on or off |
 | N | mute |
 | F1 | debug overlay |
 | F11 | fullscreen |
@@ -70,7 +71,7 @@ the triggers, A handbrake, Y reset, Start pause.
 
 Command line: `--time=H` starts the clock at hour H (default 10), `--hour-seconds=S`
 sets real seconds per game hour (default 30, 0 freezes it), `--traffic=N` and
-`--pedestrians=N` set how many cars and people there are (36 and 70).
+`--pedestrians=N` set how many cars and people there are (36 and 70), `--rain` starts in the rain.
 
 ## Layout
 

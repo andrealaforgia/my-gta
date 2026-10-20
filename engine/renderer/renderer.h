@@ -94,6 +94,9 @@ void renderer_begin_frame(renderer_t* renderer, render_camera_t camera,
 void renderer_draw_mesh(renderer_t* renderer, mesh_handle_t mesh,
                         material_t material, mat4_t model);
 void renderer_draw_line(renderer_t* renderer, vec3_t a, vec3_t b, vec3_t color);
+/* Like renderer_draw_line but hidden behind solid things, for weather. */
+void renderer_draw_line_tested(renderer_t* renderer, vec3_t a, vec3_t b,
+                               vec3_t color);
 void renderer_draw_box_outline(renderer_t* renderer, mat4_t model,
                                vec3_t half_extents, vec3_t color);
 /* Screen-space text in a built-in 5x7 font; x, y in pixels from top-left. */

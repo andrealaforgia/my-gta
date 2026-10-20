@@ -66,6 +66,8 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   }
   skid_marks_reset(&stage->skid_marks);
   stage->skid_strip = skid_mark_mesh_create(renderer);
+  stage->rain = options.rain;
+  stage->rain_target = options.rain;
   stage->hour = options.start_hour;
   stage->hour_seconds = options.hour_seconds;
   if (stage->scene.map.size > 0)
@@ -108,7 +110,8 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     return state;
   }
   state.engine_running = true;
-  state.city = 1.0f;
+  state.rain = stage->rain;
+  state.city = 1.0f * (1.0f - 0.7f * stage->rain);
   state.night = daylight_lamp_glow(stage->hour);
   if (stage->traffic) {
     const rigid_body_t* me = physics_body(stage->physics, car->body);
@@ -170,6 +173,15 @@ void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
   for (int i = 0; i < steps; i++)
     driving_stage_step(stage, input, (float)PHYSICS_STEP);
   stage->physics_ms = (platform_seconds() - started) * 1000.0;
+  if (!stage->paused && !stage->map_open) {
+    float step =
+        (float)frame_seconds / 6.0f; /* a shower comes on in six seconds */
+    if (stage->rain < stage->rain_target)
+      stage->rain = fminf(stage->rain_target, stage->rain + step);
+    else
+      stage->rain = fmaxf(stage->rain_target, stage->rain - step);
+    stage->rain_clock += (float)frame_seconds;
+  }
   if (!stage->paused && !stage->map_open && stage->hour_seconds > 0) {
     float before = stage->hour;
     stage->hour += (float)frame_seconds / stage->hour_seconds;
@@ -392,6 +404,10 @@ static void draw_hud(driving_stage_t* stage) {
                      "DEBUG  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
 }
 
+void driving_stage_set_rain(driving_stage_t* stage, float rain) {
+  stage->rain_target = rain < 0 ? 0 : (rain > 1 ? 1 : rain);
+}
+
 void driving_stage_next_vehicle(driving_stage_t* stage) {
   static const char* files[4] = {
       "assets/vehicles/hatchback.cfg", "assets/vehicles/sedan.cfg",
@@ -412,6 +428,16 @@ void driving_stage_next_vehicle(driving_stage_t* stage) {
   car_visual_destroy(&stage->car_visual, stage->renderer);
   stage->car_visual = car_visual_create(stage->renderer, &params);
   stage->vehicle_index = next;
+}
+
+static bool is_a_road_surface(const char* label) {
+  static const char* names[] = {"road", "junction", "pavement", "paving",
+                                "parking"};
+  for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+    size_t n = strlen(names[i]);
+    if (strncmp(label, names[i], n) == 0 && label[n] == ' ') return true;
+  }
+  return false;
 }
 
 render_camera_t driving_stage_camera(const driving_stage_t* stage) {
@@ -448,6 +474,7 @@ void driving_stage_render(driving_stage_t* stage) {
   environment.fog_start = stage->scene.environment.fog_start;
   environment.fog_end = stage->scene.environment.fog_end;
   environment.shadow_radius = stage->scene.environment.shadow_radius;
+  daylight_apply_weather(&environment, stage->rain);
   /* The sun's shadows fade with it; the moon casts none. */
   if (night > 0.7f) environment.shadow_radius = 0;
   /* Headlights: a cone from the nose along the car's heading. */
@@ -462,13 +489,34 @@ void driving_stage_render(driving_stage_t* stage) {
     if (!entity->used) continue;
     if (strncmp(entity->label, "lamp_light", 10) == 0)
       entity->material.emissive = 2.4f * night;
-    else if (strncmp(entity->label, "facade", 6) == 0 ||
-             strncmp(entity->label, "shopfront", 9) == 0)
+    else if (is_a_road_surface(entity->label)) {
+      /* Wet tarmac: smoother, a little shine, reflecting the sky. */
+      entity->material.roughness = 0.95f - 0.72f * stage->rain;
+      entity->material.metallic = 0.4f * stage->rain;
+    } else if (strncmp(entity->label, "facade", 6) == 0 ||
+               strncmp(entity->label, "shopfront", 9) == 0)
       entity->material.window_glow = night;
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
+  if (stage->rain > 0.04f) {
+    /* Drops: short streaks falling in a box about the eye, each at its own
+     * phase, leaning a little with the wind. */
+    int drops = (int)(900.0f * stage->rain);
+    vec3_t eye = stage->camera.position;
+    for (int i = 0; i < drops; i++) {
+      unsigned h = (unsigned)i * 2654435761u;
+      float x = ((h >> 3) % 1000) / 1000.0f * 36.0f - 18.0f;
+      float z = ((h >> 13) % 1000) / 1000.0f * 36.0f - 18.0f;
+      float phase = (float)((h >> 23) % 1000) / 1000.0f;
+      float y = 14.0f - fmodf(phase * 14.0f + stage->rain_clock * 13.0f, 14.0f);
+      vec3_t top = vec3(eye.x + x, eye.y - 4.0f + y, eye.z + z);
+      renderer_draw_line_tested(r, top,
+                                vec3_add(top, vec3(0.12f, -0.7f, 0.05f)),
+                                vec3(0.62f, 0.68f, 0.78f));
+    }
+  }
   skid_marks_draw(&stage->skid_marks, stage->skid_strip, r,
                   stage->camera.position, 90.0f);
   if (stage->has_fleet) {
@@ -509,6 +557,8 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   if (events.toggle_mute && stage->audio)
     audio_device_toggle_mute(stage->audio);
   if (events.next_vehicle) driving_stage_next_vehicle(stage);
+  if (events.toggle_weather)
+    driving_stage_set_rain(stage, stage->rain_target > 0.5f ? 0.0f : 1.0f);
   if (events.toggle_camera) {
     stage->view_mode = (stage->view_mode + 1) % 3;
     if (stage->view_mode == 0)

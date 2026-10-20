@@ -31,12 +31,13 @@ static void print_help(void) {
       "  --traffic=N              moving cars in the city (default 36, 0 for "
       "none)\n"
       "  --pedestrians=N          people on the pavements (default 70)\n"
+      "  --rain                   start in the rain (T toggles it)\n"
       "  --hour-seconds=S         real seconds per game hour, 0 freezes time\n"
       "  --debug                  start with the debug overlay on\n"
       "  --help\n\n"
       "Controls: arrows or WASD drive, space handbrake, R reset, P pause,\n"
       "C view (chase, bonnet, cockpit), V next car, F1 debug, M map,\n"
-      "N mute, F11 fullscreen, Esc quit. A game "
+      "T rain, N mute, F11 fullscreen, Esc quit. A game "
       "controller\n"
       "steers with the left stick, triggers for throttle and brake, A "
       "handbrake,\n"
@@ -51,6 +52,7 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
   options->stage.hour_seconds = 30.0f;
   options->stage.traffic_cars = 36;
   options->stage.pedestrians = 70;
+  options->stage.rain = 0.0f;
   for (int i = 1; i < argc; i++) {
     const char* argument = argv[i];
     if (strcmp(argument, "--help") == 0) {
@@ -73,6 +75,8 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
       options->stage.traffic_cars = atoi(argument + 10);
     } else if (strncmp(argument, "--pedestrians=", 14) == 0) {
       options->stage.pedestrians = atoi(argument + 14);
+    } else if (strcmp(argument, "--rain") == 0) {
+      options->stage.rain = 1.0f;
     } else if (strncmp(argument, "--width=", 8) == 0) {
       options->window.width = atoi(argument + 8);
     } else if (strncmp(argument, "--height=", 9) == 0) {

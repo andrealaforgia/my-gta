@@ -77,6 +77,12 @@ void renderer_draw_line(renderer_t* r, vec3_t a, vec3_t b, vec3_t c) {
   (void)b;
   (void)c;
 }
+void renderer_draw_line_tested(renderer_t* r, vec3_t a, vec3_t b, vec3_t c) {
+  (void)r;
+  (void)a;
+  (void)b;
+  (void)c;
+}
 void renderer_draw_box_outline(renderer_t* r, mat4_t m, vec3_t h, vec3_t c) {
   (void)r;
   (void)m;

@@ -38,6 +38,7 @@ typedef struct {
   float hour_seconds; /* real seconds per game hour; 0 freezes the clock */
   int traffic_cars;   /* moving cars about the city; parked cars always stand */
   int pedestrians;    /* people on the pavements */
+  float rain;         /* 0 clear to 1 pouring at the start */
 } stage_options_t;
 
 typedef struct {
@@ -53,7 +54,10 @@ typedef struct {
   chase_camera_t camera;
   frame_clock_t clock;
   bool paused;
-  float hour; /* time of day, 0..24 */
+  float rain; /* 0..1, eased towards rain_target */
+  float rain_target;
+  float rain_clock; /* animates the falling drops */
+  float hour;       /* time of day, 0..24 */
   float hour_seconds;
   skid_marks_t skid_marks;
   mesh_handle_t skid_strip;
@@ -87,6 +91,8 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage);
 /* Swaps the player's car for the next of hatchback, saloon, van and city
  * car, on the spot, keeping its heading. */
 void driving_stage_next_vehicle(driving_stage_t* stage);
+/* Rain from 0 to 1 now: eased towards its target a little each frame. */
+void driving_stage_set_rain(driving_stage_t* stage, float rain);
 /* The camera for the current view: behind the car, over the bonnet or
  * from the driver's seat. */
 render_camera_t driving_stage_camera(const driving_stage_t* stage);

@@ -71,8 +71,8 @@ static void start_in(city_run_t* run, const char* directory) {
   run->window.drawable_height = 720;
   run->renderer = renderer_create(1280, 720);
   stage_options_t options = {
-      SCENE_CITY,        directory,       NULL, false, true, 10.0f, 0.0f,
-      test_traffic_cars, test_pedestrians};
+      SCENE_CITY,        directory,        NULL, false, true, 10.0f, 0.0f,
+      test_traffic_cars, test_pedestrians, 0.0f};
   assert(driving_stage_init(&run->stage, &run->window, run->renderer, NULL,
                             options));
 }
@@ -273,6 +273,36 @@ static void the_chase_view_widens_with_speed(void) {
   stop(&run);
 }
 
+static void rain_comes_on_gradually_wets_the_roads_and_is_heard(void) {
+  city_run_t run;
+  start(&run);
+  assert(run.stage.rain == 0.0f);
+  driving_stage_render(&run.stage);
+  float dry = 0;
+  for (size_t i = 0; i < run.stage.world.capacity; i++) {
+    entity_t* e = &run.stage.world.entities[i];
+    if (e->used && strncmp(e->label, "road ", 5) == 0)
+      dry = e->material.roughness;
+  }
+  assert(dry > 0.9f);
+  driving_stage_set_rain(&run.stage, 1.0f);
+  driving_input_t idle = {0, 0, 0, false};
+  driving_stage_advance(&run.stage, idle, 3.0);
+  assert(run.stage.rain > 0.3f && run.stage.rain < 0.7f); /* part way */
+  driving_stage_advance(&run.stage, idle, 4.0);
+  assert(run.stage.rain > 0.99f);
+  assert(driving_stage_audio_state(&run.stage).rain > 0.99f);
+  driving_stage_render(&run.stage);
+  float wet = 1;
+  for (size_t i = 0; i < run.stage.world.capacity; i++) {
+    entity_t* e = &run.stage.world.entities[i];
+    if (e->used && strncmp(e->label, "road ", 5) == 0)
+      wet = e->material.roughness;
+  }
+  assert(wet < 0.3f);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -299,5 +329,6 @@ void run_citydrive_tests(void) {
   RUN(v_swaps_the_car_for_the_next_one_where_it_stands);
   RUN(a_busy_city_runs_for_a_minute_without_trouble);
   RUN(the_chase_view_widens_with_speed);
+  RUN(rain_comes_on_gradually_wets_the_roads_and_is_heard);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

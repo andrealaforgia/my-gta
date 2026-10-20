@@ -21,6 +21,7 @@ typedef struct {
   float city;              /* 0..1: the town's background hum and birds */
   float night;             /* 0..1: crickets in place of birds */
   float traffic;           /* 0..1: cars passing close by */
+  float rain;              /* 0..1: how hard it is raining */
 } audio_state_t;
 
 typedef struct {
@@ -56,7 +57,8 @@ typedef struct {
   float wind_lowpass;
   float intake_lowpass;
   float impact_lowpass;
-  float city_smoothed, night_smoothed, traffic_smoothed;
+  float city_smoothed, night_smoothed, traffic_smoothed, rain_smoothed;
+  float rain_lowpass, rain_previous;
   float city_lowpass, city_lowpass2, traffic_lowpass, traffic_lowpass2;
   float cricket_phase, cricket_gate;
   float bird_phase, bird_frequency, bird_envelope, bird_rate;

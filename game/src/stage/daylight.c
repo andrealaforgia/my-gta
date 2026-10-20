@@ -85,3 +85,26 @@ int daylight_bell_strikes(float before, float now) {
   int strikes = is % 12;
   return strikes == 0 ? 12 : strikes;
 }
+
+void daylight_apply_weather(render_environment_t* e, float rain) {
+  rain = clamp01(rain);
+  if (rain <= 0) return;
+  float grey_horizon =
+      0.3f * e->sky_color.x + 0.59f * e->sky_color.y + 0.11f * e->sky_color.z;
+  vec3_t cloud =
+      vec3(grey_horizon * 0.82f, grey_horizon * 0.85f, grey_horizon * 0.9f);
+  e->sky_color = mix(e->sky_color, cloud, rain * 0.9f);
+  float grey_zenith = 0.3f * e->zenith_color.x + 0.59f * e->zenith_color.y +
+                      0.11f * e->zenith_color.z;
+  e->zenith_color =
+      mix(e->zenith_color,
+          vec3(grey_zenith * 0.75f, grey_zenith * 0.78f, grey_zenith * 0.85f),
+          rain * 0.9f);
+  e->color = vec3_scale(e->color, 1.0f - 0.55f * rain);
+  e->ambient = e->ambient * (1.0f + 0.25f * rain);
+  e->fog_start *= 1.0f - 0.5f * rain;
+  e->fog_end = e->fog_end * (1.0f - 0.65f * rain) + 60.0f * rain;
+  e->star_level *= 1.0f - clamp01(rain * 2.0f);
+  e->sun_disc *= 1.0f - clamp01(rain * 2.0f);
+  e->shadow_radius *= 1.0f - 0.5f * rain;
+}
