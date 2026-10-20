@@ -1098,8 +1098,8 @@ static bool add_walls(city_part_t* walls, const local_point_t* ring,
       double cb = ridge_across(ridge, b) - ridge->mid;
       if (ca * cb < 0) {
         double t = ca / (ca - cb);
-        pieces[1] =
-            (local_point_t){a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t};
+        local_point_t crossing = {a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t};
+        pieces[1] = crossing;
         pieces[2] = b;
         piece_count = 3;
       }
