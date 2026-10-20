@@ -15,21 +15,39 @@
 #include "test_support.h"
 
 static const char* package_directory = "/tmp/gta-like-test-citydrive";
+static const char* hill_directory = "/tmp/gta-like-test-citydrive-hill";
 
-static void cook_fixture_city(void) {
+/* Ground at 100 m on the west side rising 0.08 m per metre to the east. */
+static float hill_height(float x) { return 100.0f + 0.08f * x; }
+
+static void cook_fixture_city_into(const char* directory, bool hilly) {
   osm_data_t osm;
   assert(osm_load(&osm, "tests/fixtures/district.osm"));
   city_model_t model;
   assert(city_import(&model, &osm, city_import_default_options(),
                      "tests/fixtures/district.osm"));
   osm_free(&osm);
+  if (hilly) {
+    float heights[4] = {hill_height(-1000), hill_height(1000),
+                        hill_height(-1000), hill_height(1000)};
+    model.terrain.min_x = -1000, model.terrain.min_z = -1000;
+    model.terrain.dx = 2000, model.terrain.dz = 2000;
+    model.terrain.cols = 2, model.terrain.rows = 2;
+    model.terrain.heights = malloc(sizeof(heights));
+    memcpy(model.terrain.heights, heights, sizeof(heights));
+  }
   city_generator_options_t options = city_generator_default_options();
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, &model, &options, "district", &stats));
-  assert(city_package_write(&package, package_directory));
+  assert(city_package_write(&package, directory));
   city_package_free(&package);
   city_model_free(&model);
+}
+
+static void cook_fixture_city(void) {
+  cook_fixture_city_into(package_directory, false);
+  cook_fixture_city_into(hill_directory, true);
 }
 
 typedef struct {
@@ -38,15 +56,23 @@ typedef struct {
   driving_stage_t stage;
 } city_run_t;
 
-static void start(city_run_t* run) {
+/* Bounds on the car's height: the flat city sits at 0, the hill 100 m up. */
+static float drive_floor = -0.5f, drive_ceiling = 5.0f;
+
+static void start_in(city_run_t* run, const char* directory) {
+  bool hilly = directory == hill_directory;
+  drive_floor = hilly ? 80.0f : -0.5f;
+  drive_ceiling = hilly ? 125.0f : 5.0f;
   memset(&run->window, 0, sizeof(run->window));
   run->window.drawable_width = 1280;
   run->window.drawable_height = 720;
   run->renderer = renderer_create(1280, 720);
-  stage_options_t options = {SCENE_CITY, package_directory, NULL, false, true};
+  stage_options_t options = {SCENE_CITY, directory, NULL, false, true};
   assert(driving_stage_init(&run->stage, &run->window, run->renderer, NULL,
                             options));
 }
+
+static void start(city_run_t* run) { start_in(run, package_directory); }
 
 static void stop(city_run_t* run) {
   driving_stage_destroy(&run->stage);
@@ -64,8 +90,8 @@ static void drive(city_run_t* run, driving_input_t input, float seconds) {
     const rigid_body_t* body = car(run);
     assert(isfinite(body->position.x) && isfinite(body->position.y) &&
            isfinite(body->position.z));
-    assert(body->position.y > -0.5f); /* never through the ground */
-    assert(body->position.y < 5.0f);  /* never launched */
+    assert(body->position.y > drive_floor);   /* never through the ground */
+    assert(body->position.y < drive_ceiling); /* never launched */
   }
 }
 
@@ -121,9 +147,34 @@ static void buildings_stop_the_car(void) {
   stop(&run);
 }
 
+static void the_car_follows_the_hills(void) {
+  city_run_t run;
+  start_in(&run, hill_directory);
+  /* The car spawns on the slope, not under it. */
+  vec3_t spawn = run.stage.scene.spawn_position;
+  assert(near_to(spawn.y, hill_height(spawn.x) + 0.06f + 0.9f, 0.2f));
+  driving_input_t idle = {0, 0, 0, false};
+  drive(&run, idle, 1.0f);
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&run, throttle, 8.0f);
+  const rigid_body_t* body = car(&run);
+  /* Hills lift the drive: unlike on the flat the check in drive() that
+   * the car stays below 5 m cannot hold, so look at how high it is above
+   * the ground under it instead. */
+  float ground = hill_height(body->position.x);
+  assert(body->position.y > ground - 0.1f && body->position.y < ground + 1.5f);
+  bool grounded = true;
+  for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++)
+    grounded = grounded && run.stage.vehicle.wheels[i].grounded;
+  assert(grounded);
+  assert(vec3_distance(body->position, spawn) > 40.0f);
+  stop(&run);
+}
+
 void run_citydrive_tests(void) {
   cook_fixture_city();
   RUN(the_city_loads_with_roads_buildings_and_a_spawn_on_a_road);
   RUN(the_car_drives_along_the_spawn_road_and_through_a_junction);
   RUN(buildings_stop_the_car);
+  RUN(the_car_follows_the_hills);
 }
