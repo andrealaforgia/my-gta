@@ -593,6 +593,38 @@ static void buildings_on_a_named_street_get_a_portico(void) {
   city_model_free(&model);
 }
 
+static void a_slender_tower_gets_a_tall_spire(void) {
+  /* A 9 x 9 m bell tower, 60 m high, beside a 9 x 9 m house 10 m high. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.00012\"/>"
+      "<node id=\"3\" lat=\"45.00008\" lon=\"12.00012\"/>"
+      "<node id=\"4\" lat=\"45.00008\" lon=\"12.0000\"/>"
+      "<node id=\"11\" lat=\"45.0005\" lon=\"12.0000\"/>"
+      "<node id=\"12\" lat=\"45.0005\" lon=\"12.00012\"/>"
+      "<node id=\"13\" lat=\"45.00058\" lon=\"12.00012\"/>"
+      "<node id=\"14\" lat=\"45.00058\" lon=\"12.0000\"/>"
+      "<way id=\"1\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd "
+      "ref=\"4\"/><nd ref=\"1\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"60\"/></way>"
+      "<way id=\"2\"><nd ref=\"11\"/><nd ref=\"12\"/><nd ref=\"13\"/><nd "
+      "ref=\"14\"/><nd ref=\"11\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"10\"/></way>"
+      "<way id=\"3\"><nd ref=\"1\"/><nd ref=\"11\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "</osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  aabb_t tower = mesh_data_bounds(&roof_for(&package, 1)->mesh);
+  aabb_t house = mesh_data_bounds(&roof_for(&package, 2)->mesh);
+  assert(tower.max.y - tower.min.y > 12.0f); /* a spire, not a cap */
+  assert(house.max.y - house.min.y < 6.0f);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -741,6 +773,7 @@ void run_generator_tests(void) {
   RUN(everything_follows_the_terrain);
   RUN(footpaths_stop_at_the_pavement_instead_of_crossing_the_road);
   RUN(buildings_on_a_named_street_get_a_portico);
+  RUN(a_slender_tower_gets_a_tall_spire);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

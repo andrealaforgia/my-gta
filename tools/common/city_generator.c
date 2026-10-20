@@ -1482,7 +1482,9 @@ static bool add_pitched_roof(city_part_t* roof, city_part_t* walls,
   double c0 = r.across_min - eaves, c1 = r.across_max + eaves;
   double half_span = (c1 - c0) * 0.5, mid = (c0 + c1) * 0.5;
   double inset = gabled ? 0 : fmin(half_span, (a1 - a0) * 0.5);
-  float rise = (float)fmin(half_span * 0.6, 4.0);
+  /* A tall slender block is a tower: it ends in a spire, not a cap. */
+  bool tower = h > 30.0f && width < 16.0 && length < 16.0;
+  float rise = tower ? (float)(width * 1.6) : (float)fmin(half_span * 0.6, 4.0);
   float ridge_y = h + rise;
   vec3_t e00 = rectangle_point(&r, a0, c0, h),
          e10 = rectangle_point(&r, a1, c0, h);
