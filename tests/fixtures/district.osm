@@ -48,6 +48,10 @@
  <node id="72" lat="45.0020" lon="12.0024"/>
  <node id="73" lat="45.0026" lon="12.0024"/>
  <node id="74" lat="45.0026" lon="12.0016"/>
+ <node id="91" lat="45.0000288" lon="12.0004"/>
+ <node id="92" lat="45.0000288" lon="12.0009"/>
+ <node id="93" lat="45.0000800" lon="12.0009"/>
+ <node id="94" lat="45.0000800" lon="12.0004"/>
  <node id="81" lat="45.0021" lon="12.0030"/>
  <node id="82" lat="45.0021" lon="12.0036"/>
  <node id="83" lat="45.0027" lon="12.0036"/>
@@ -111,6 +115,10 @@
  <way id="205">
   <nd ref="61"/><nd ref="64"/><nd ref="63"/><nd ref="62"/><nd ref="61"/>
   <tag k="building" v="house"/><tag k="building:levels" v="2"/>
+ </way>
+ <way id="208">
+  <nd ref="91"/><nd ref="92"/><nd ref="93"/><nd ref="94"/><nd ref="91"/>
+  <tag k="building" v="yes"/><tag k="building:levels" v="3"/>
  </way>
  <way id="206">
   <nd ref="71"/><nd ref="72"/><nd ref="73"/><nd ref="74"/><nd ref="71"/>

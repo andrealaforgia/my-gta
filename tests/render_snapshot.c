@@ -27,7 +27,10 @@ int main(int argc, char* argv[]) {
   const char* path = argc > 1 ? argv[1] : "snapshot.bmp";
   float seconds = argc > 2 ? (float)atof(argv[2]) : 4.0f;
   float steering = argc > 3 ? (float)atof(argv[3]) : 0.0f;
-  const char* city = argc > 4 ? argv[4] : NULL;
+  const char* city = argc > 4 && argv[4][0] != '-' ? argv[4] : NULL;
+  /* Optional overhead view: height in metres above the car, 0 for the
+   * chase camera. */
+  float overhead = argc > 5 ? (float)atof(argv[5]) : 0.0f;
   window_options_t options = window_default_options("snapshot");
   options.hidden = true;
   options.vsync = false;
@@ -57,6 +60,11 @@ int main(int argc, char* argv[]) {
     }
   }
   stage.fps = 60;
+  if (overhead > 0) {
+    const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);
+    stage.camera.position = vec3_add(body->position, vec3(0.01f, overhead, 0));
+    stage.camera.look_target = body->position;
+  }
   driving_stage_render(&stage);
   /* Time repeated frames for a first performance figure. */
   const int timed_frames = 60;

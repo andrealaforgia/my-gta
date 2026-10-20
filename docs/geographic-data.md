@@ -32,9 +32,11 @@ have a PBF.
 ## What the importer reads
 
 - Ways tagged `highway` with a drivable class: motorway, trunk, primary,
-  secondary, tertiary, residential, living_street, unclassified, road,
-  service (and their `_link` forms). Footways, paths, cycleways, steps and
-  pedestrian ways are counted as ignored.
+  secondary, tertiary, residential, living_street, unclassified, road
+  (and their `_link` forms). Service roads (driveways, car park aisles)
+  are skipped unless `--service-roads` is given: they are short, dense
+  and make junctions a mess without adding anywhere to drive. Footways,
+  paths, cycleways, steps and pedestrian ways are always ignored.
 - Width from `width`, else `lanes` x 3.25 m, else a configurable default
   per class, and the result is marked inferred.
 - `oneway`, `layer`, `bridge`, `tunnel`, `surface`, `name` are kept as

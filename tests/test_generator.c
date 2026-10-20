@@ -83,8 +83,8 @@ static void every_road_junction_and_building_becomes_geometry(void) {
   assert(stats.junction_patches >=
          6); /* the five T and cross junctions plus n3 */
   assert(count_material(&package, "junction") == stats.junction_patches);
-  assert(stats.buildings == 4 && count_material(&package, "roof") == 4 &&
-         count_material(&package, "facade") == 4);
+  assert(stats.buildings == 5 && count_material(&package, "roof") == 5 &&
+         count_material(&package, "facade") == 5);
   assert(stats.pavements == 13); /* every road except the service stub */
   assert(stats.ground_tiles == package.chunk_count);
   assert(package.chunk_count >= 4);
@@ -99,7 +99,7 @@ static void road_ribbons_have_their_width_and_roofs_their_height(void) {
   aabb_t bounds = mesh_data_bounds(&main_street->mesh);
   assert(near_to(bounds.max.z - bounds.min.z, 9.0f,
                  0.05f)); /* an east-west road, 9 m wide */
-  assert(near(bounds.min.y, 0.02f));
+  assert(near(bounds.min.y, 0.06f));
   const city_part_t* roof = part_for(&package, "roof", 201);
   assert(roof && roof->mesh.vertex_count == 4 &&
          mesh_data_triangle_count(&roof->mesh) == 2);
@@ -123,6 +123,29 @@ static void road_ribbons_have_their_width_and_roofs_their_height(void) {
     outward.y = 0;
     assert(vec3_dot(outward, walls->mesh.vertices[v].normal) > 0);
   }
+  city_package_free(&package);
+}
+
+static void roads_narrow_to_fit_between_buildings(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  /* Building 208 stands 3.2 m from the centre line of South Street's
+   * first segment, so the 6 m road and its 2 m pavements cannot fit. */
+  const city_part_t* squeezed = part_for(&package, "road", 101);
+  assert(squeezed);
+  aabb_t bounds = mesh_data_bounds(&squeezed->mesh);
+  float width = bounds.max.z - bounds.min.z;
+  assert(width > 3.4f && width < 3.7f);
+  const city_part_t* pavement = part_for(&package, "pavement", 101);
+  assert(pavement);
+  aabb_t pavement_bounds = mesh_data_bounds(&pavement->mesh);
+  /* Both pavements together: road plus two narrow strips, inside the gap. */
+  assert(pavement_bounds.max.z - pavement_bounds.min.z < 6.0f);
+  /* An unconstrained road keeps its full width. */
+  const city_part_t* free_road = part_for(&package, "road", 103);
+  assert(free_road);
+  aabb_t free_bounds = mesh_data_bounds(&free_road->mesh);
+  assert(near_to(free_bounds.max.z - free_bounds.min.z, 6.0f, 0.05f));
   city_package_free(&package);
 }
 
@@ -177,7 +200,7 @@ static void the_package_round_trips_and_validates(void) {
   assert(strcmp(loaded.source, "tests/fixtures/district.osm") == 0);
   city_validation_t report;
   assert(city_validate(&loaded, &report));
-  assert(report.roads == 14 && report.buildings == 4 && report.issues == 0);
+  assert(report.roads == 14 && report.buildings == 5 && report.issues == 0);
   /* Corrupt an index and the validator must object. */
   loaded.chunks[0].parts[0].mesh.indices[0] = 999999;
   assert(!city_validate(&loaded, &report));
@@ -215,6 +238,7 @@ void run_generator_tests(void) {
   RUN(ear_clipping_handles_convex_and_concave_rings);
   RUN(every_road_junction_and_building_becomes_geometry);
   RUN(road_ribbons_have_their_width_and_roofs_their_height);
+  RUN(roads_narrow_to_fit_between_buildings);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
   RUN(the_package_round_trips_and_validates);
   RUN(generation_is_deterministic);

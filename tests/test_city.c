@@ -92,7 +92,7 @@ static void junctions_carry_their_degree_and_position(void) {
 
 static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   city_model_t model = import_fixture();
-  assert(model.building_count == 4);
+  assert(model.building_count == 5);
   const city_building_t* tagged = building(&model, 201);
   assert(tagged && near(tagged->height, 12) &&
          tagged->height_source == HEIGHT_TAGGED);

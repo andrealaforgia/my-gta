@@ -20,13 +20,14 @@ int main(int argc, char* argv[]) {
   const char* input = NULL;
   const char* output = NULL;
   city_import_options_t options = city_import_default_options();
+  options.include_service_roads = false; /* driveways and car parks clutter */
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
       input = argv[++i];
     } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
       output = argv[++i];
-    } else if (strcmp(argv[i], "--no-service-roads") == 0) {
-      options.include_service_roads = false;
+    } else if (strcmp(argv[i], "--service-roads") == 0) {
+      options.include_service_roads = true;
     } else if (strcmp(argv[i], "--help") == 0) {
       usage();
       return 0;

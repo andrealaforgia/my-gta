@@ -79,7 +79,7 @@ static void the_city_loads_with_roads_buildings_and_a_spawn_on_a_road(void) {
   ray_cast_result_t hit;
   assert(
       physics_ray_cast(run.stage.physics, down, 20, COLLISION_LAYER_ALL, &hit));
-  assert(near_to(hit.hit.point.y, 0.02f,
+  assert(near_to(hit.hit.point.y, 0.06f,
                  0.01f)); /* the road surface, not the grass */
   assert(near(hit.friction, 1.0f));
   stop(&run);

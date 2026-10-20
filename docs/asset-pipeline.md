@@ -6,7 +6,7 @@ tool from source plus settings, and can be regenerated.
 ## Commands
 
 ```
-city-import   --input <file.osm> --output <intermediate dir> [--no-service-roads]
+city-import   --input <file.osm> --output <intermediate dir> [--service-roads]
 city-generate --input <intermediate dir> --config assets/city/default.cfg --output <package dir> [--name <n>]
 city-validate <package dir>
 ```
@@ -60,22 +60,32 @@ the physics world with the layer and friction given.
 
 ## Generation rules
 
-- Roads become ribbons of their width, mitred at interior points, ends
-  pulled back by the junction radius where a patch exists, at
-  `road_height` above the ground.
-- Junctions with degree three or more, and bends of more than
-  `bend_patch_angle`, get a disc patch of the largest meeting half width
-  times `junction_radius_scale`.
-- Pavements of `pavement_width` at `kerb_height` run along both edges of
-  every non-service road, with vertical kerb faces (render only). Pavement
-  tops are colliders, so the car can mount them; kerbs never trap wheels.
+- Each road's width is fitted to its surroundings first: the nearest
+  building edge to the centre line sets the corridor, and the road and
+  its pavements shrink to fit (road half width never below 1.75 m,
+  pavements dropped below 0.4 m). Unconstrained roads keep the imported
+  width.
+- At every junction (`tools/common/junction_geometry.c`) the adjacent
+  road edges are intersected to find the corner points; each road is cut
+  back to where both its edges clear the corners plus a 0.2 m margin,
+  and the gap is filled with the exact polygon through the corners and
+  road ends. Sharp corners are bevelled instead of mitred. A straight
+  continuation needs no patch; a bend of any angle gets one.
+- Roads become ribbons of their fitted width on the cut polyline,
+  mitred at interior points, at `road_height` above the ground.
+- Pavements of the fitted width at `kerb_height` run along both edges of
+  every non-service road, with vertical kerb faces (render only), and
+  pavement corner fills with kerbs join neighbouring arms around each
+  junction. Pavement tops are colliders, so the car can mount them;
+  kerbs never trap wheels.
 - Buildings are extruded footprints: wall quads with outward normals and a
   texture repeat per `window_width` and `storey_height`, an ear-clipped
   roof. Facade variant is a stable hash of the source id. Both are
   colliders on the building layer.
 - Ground tiles cover every chunk cell at y = 0 with grass.
 - The spawn is the midpoint of the longest segment of the longest
-  non-service road, facing along it.
+  ordinary road whose middle lies in the central part of the extract,
+  facing the end of that road nearer the centre of town.
 - Output is deterministic for the same model and settings; `config_hash`
   in the manifest is the settings hash.
 

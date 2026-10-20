@@ -7,16 +7,14 @@
 #include <time.h>
 
 #include "config.h"
+#include "junction_geometry.h"
 #include "log.h"
 #include "physics_world.h"
 #include "triangulate.h"
 
-#define PATCH_SEGMENTS 20
-
 city_generator_options_t city_generator_default_options(void) {
-  city_generator_options_t o = {150.0f, 0.02f, 1.15f, 0.25f, true, 2.0f,
-                                0.12f,  8.0f,  3.0f,  3.2f,  4,    0.25f,
-                                1.0f,   0.9f,  0.7f,  0.6f};
+  city_generator_options_t o = {150.0f, 0.06f, true,  2.0f, 0.18f, 8.0f, 3.0f,
+                                3.2f,   4,     0.25f, 1.0f, 0.9f,  0.7f, 0.6f};
   return o;
 }
 
@@ -31,10 +29,6 @@ bool city_generator_options_load(city_generator_options_t* o,
   }
   o->chunk_size = config_get_float(&config, "chunk_size", o->chunk_size);
   o->road_height = config_get_float(&config, "road_height", o->road_height);
-  o->junction_radius_scale = config_get_float(&config, "junction_radius_scale",
-                                              o->junction_radius_scale);
-  o->bend_patch_angle =
-      config_get_float(&config, "bend_patch_angle", o->bend_patch_angle);
   o->pavements = config_get_bool(&config, "pavements", o->pavements);
   o->pavement_width =
       config_get_float(&config, "pavement_width", o->pavement_width);
@@ -70,13 +64,12 @@ bool city_generator_options_load(city_generator_options_t* o,
 uint64_t city_generator_options_hash(const city_generator_options_t* o) {
   /* FNV-1a over a textual rendering so padding bytes do not matter. */
   char text[512];
-  snprintf(text, sizeof(text),
-           "%g %g %g %g %d %g %g %g %g %g %d %g %g %g %g %g", o->chunk_size,
-           o->road_height, o->junction_radius_scale, o->bend_patch_angle,
-           o->pavements, o->pavement_width, o->kerb_height,
-           o->road_texture_length, o->window_width, o->storey_height,
-           o->facade_variants, o->ground_uv_scale, o->road_friction,
-           o->pavement_friction, o->ground_friction, o->building_friction);
+  snprintf(text, sizeof(text), "%g %g %d %g %g %g %g %g %d %g %g %g %g %g",
+           o->chunk_size, o->road_height, o->pavements, o->pavement_width,
+           o->kerb_height, o->road_texture_length, o->window_width,
+           o->storey_height, o->facade_variants, o->ground_uv_scale,
+           o->road_friction, o->pavement_friction, o->ground_friction,
+           o->building_friction);
   uint64_t hash = 1469598103934665603ull;
   for (const char* c = text; *c; c++)
     hash = (hash ^ (uint8_t)*c) * 1099511628211ull;
@@ -129,91 +122,6 @@ static vec2_t v2_right(vec2_t d) { return v2(-d.z, d.x); }
 static local_point_t offset(local_point_t p, vec2_t d, double amount) {
   local_point_t q = {p.x + d.x * amount, p.z + d.z * amount};
   return q;
-}
-
-/* ---- junction radii and road trimming ---- */
-
-typedef struct {
-  int64_t node_id;
-  float radius;
-  float max_turn; /* radians between the two roads at a degree-2 node */
-  bool patch;
-} junction_info_t;
-
-static const junction_info_t* junction_for(const junction_info_t* infos,
-                                           size_t count, int64_t node) {
-  for (size_t i = 0; i < count; i++)
-    if (infos[i].node_id == node) return &infos[i];
-  return NULL;
-}
-
-static double heading_at_end(const city_road_t* road, bool start) {
-  local_point_t a =
-      start ? road->points[0] : road->points[road->point_count - 1];
-  local_point_t b =
-      start ? road->points[1] : road->points[road->point_count - 2];
-  vec2_t away = v2_normalize(v2_sub(b, a)); /* direction leaving the junction */
-  return atan2(away.z, away.x);
-}
-
-static junction_info_t* compute_junctions(const city_model_t* model,
-                                          const city_generator_options_t* o,
-                                          size_t* count) {
-  junction_info_t* infos =
-      calloc(model->junction_count ? model->junction_count : 1,
-             sizeof(junction_info_t));
-  if (!infos) return NULL;
-  for (size_t j = 0; j < model->junction_count; j++) {
-    const city_junction_t* junction = &model->junctions[j];
-    junction_info_t* info = &infos[j];
-    info->node_id = junction->node_id;
-    double headings[2] = {0, 0};
-    int ends = 0;
-    for (size_t r = 0; r < model->road_count; r++) {
-      const city_road_t* road = &model->roads[r];
-      for (int end = 0; end < 2; end++) {
-        int64_t node = road->node_ids[end ? road->point_count - 1 : 0];
-        if (node != junction->node_id) continue;
-        if (road->width * 0.5f > info->radius)
-          info->radius = road->width * 0.5f;
-        if (ends < 2) headings[ends] = heading_at_end(road, end == 0);
-        ends++;
-      }
-    }
-    info->radius *= o->junction_radius_scale;
-    if (junction->degree == 2 && ends == 2) {
-      double turn = fabs(fmod(fabs(headings[0] - headings[1]), 2 * M_PI));
-      info->max_turn =
-          (float)fabs(M_PI - turn); /* 0 when the roads continue straight */
-    }
-    info->patch =
-        junction->degree >= 3 ||
-        (junction->degree == 2 && info->max_turn > o->bend_patch_angle);
-  }
-  *count = model->junction_count;
-  return infos;
-}
-
-/* Copies the road's polyline with the ends pulled back from patched junctions.
- */
-static size_t trimmed_polyline(const city_road_t* road,
-                               const junction_info_t* infos, size_t info_count,
-                               float extra, local_point_t* out) {
-  size_t count = road->point_count;
-  memcpy(out, road->points, count * sizeof(local_point_t));
-  for (int end = 0; end < 2; end++) {
-    size_t index = end ? count - 1 : 0;
-    size_t neighbour = end ? count - 2 : 1;
-    const junction_info_t* info =
-        junction_for(infos, info_count, road->node_ids[index]);
-    if (!info || !info->patch) continue;
-    vec2_t inward = v2_sub(out[neighbour], out[index]);
-    double length = v2_length(inward);
-    double trim = info->radius + extra;
-    if (trim > length * 0.45) trim = length * 0.45;
-    out[index] = offset(out[index], v2_normalize(inward), trim);
-  }
-  return count;
 }
 
 /* Lateral unit offsets per point with mitre at the interior joints. */
@@ -323,35 +231,272 @@ static void finish_part(city_chunk_t* chunk, city_part_t* part) {
 
 /* ---- features ---- */
 
+/* ---- widths fitted to the buildings ---- */
+
+typedef struct {
+  double half_width;
+  double pavement;
+} road_fit_t;
+
+typedef struct {
+  double start;
+  double end;
+} road_cuts_t;
+
+static double point_segment_distance(local_point_t p, local_point_t a,
+                                     local_point_t b) {
+  double abx = b.x - a.x, abz = b.z - a.z;
+  double length_squared = abx * abx + abz * abz;
+  double t = length_squared > 1e-12
+                 ? ((p.x - a.x) * abx + (p.z - a.z) * abz) / length_squared
+                 : 0;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  return hypot(p.x - (a.x + abx * t), p.z - (a.z + abz * t));
+}
+
+/* The nearest building edge to the road's centre line, sampled every two
+ * metres, or a large number when nothing is near. */
+static double corridor_half_width(const city_model_t* model,
+                                  const city_road_t* road, double reach) {
+  double min_x = 1e30, max_x = -1e30, min_z = 1e30, max_z = -1e30;
+  for (size_t i = 0; i < road->point_count; i++) {
+    min_x = fmin(min_x, road->points[i].x),
+    max_x = fmax(max_x, road->points[i].x);
+    min_z = fmin(min_z, road->points[i].z),
+    max_z = fmax(max_z, road->points[i].z);
+  }
+  double nearest = 1e30;
+  for (size_t b = 0; b < model->building_count; b++) {
+    const city_building_t* building = &model->buildings[b];
+    bool near_road = false;
+    for (size_t i = 0; i < building->point_count && !near_road; i++) {
+      local_point_t p = building->points[i];
+      near_road = p.x > min_x - reach && p.x < max_x + reach &&
+                  p.z > min_z - reach && p.z < max_z + reach;
+    }
+    if (!near_road) continue;
+    for (size_t i = 0; i < building->point_count; i++) {
+      local_point_t a = building->points[i];
+      local_point_t c = building->points[(i + 1) % building->point_count];
+      for (size_t r = 1; r < road->point_count; r++) {
+        local_point_t p = road->points[r - 1], q = road->points[r];
+        double length = hypot(q.x - p.x, q.z - p.z);
+        int samples = (int)(length / 2.0) + 1;
+        for (int k = 0; k <= samples; k++) {
+          double t = (double)k / (double)samples;
+          local_point_t sample = {p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t};
+          double d = point_segment_distance(sample, a, c);
+          if (d < nearest) nearest = d;
+        }
+      }
+    }
+  }
+  return nearest;
+}
+
+static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
+                           const city_generator_options_t* o) {
+  road_fit_t fit;
+  fit.half_width = road->width * 0.5;
+  fit.pavement = (o->pavements && road->class != ROAD_CLASS_SERVICE)
+                     ? o->pavement_width
+                     : 0;
+  const double gap = 0.3, narrowest = 1.75;
+  double wanted = fit.half_width + fit.pavement + gap;
+  double corridor = corridor_half_width(model, road, wanted + 1.0);
+  if (corridor >= wanted) return fit;
+  double available = fmax(corridor - gap, narrowest);
+  fit.half_width =
+      fmin(fit.half_width, fmax(narrowest, available - fit.pavement));
+  fit.pavement = fmin(fmax(available - fit.half_width, 0.0), fit.pavement);
+  if (fit.pavement < 0.4) fit.pavement = 0;
+  return fit;
+}
+
+/* ---- junctions ---- */
+
+/* Drops repeated consecutive points, and the last if it repeats the first. */
+static size_t dedupe_ring(const local_point_t* in, size_t count,
+                          local_point_t* out) {
+  size_t n = 0;
+  for (size_t i = 0; i < count; i++) {
+    if (n > 0 && hypot(in[i].x - out[n - 1].x, in[i].z - out[n - 1].z) < 1e-4)
+      continue;
+    out[n++] = in[i];
+  }
+  while (n > 1 &&
+         hypot(out[n - 1].x - out[0].x, out[n - 1].z - out[0].z) < 1e-4)
+    n--;
+  return n;
+}
+
+static bool add_polygon_part(city_chunk_t* chunk, city_part_t* part,
+                             const local_point_t* raw, size_t raw_count,
+                             float y, float uv_scale) {
+  local_point_t polygon[JUNCTION_MAX_POLYGON];
+  size_t count = dedupe_ring(raw, raw_count, polygon);
+  if (count < 3 || fabs(polygon_signed_area(polygon, count)) < 0.01)
+    return true;
+  uint32_t* indices = malloc(3 * (count - 2) * sizeof(uint32_t));
+  if (!indices) return false;
+  bool clean;
+  size_t triangles = triangulate_polygon(polygon, count, indices, &clean);
+  uint32_t base = (uint32_t)part->mesh.vertex_count;
+  for (size_t i = 0; i < count; i++)
+    if (!add_vertex(&part->mesh, at(polygon[i], y), vec3(0, 1, 0),
+                    (float)(polygon[i].x * uv_scale),
+                    (float)(polygon[i].z * uv_scale))) {
+      free(indices);
+      return false;
+    }
+  for (size_t t = 0; t < triangles; t++) {
+    local_point_t tri[3] = {polygon[indices[t * 3]],
+                            polygon[indices[t * 3 + 1]],
+                            polygon[indices[t * 3 + 2]]};
+    if (fabs(polygon_signed_area(tri, 3)) < 1e-4) continue; /* a sliver */
+    if (!add_face(&part->mesh, base + indices[t * 3], base + indices[t * 3 + 1],
+                  base + indices[t * 3 + 2], vec3(0, 1, 0))) {
+      free(indices);
+      return false;
+    }
+  }
+  free(indices);
+  finish_part(chunk, part);
+  return true;
+}
+
+/* A kerb face along a polyline of points on the road edge, facing the
+ * road (which is on the `road_side` of the line's direction). */
+static bool add_kerb_line(mesh_data_t* mesh, const local_point_t* points,
+                          size_t count, float y0, float y1,
+                          local_point_t road_point) {
+  for (size_t i = 1; i < count; i++) {
+    local_point_t a = points[i - 1], b = points[i];
+    if (hypot(b.x - a.x, b.z - a.z) < 1e-4) continue;
+    vec2_t d = v2_normalize(v2_sub(b, a));
+    vec2_t r = v2_right(d);
+    /* Face the kerb towards the road. */
+    vec2_t to_road = v2_normalize(v2_sub(road_point, a));
+    bool road_on_right = to_road.x * r.x + to_road.z * r.z > 0;
+    vec3_t normal = vec3((float)(road_on_right ? r.x : -r.x), 0,
+                         (float)(road_on_right ? r.z : -r.z));
+    uint32_t base = (uint32_t)mesh->vertex_count;
+    if (!add_vertex(mesh, at(a, y0), normal, 0, 0) ||
+        !add_vertex(mesh, at(b, y0), normal, 1, 0) ||
+        !add_vertex(mesh, at(b, y1), normal, 1, 1) ||
+        !add_vertex(mesh, at(a, y1), normal, 0, 1))
+      return false;
+    if (!add_face(mesh, base, base + 1, base + 2, normal) ||
+        !add_face(mesh, base, base + 2, base + 3, normal))
+      return false;
+  }
+  return true;
+}
+
+typedef struct {
+  size_t road;
+  bool at_start;
+} arm_source_t;
+
+static bool generate_junction(layout_t* layout, const city_model_t* model,
+                              const city_junction_t* junction,
+                              const road_fit_t* fits, road_cuts_t* cuts,
+                              city_generator_stats_t* stats) {
+  const city_generator_options_t* o = layout->options;
+  junction_arm_t arms[JUNCTION_MAX_ARMS];
+  arm_source_t sources[JUNCTION_MAX_ARMS];
+  size_t arm_count = 0;
+  for (size_t r = 0; r < model->road_count && arm_count < JUNCTION_MAX_ARMS;
+       r++) {
+    const city_road_t* road = &model->roads[r];
+    for (int end = 0; end < 2 && arm_count < JUNCTION_MAX_ARMS; end++) {
+      size_t index = end ? road->point_count - 1 : 0;
+      if (road->node_ids[index] != junction->node_id) continue;
+      size_t neighbour = end ? road->point_count - 2 : 1;
+      vec2_t direction =
+          v2_normalize(v2_sub(road->points[neighbour], road->points[index]));
+      arms[arm_count].direction.x = direction.x;
+      arms[arm_count].direction.z = direction.z;
+      arms[arm_count].half_width = fits[r].half_width;
+      arms[arm_count].pavement = fits[r].pavement;
+      sources[arm_count].road = r;
+      sources[arm_count].at_start = end == 0;
+      arm_count++;
+    }
+  }
+  if (arm_count < 2) return true;
+  junction_layout_t shape;
+  bool patch =
+      junction_layout(junction->position, arms, arm_count, 0.2, &shape);
+  for (size_t a = 0; a < arm_count; a++) {
+    road_cuts_t* cut = &cuts[sources[a].road];
+    if (sources[a].at_start)
+      cut->start = shape.cut[a];
+    else
+      cut->end = shape.cut[a];
+  }
+  if (!patch) return true;
+
+  city_chunk_t* chunk = chunk_at(layout, junction->position);
+  city_part_t* part = city_chunk_add_part(
+      chunk, "junction", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
+      o->road_friction, (uint64_t)junction->node_id);
+  if (!part) return false;
+  if (!add_polygon_part(chunk, part, shape.polygon, shape.polygon_count,
+                        o->road_height, 0.1f))
+    return false;
+  stats->junction_patches++;
+  if (shape.corner_count == 0) return true;
+  city_part_t* pavement = city_chunk_add_part(
+      chunk, "pavement", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
+      o->pavement_friction, (uint64_t)junction->node_id);
+  city_part_t* kerb =
+      pavement ? city_chunk_add_part(chunk, "kerb", PART_COLLIDER_NONE, 0, 0,
+                                     (uint64_t)junction->node_id)
+               : NULL;
+  if (!pavement || !kerb) return false;
+  pavement = &chunk->parts[chunk->part_count - 2];
+  for (size_t c = 0; c < shape.corner_count; c++) {
+    const pavement_corner_t* corner = &shape.corners[c];
+    if (!add_polygon_part(chunk, pavement, corner->polygon, corner->count,
+                          o->kerb_height, 0.5f))
+      return false;
+    if (!add_kerb_line(&kerb->mesh, corner->kerb, corner->kerb_count,
+                       o->road_height, o->kerb_height, junction->position))
+      return false;
+  }
+  finish_part(chunk, kerb);
+  return true;
+}
+
+/* ---- roads ---- */
+
 static bool generate_road(layout_t* layout, const city_road_t* road,
-                          const junction_info_t* infos, size_t info_count,
+                          road_fit_t fit, road_cuts_t cuts,
                           city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
-  size_t count = road->point_count;
-  local_point_t* points = malloc(count * sizeof(local_point_t));
-  vec2_t* laterals = malloc(count * sizeof(vec2_t));
+  local_point_t* points = malloc(road->point_count * sizeof(local_point_t));
+  vec2_t* laterals = malloc(road->point_count * sizeof(vec2_t));
   if (!points || !laterals) {
     free(points);
     free(laterals);
     return false;
   }
-  trimmed_polyline(road, infos, info_count, 0.0f, points);
+  size_t count = polyline_cut(road->points, road->point_count, cuts.start,
+                              cuts.end, points);
   lateral_offsets(points, count, laterals);
   city_chunk_t* chunk = chunk_at(layout, centroid(points, count));
   city_part_t* part = city_chunk_add_part(
       chunk, "road", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
       o->road_friction, (uint64_t)road->source_id);
-  double half = road->width * 0.5;
+  double half = fit.half_width;
   bool ok = part && add_strip(&part->mesh, points, laterals, count, -half, half,
                               o->road_height, o->road_texture_length);
   if (ok) finish_part(chunk, part);
   stats->roads++;
 
-  if (ok && o->pavements && road->class != ROAD_CLASS_SERVICE) {
-    trimmed_polyline(road, infos, info_count, o->pavement_width, points);
-    lateral_offsets(points, count, laterals);
-    /* Adding a part may move the chunk's part array, so take pointers only
-     * once both parts exist. */
+  if (ok && fit.pavement > 0) {
     city_part_t* pavement = city_chunk_add_part(
         chunk, "pavement", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
         o->pavement_friction, (uint64_t)road->source_id);
@@ -362,7 +507,7 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
     ok = pavement && kerb;
     if (ok) pavement = &chunk->parts[chunk->part_count - 2];
     for (int side = -1; side <= 1 && ok; side += 2) {
-      double inner = side * half, outer = side * (half + o->pavement_width);
+      double inner = side * half, outer = side * (half + fit.pavement);
       ok = add_strip(&pavement->mesh, points, laterals, count,
                      fmin(inner, outer), fmax(inner, outer), o->kerb_height,
                      o->pavement_width) &&
@@ -378,39 +523,6 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
   free(points);
   free(laterals);
   return ok;
-}
-
-static bool generate_patch(layout_t* layout, const city_junction_t* junction,
-                           const junction_info_t* info,
-                           city_generator_stats_t* stats) {
-  const city_generator_options_t* o = layout->options;
-  city_chunk_t* chunk = chunk_at(layout, junction->position);
-  city_part_t* part = city_chunk_add_part(
-      chunk, "junction", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
-      o->road_friction, (uint64_t)junction->node_id);
-  if (!part) return false;
-  float y = o->road_height + 0.004f;
-  uint32_t centre = (uint32_t)part->mesh.vertex_count;
-  if (!add_vertex(&part->mesh, at(junction->position, y), vec3(0, 1, 0), 0.5f,
-                  0.5f))
-    return false;
-  for (int i = 0; i < PATCH_SEGMENTS; i++) {
-    double angle = 2.0 * M_PI * i / PATCH_SEGMENTS;
-    local_point_t p =
-        offset(junction->position, v2(cos(angle), sin(angle)), info->radius);
-    if (!add_vertex(&part->mesh, at(p, y), vec3(0, 1, 0),
-                    0.5f + 0.5f * (float)cos(angle),
-                    0.5f + 0.5f * (float)sin(angle)))
-      return false;
-  }
-  for (int i = 0; i < PATCH_SEGMENTS; i++) {
-    uint32_t a = centre + 1 + (uint32_t)i,
-             b = centre + 1 + (uint32_t)((i + 1) % PATCH_SEGMENTS);
-    if (!add_face(&part->mesh, centre, a, b, vec3(0, 1, 0))) return false;
-  }
-  finish_part(chunk, part);
-  stats->junction_patches++;
-  return true;
 }
 
 static bool generate_building(layout_t* layout, const city_building_t* building,
@@ -515,24 +627,40 @@ static bool generate_ground(layout_t* layout, city_generator_stats_t* stats) {
   return true;
 }
 
+/* The spawn: the longest ordinary road whose midpoint lies within the
+ * central part of the extract, so a drive starts in town and the first
+ * junction is close. */
 static void choose_spawn(city_package_t* package, const city_model_t* model,
                          const city_generator_options_t* o) {
   const city_road_t* best = NULL;
   double best_length = 0;
-  for (size_t r = 0; r < model->road_count; r++) {
-    const city_road_t* road = &model->roads[r];
-    if (road->class == ROAD_CLASS_SERVICE || road->class == ROAD_CLASS_MOTORWAY)
-      continue;
-    double length = 0;
-    for (size_t i = 1; i < road->point_count; i++)
-      length += v2_length(v2_sub(road->points[i], road->points[i - 1]));
-    if (length > best_length) {
-      best_length = length;
-      best = road;
+  double extent = 0;
+  for (size_t r = 0; r < model->road_count; r++)
+    for (size_t i = 0; i < model->roads[r].point_count; i++) {
+      local_point_t p = model->roads[r].points[i];
+      extent = fmax(extent, fmax(fabs(p.x), fabs(p.z)));
+    }
+  for (int pass = 0; pass < 2 && !best; pass++) {
+    double limit = pass == 0 ? extent * 0.4 : 1e30;
+    for (size_t r = 0; r < model->road_count; r++) {
+      const city_road_t* road = &model->roads[r];
+      if (road->class == ROAD_CLASS_SERVICE ||
+          road->class == ROAD_CLASS_MOTORWAY)
+        continue;
+      local_point_t middle = centroid(road->points, road->point_count);
+      if (fabs(middle.x) > limit || fabs(middle.z) > limit) continue;
+      double length = 0;
+      for (size_t i = 1; i < road->point_count; i++)
+        length += v2_length(v2_sub(road->points[i], road->points[i - 1]));
+      if (length > best_length) {
+        best_length = length;
+        best = road;
+      }
     }
   }
   if (!best) best = &model->roads[0];
-  /* Midpoint of the longest segment of the chosen road, heading along it. */
+  /* Midpoint of the longest segment of the chosen road, facing the end of
+   * the road nearer the centre of town so the drive heads into it. */
   size_t longest = 0;
   double longest_length = -1;
   for (size_t i = 1; i < best->point_count; i++) {
@@ -543,7 +671,11 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
     }
   }
   local_point_t a = best->points[longest - 1], b = best->points[longest];
-  vec2_t direction = v2_normalize(v2_sub(b, a));
+  local_point_t first = best->points[0],
+                last = best->points[best->point_count - 1];
+  bool towards_last = hypot(last.x, last.z) <= hypot(first.x, first.z);
+  vec2_t direction =
+      towards_last ? v2_normalize(v2_sub(b, a)) : v2_normalize(v2_sub(a, b));
   package->spawn_position =
       vec3((float)((a.x + b.x) * 0.5), o->road_height + 0.9f,
            (float)((a.z + b.z) * 0.5));
@@ -605,18 +737,25 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   if (layout.columns < 1) layout.columns = 1;
   if (layout.rows < 1) layout.rows = 1;
 
-  size_t info_count;
-  junction_info_t* infos = compute_junctions(model, options, &info_count);
-  if (!infos) return false;
+  road_fit_t* fits = calloc(model->road_count, sizeof(road_fit_t));
+  road_cuts_t* cuts = calloc(model->road_count, sizeof(road_cuts_t));
+  if (!fits || !cuts) {
+    free(fits);
+    free(cuts);
+    return false;
+  }
+  for (size_t r = 0; r < model->road_count; r++)
+    fits[r] = fit_road(model, &model->roads[r], options);
   bool ok = generate_ground(&layout, stats);
-  for (size_t r = 0; ok && r < model->road_count; r++)
-    ok = generate_road(&layout, &model->roads[r], infos, info_count, stats);
   for (size_t j = 0; ok && j < model->junction_count; j++)
-    if (infos[j].patch)
-      ok = generate_patch(&layout, &model->junctions[j], &infos[j], stats);
+    ok = generate_junction(&layout, model, &model->junctions[j], fits, cuts,
+                           stats);
+  for (size_t r = 0; ok && r < model->road_count; r++)
+    ok = generate_road(&layout, &model->roads[r], fits[r], cuts[r], stats);
   for (size_t b = 0; ok && b < model->building_count; b++)
     ok = generate_building(&layout, &model->buildings[b], stats);
-  free(infos);
+  free(fits);
+  free(cuts);
   if (!ok) {
     LOG_ERROR("generate", "out of memory while generating");
     return false;

@@ -26,6 +26,7 @@ GROUPS = (
     "world",
     "osm",
     "city",
+    "junction",
     "generator",
     "citydrive",
 )

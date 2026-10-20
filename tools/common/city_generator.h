@@ -17,8 +17,6 @@
 typedef struct {
   float chunk_size;
   float road_height;
-  float junction_radius_scale;
-  float bend_patch_angle;
   bool pavements;
   float pavement_width;
   float kerb_height;

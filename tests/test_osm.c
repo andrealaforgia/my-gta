@@ -9,8 +9,8 @@
 static void the_fixture_loads_with_nodes_ways_tags_and_relations(void) {
   osm_data_t data;
   assert(osm_load(&data, "tests/fixtures/district.osm"));
-  assert(data.node_count == 45);
-  assert(data.way_count == 17);
+  assert(data.node_count == 49);
+  assert(data.way_count == 18);
   assert(data.relation_count == 1);
   const osm_node_t* node = osm_find_node(&data, 5);
   assert(node && near(node->lat, 45.0009) && near(node->lon, 12.0013));
