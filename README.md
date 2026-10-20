@@ -75,10 +75,10 @@ What works: the engine (fixed 120 Hz physics with render interpolation,
 forward renderer with shadows, fog and debug drawing, synthesised audio), a car
 that accelerates, brakes, steers, reverses, skids and collides, a chase
 camera, the offline pipeline from OSM XML to a validated cooked package,
-and driving through the generated city: roads, pedestrian streets and
+and driving through the generated city: roads with stop lines and zebra crossings, pedestrian streets and
 paths, squares, parks with trees, car parks, water, lamp posts, and
 buildings with courtyards, plaster facades and hipped terracotta roofs.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
-glTF import, elevation, chunk streaming, zebra crossings and stop lines. See the end of
+glTF import, elevation, chunk streaming. See the end of
 `docs/architecture.md` for the measured performance baseline.

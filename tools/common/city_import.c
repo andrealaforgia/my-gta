@@ -217,6 +217,16 @@ static void snap_dangling_ends(city_model_t* model, cleaned_way_t* ways,
               way->class == ROAD_CLASS_WATERWAY)
             continue;
           for (size_t q = 0; q < ways[k].point_count; q++) {
+            /* Never onto a node this way already has, and never so close
+             * to the neighbouring point that the way collapses. */
+            bool own = false;
+            for (size_t n = 0; n < way->point_count && !own; n++)
+              if (way->node_ids[n] == ways[k].node_ids[q]) own = true;
+            size_t neighbour = end ? index - 1 : 1;
+            double from_neighbour =
+                hypot(ways[k].points[q].x - way->points[neighbour].x,
+                      ways[k].points[q].z - way->points[neighbour].z);
+            if (own || from_neighbour < 1.0) continue;
             double distance =
                 hypot(p.x - ways[k].points[q].x, p.z - ways[k].points[q].z);
             if (distance < vertex_distance) {

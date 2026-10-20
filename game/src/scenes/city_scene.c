@@ -34,6 +34,7 @@ static material_t material_for(const char* name,
       {"water", {0}, vec3(0.2f, 0.36f, 0.5f), 0.12f},
       {"trunk", {0}, vec3(0.32f, 0.24f, 0.16f), 0.9f},
       {"leaves", {0}, vec3(0.22f, 0.42f, 0.16f), 0.95f},
+      {"marking", {0}, vec3(0.9f, 0.9f, 0.86f), 0.7f},
   };
   for (size_t i = 0; i < sizeof(bindings) / sizeof(bindings[0]); i++) {
     if (strcmp(bindings[i].name, name) == 0) {
@@ -108,9 +109,9 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   if (!city_package_read(&package, package_directory)) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
   static const char* materials[] = {
-      "grass",   "road",    "junction", "pavement", "kerb",  "roof",
-      "facade0", "facade1", "facade2",  "facade3",  "lamp",  "paving",
-      "parking", "park",    "water",    "trunk",    "leaves"};
+      "grass",   "road",    "junction", "pavement", "kerb",   "roof",
+      "facade0", "facade1", "facade2",  "facade3",  "lamp",   "paving",
+      "parking", "park",    "water",    "trunk",    "leaves", "marking"};
   int draws = 0, colliders = 0;
   bool ok = true;
   for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {

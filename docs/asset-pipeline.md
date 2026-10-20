@@ -61,7 +61,7 @@ i a b c
 Materials are names the game binds to its procedural textures: `road`,
 `junction`, `pavement`, `kerb`, `grass`, `roof`, `facade0..3`, `lamp`,
 `paving` (pedestrian streets, paths, squares), `parking`, `park`, `water`,
-`trunk`, `leaves`. Facade textures hold one window bay per repeat and one
+`trunk`, `leaves`, `marking`. Facade textures hold one window bay per repeat and one
 storey per repeat, so walls repeat them per `window_width` and
 `storey_height`; roofs repeat a terracotta tile texture every 2.5 m. The game
 merges all parts of one material in a chunk into one mesh, so draw calls
@@ -105,6 +105,12 @@ the physics world with the layer and friction given.
 - Parks get trees on a jittered grid every `tree_spacing` metres, kept
   clear of the park edge: a trunk with a collider on the prop layer and a
   canopy of boxes without one. `tree_spacing = 0` turns them off.
+- Junctions of three or more roads get white markings 4 mm above the
+  road on each drivable arm just past its cut: a stop line across the
+  entering half (the whole width on a one-way road) when the arm is at
+  least 12 m long, and a zebra of 0.5 m stripes when it also has
+  pavements and is at least 25 m long, so crossings do not stack where
+  junctions sit close together. Markings have no collider.
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

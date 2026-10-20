@@ -298,6 +298,30 @@ static void parallel_carriageways_share_the_gap_between_them(void) {
   city_model_free(&model);
 }
 
+static void junctions_get_stop_lines_and_zebra_crossings(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  /* The crossroads at node 5: four arms, each with a stop line and a
+   * zebra just beyond the arm's cut, painted a little above the road. */
+  const city_part_t* marking = part_for(&package, "marking", 5);
+  assert(marking && marking->collider == PART_COLLIDER_NONE);
+  assert(mesh_data_triangle_count(&marking->mesh) >= 4 * 2 * 4);
+  aabb_t bounds = mesh_data_bounds(&marking->mesh);
+  assert(bounds.min.y > 0.06f && bounds.max.y < 0.08f);
+  /* Nothing is painted more than 12 m from the junction centre. */
+  const city_part_t* patch = part_for(&package, "junction", 5);
+  assert(patch);
+  vec3_t centre = aabb_center(mesh_data_bounds(&patch->mesh));
+  for (size_t v = 0; v < marking->mesh.vertex_count; v++) {
+    vec3_t d = vec3_sub(marking->mesh.vertices[v].position, centre);
+    d.y = 0;
+    assert(vec3_length(d) < 12.0f && vec3_length(d) > 3.0f);
+  }
+  /* A dead end gets none. */
+  assert(part_for(&package, "marking", 14) == NULL);
+  city_package_free(&package);
+}
+
 static void lamp_posts_stand_on_the_pavements(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -323,6 +347,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
     for (size_t p = 0; p < package.chunks[c].part_count; p++) {
       const city_part_t* part = &package.chunks[c].parts[p];
       if (strcmp(part->material, "kerb") == 0 ||
+          strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "lamp") == 0 ||
           strcmp(part->material, "trunk") == 0 ||
           strcmp(part->material, "leaves") == 0)
@@ -416,6 +441,7 @@ void run_generator_tests(void) {
   RUN(people_streets_paths_and_areas_get_their_own_surfaces);
   RUN(trees_grow_in_parks_and_nowhere_else);
   RUN(parallel_carriageways_share_the_gap_between_them);
+  RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
   RUN(the_package_round_trips_and_validates);

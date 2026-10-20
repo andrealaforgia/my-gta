@@ -463,6 +463,78 @@ typedef struct {
   bool at_start;
 } arm_source_t;
 
+/* A flat white quad across a road arm: from `from` to `to` metres out
+ * along the arm, between lateral offsets `left` and `right`. */
+static bool add_marking_quad(mesh_data_t* mesh, local_point_t centre,
+                             vec2_t direction, double from, double to,
+                             double left, double right, float y) {
+  vec2_t side = v2_right(direction);
+  vec3_t a = at(offset(offset(centre, direction, from), side, left), y);
+  vec3_t b = at(offset(offset(centre, direction, from), side, right), y);
+  vec3_t c = at(offset(offset(centre, direction, to), side, right), y);
+  vec3_t d = at(offset(offset(centre, direction, to), side, left), y);
+  /* An arm with no direction, or a line narrower than it is long, would
+   * make slivers: skip rather than paint a degenerate quad. */
+  if (vec3_length(vec3_cross(vec3_sub(b, a), vec3_sub(d, a))) < 1e-4f)
+    return true;
+  uint32_t base = (uint32_t)mesh->vertex_count;
+  vec3_t up = vec3(0, 1, 0);
+  if (!add_vertex(mesh, a, up, 0, 0) || !add_vertex(mesh, b, up, 1, 0) ||
+      !add_vertex(mesh, c, up, 1, 1) || !add_vertex(mesh, d, up, 0, 1))
+    return false;
+  return add_face(mesh, base, base + 1, base + 2, up) &&
+         add_face(mesh, base, base + 2, base + 3, up);
+}
+
+/* Stop lines and zebra crossings on every drivable arm of a junction of
+ * three or more roads, just past the arm's cut: a line across the road,
+ * then stripes where the arm has pavements for people to cross between. */
+static bool generate_markings(layout_t* layout, const city_model_t* model,
+                              const city_junction_t* junction,
+                              const junction_arm_t* arms,
+                              const arm_source_t* sources, size_t arm_count,
+                              const junction_layout_t* shape,
+                              const road_fit_t* fits) {
+  const city_generator_options_t* o = layout->options;
+  if (arm_count < 3) return true;
+  city_chunk_t* chunk = chunk_at(layout, junction->position);
+  city_part_t* part = city_chunk_add_part(chunk, "marking", PART_COLLIDER_NONE,
+                                          0, 0, (uint64_t)junction->node_id);
+  if (!part) return false;
+  float y = o->road_height + 0.004f;
+  for (size_t a = 0; a < arm_count; a++) {
+    const city_road_t* road = &model->roads[sources[a].road];
+    if (road->class == ROAD_CLASS_PEDESTRIAN) continue;
+    /* Short links between two close junctions get no paint at all, so
+     * crossings are not stacked a few metres apart. */
+    double road_length = polyline_length(road->points, road->point_count);
+    if (road_length < 12.0) continue;
+    double half = fits[sources[a].road].half_width;
+    vec2_t direction = {arms[a].direction.x, arms[a].direction.z};
+    double start = shape->cut[a] + 0.3;
+    /* The stop line, on the entering side only: the right half for a
+     * two-way road, the whole width for a one-way one. */
+    if (!add_marking_quad(&part->mesh, junction->position, direction, start,
+                          start + 0.35, road->oneway ? -half + 0.3 : 0.15,
+                          half - 0.3, y))
+      return false;
+    if (fits[sources[a].road].pavement <= 0 || road_length < 25.0) continue;
+    double zebra_from = start + 0.9;
+    for (double across = -half + 0.4; across + 0.5 <= half - 0.4; across += 1.0)
+      if (!add_marking_quad(&part->mesh, junction->position, direction,
+                            zebra_from, zebra_from + 2.4, across, across + 0.5,
+                            y))
+        return false;
+  }
+  if (part->mesh.vertex_count == 0) {
+    mesh_data_free(&part->mesh);
+    chunk->part_count--;
+    return true;
+  }
+  finish_part(chunk, part);
+  return true;
+}
+
 static bool generate_junction(layout_t* layout, const city_model_t* model,
                               const city_junction_t* junction,
                               const road_fit_t* fits, road_cuts_t* cuts,
@@ -517,7 +589,9 @@ static bool generate_junction(layout_t* layout, const city_model_t* model,
                         o->road_height, 0.1f))
     return false;
   stats->junction_patches++;
-  if (shape.corner_count == 0) return true;
+  if (shape.corner_count == 0)
+    return generate_markings(layout, model, junction, arms, sources, arm_count,
+                             &shape, fits);
   city_part_t* pavement = city_chunk_add_part(
       chunk, "pavement", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
       o->pavement_friction, (uint64_t)junction->node_id);
@@ -537,7 +611,8 @@ static bool generate_junction(layout_t* layout, const city_model_t* model,
       return false;
   }
   finish_part(chunk, kerb);
-  return true;
+  return generate_markings(layout, model, junction, arms, sources, arm_count,
+                           &shape, fits);
 }
 
 /* ---- street furniture ---- */
@@ -630,6 +705,11 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
   }
   size_t count = polyline_cut(road->points, road->point_count, cuts.start,
                               cuts.end, points);
+  if (polyline_length(points, count) < 0.05) { /* nothing to draw */
+    free(points);
+    free(laterals);
+    return true;
+  }
   lateral_offsets(points, count, laterals);
   city_chunk_t* chunk = chunk_at(layout, centroid(points, count));
   bool for_people =
