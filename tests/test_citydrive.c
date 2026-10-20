@@ -3,6 +3,7 @@
  * must hold the car up and stop it, with no gaps and no NaNs. */
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
