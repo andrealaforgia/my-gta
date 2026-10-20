@@ -1302,6 +1302,7 @@ static bool generate_furniture(layout_t* layout, const city_model_t* model,
   for (size_t f = 0; f < model->furniture_count; f++) {
     local_point_t p = {model->furniture[f].x, model->furniture[f].z};
     int kind = model->furniture[f].kind;
+    if (kind == OSM_FURNITURE_CROSSING) continue; /* painted, not built */
     double road_distance;
     vec2_t along = nearest_road_direction(model, p, &road_distance);
     city_chunk_t* chunk = chunk_at(layout, p);

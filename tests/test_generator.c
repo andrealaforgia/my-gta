@@ -944,6 +944,25 @@ static void benches_bus_stops_bollards_and_signals_stand_where_mapped(void) {
   city_model_free(&model);
 }
 
+static void a_package_with_crossings_has_no_empty_parts(void) {
+  /* Crossing nodes that are not on a street cars use make nothing at all. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0010\" lon=\"12.0010\"><tag k=\"highway\" "
+      "v=\"crossing\"/></node>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  city_validation_t report;
+  assert(city_validate(&package, &report) && report.issues == 0);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void mapped_crossings_get_zebra_stripes_away_from_junctions(void) {
   /* A 6 m street with a crossing node at its middle and another 4 m from
    * its end, where the junction already has its own. */
@@ -1163,6 +1182,7 @@ void run_generator_tests(void) {
   RUN(side_streets_get_a_stop_sign_at_the_main_road);
   RUN(roads_have_manhole_covers_here_and_there);
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
+  RUN(a_package_with_crossings_has_no_empty_parts);
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
