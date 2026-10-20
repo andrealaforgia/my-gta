@@ -24,7 +24,7 @@ city_import_options_t city_import_default_options(void) {
   o.default_height_min = 6.0f;
   o.default_height_max = 15.0f;
   o.min_road_length = 0.5f;
-  o.snap_distance = 2.0f;
+  o.snap_distance = 3.5f;
   o.bend_radius = 8.0f;
   o.neighbour_reach = 80.0f;
   o.include_service_roads = true;

@@ -1942,6 +1942,14 @@ bool city_generate(city_package_t* package, const city_model_t* model,
       min_x = fmin(min_x, p.x), max_x = fmax(max_x, p.x),
       min_z = fmin(min_z, p.z), max_z = fmax(max_z, p.z);
     }
+  /* Parks and water reach beyond the extract's edge: the ground must go
+   * as far as they do, or they hang over nothing. */
+  for (size_t a = 0; a < model->area_count; a++)
+    for (size_t i = 0; i < model->areas[a].point_count; i++) {
+      local_point_t p = model->areas[a].points[i];
+      min_x = fmin(min_x, p.x), max_x = fmax(max_x, p.x),
+      min_z = fmin(min_z, p.z), max_z = fmax(max_z, p.z);
+    }
   const double margin = 40.0;
   layout_t layout;
   layout.package = package;
