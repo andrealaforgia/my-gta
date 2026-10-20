@@ -115,5 +115,7 @@ FILE` projects it onto the model's local grid, smooths it with one 3x3
 box pass (the model is a surface model, so rooftops leak in), makes it
 relative to its lowest sample and writes `terrain.txt` beside the model.
 `make city` passes `data/<name>.elevation.txt` when it exists. Pordenone
-falls 21 m from the north west to the river in the south east. Bridges
-are still at ground level, a known limit.
+falls 21 m from the north west to the river in the south east. Footways tagged `bridge=yes` with `layer=1` are raised: the deck climbs
+along a smooth ramp from each end to 0.25 m plus 4 cm per metre of its
+length (at most 4.5 m), with a parapet and a slab underneath. Bridges for cars
+stay at ground level.

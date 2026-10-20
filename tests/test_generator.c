@@ -1048,6 +1048,55 @@ static void pitched_roofs_sprout_chimneys_above_the_ridge(void) {
   city_model_free(&model);
 }
 
+static void a_footbridge_rises_over_what_it_crosses_with_ramps_and_railings(
+    void) {
+  /* A 120 m footway tagged bridge=yes, layer=1, over a stream-side street
+   * that runs across its middle. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0017\"/>"
+      "<node id=\"3\" lat=\"45.0008\" lon=\"12.0009\"/>"
+      "<node id=\"4\" lat=\"44.9992\" lon=\"12.0009\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"footway\"/><tag k=\"bridge\" v=\"yes\"/><tag k=\"layer\" "
+      "v=\"1\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* deck = part_for(&package, "paving", 10);
+  assert(deck && deck->collider == PART_COLLIDER_MESH);
+  float lowest = 1e9f, highest = -1e9f, at_ends = 1e9f, at_middle = 0;
+  float x_min = 1e9f, x_max = -1e9f;
+  for (size_t v = 0; v < deck->mesh.vertex_count; v++) {
+    vec3_t p = deck->mesh.vertices[v].position;
+    x_min = fminf(x_min, p.x), x_max = fmaxf(x_max, p.x);
+  }
+  float x_mid = 0.5f * (x_min + x_max);
+  for (size_t v = 0; v < deck->mesh.vertex_count; v++) {
+    vec3_t p = deck->mesh.vertices[v].position;
+    lowest = fminf(lowest, p.y), highest = fmaxf(highest, p.y);
+    if (fabsf(p.x - x_mid) < 3.0f) at_middle = fmaxf(at_middle, p.y);
+    if (p.x < x_min + 0.5f) at_ends = fminf(at_ends, p.y);
+  }
+  assert(lowest < 0.2f); /* it starts on the ground */
+  assert(at_ends < 0.3f);
+  assert(at_middle > 4.0f &&
+         highest < 5.2f); /* and clears a lorry in the middle */
+  /* Over the stretch crossing the street the deck is the better part of 4 m up.
+   */
+  assert(part_for(&package, "rail", 10) != NULL);
+  const city_part_t* rail = part_for(&package, "rail", 10);
+  assert(rail->collider == PART_COLLIDER_NONE);
+  aabb_t rb = mesh_data_bounds(&rail->mesh);
+  assert(rb.max.y > at_middle + 0.8f && rb.max.y < at_middle + 1.4f);
+  /* A footway that is not a bridge stays flat. */
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -1104,6 +1153,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
       if (strcmp(part->material, "kerb") == 0 ||
           strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "manhole") == 0 ||
+          strcmp(part->material, "rail") == 0 ||
           strcmp(part->material, "chimney") == 0 ||
           strcmp(part->material, "furniture") == 0 ||
           strcmp(part->material, "signal_red") == 0 ||
@@ -1233,6 +1283,7 @@ void run_generator_tests(void) {
   RUN(a_package_with_crossings_has_no_empty_parts);
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(pitched_roofs_sprout_chimneys_above_the_ridge);
+  RUN(a_footbridge_rises_over_what_it_crosses_with_ramps_and_railings);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

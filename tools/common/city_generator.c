@@ -955,6 +955,96 @@ static bool generate_manholes(layout_t* layout, const city_road_t* road,
   return true;
 }
 
+/* How far along a road's centre line the point nearest to p lies, and how
+ * long the road is. */
+static double arc_position(const city_road_t* road, local_point_t p,
+                           double* total) {
+  double best = 1e30, at = 0, run = 0;
+  for (size_t k = 1; k < road->point_count; k++) {
+    local_point_t a = road->points[k - 1], b = road->points[k];
+    double length = hypot(b.x - a.x, b.z - a.z);
+    double abx = b.x - a.x, abz = b.z - a.z;
+    double u = length > 1e-9
+                   ? ((p.x - a.x) * abx + (p.z - a.z) * abz) / (length * length)
+                   : 0;
+    u = u < 0 ? 0 : (u > 1 ? 1 : u);
+    double d = hypot(p.x - (a.x + abx * u), p.z - (a.z + abz * u));
+    if (d < best) best = d, at = run + u * length;
+    run += length;
+  }
+  *total = run;
+  return at;
+}
+
+/* A footbridge: the deck climbs from the ground along a ramp at each end to
+ * 0.25 m plus 4 cm per metre of its length, at most 4.5 m, with a parapet along
+ * both edges, and a slab below it. The deck is raised in place (it is a
+ * collider like any paving), the parapet and underside go into a part of their
+ * own. */
+static bool raise_footbridge(city_chunk_t* chunk, const city_road_t* road,
+                             city_part_t* deck,
+                             const city_generator_options_t* o) {
+  (void)o;
+  double total;
+  arc_position(road, road->points[0], &total);
+  if (total < 6.0) {
+    finish_part(chunk, deck);
+    return true;
+  }
+  /* Long bridges clear a lorry; short ones over a stream only a metre. */
+  const double height = fmin(4.5, 0.25 + 0.04 * total);
+  double ramp = fmin(16.0, total * 0.4);
+  for (size_t v = 0; v < deck->mesh.vertex_count; v++) {
+    vec3_t* p = &deck->mesh.vertices[v].position;
+    local_point_t q = {p->x, p->z};
+    double along = arc_position(road, q, &total);
+    double rise = fmin(along / ramp, (total - along) / ramp);
+    rise = rise < 0 ? 0 : (rise > 1 ? 1 : rise);
+    p->y += (float)(height * rise * rise * (3.0 - 2.0 * rise));
+  }
+  /* Parapet and underside from the deck's own edge vertices: the strip's
+   * vertices come in left/right pairs per point along the run. */
+  city_part_t* rail = city_chunk_add_part(chunk, "rail", PART_COLLIDER_NONE, 0,
+                                          0, (uint64_t)road->source_id);
+  if (!rail) return false;
+  deck = &chunk->parts[chunk->part_count - 2];
+  mesh_data_t* d = &deck->mesh;
+  for (size_t v = 0; v + 3 < d->vertex_count; v += 2) {
+    /* Pairs (v, v+1) and (v+2, v+3) are consecutive cross-sections of one
+     * run; a gap between runs shows as a long jump, which we skip. */
+    vec3_t l0 = d->vertices[v].position, r0 = d->vertices[v + 1].position;
+    vec3_t l1 = d->vertices[v + 2].position, r1 = d->vertices[v + 3].position;
+    if (vec3_distance(l0, l1) > 6.0f) continue;
+    vec3_t up = vec3(0, 1, 0), down = vec3(0, -1, 0);
+    float parapet = 1.05f, slab = 0.35f;
+    /* Left and right parapet panels, two-sided. */
+    vec3_t edge[2][2] = {{l0, l1}, {r0, r1}};
+    for (int side = 0; side < 2; side++) {
+      vec3_t a = edge[side][0], b = edge[side][1];
+      vec3_t ta = vec3_add(a, vec3_scale(up, parapet)),
+             tb = vec3_add(b, vec3_scale(up, parapet));
+      if (!mesh_data_add_quad(&rail->mesh, a, b, tb, ta, 1) ||
+          !mesh_data_add_quad(&rail->mesh, a, ta, tb, b, 1))
+        return false;
+    }
+    /* The underside, facing down. */
+    vec3_t la = vec3_add(l0, vec3_scale(up, -slab)),
+           lb = vec3_add(l1, vec3_scale(up, -slab));
+    vec3_t ra = vec3_add(r0, vec3_scale(up, -slab)),
+           rb = vec3_add(r1, vec3_scale(up, -slab));
+    (void)down;
+    if (!mesh_data_add_quad(&rail->mesh, la, ra, rb, lb, 1)) return false;
+    /* The deck's edge face, left and right. */
+    if (!mesh_data_add_quad(&rail->mesh, l0, la, lb, l1, 1) ||
+        !mesh_data_add_quad(&rail->mesh, r1, rb, ra, r0, 1))
+      return false;
+  }
+  rail = &chunk->parts[chunk->part_count - 1];
+  finish_part(chunk, deck);
+  finish_part(chunk, rail);
+  return true;
+}
+
 static bool generate_road(layout_t* layout, const city_model_t* model,
                           const city_road_t* road, road_fit_t fit,
                           road_cuts_t cuts, city_generator_stats_t* stats) {
@@ -1012,8 +1102,9 @@ static bool generate_road(layout_t* layout, const city_model_t* model,
     bool in_run = false;
     ok = part != NULL;
     for (size_t i = 0; ok && i <= count; i++) {
-      bool outside =
-          i < count && !on_a_street(model, road, points[i], o->pavement_width);
+      bool outside = i < count &&
+                     (road->bridge ||
+                      !on_a_street(model, road, points[i], o->pavement_width));
       if (outside && !in_run) run_start = i, in_run = true;
       if (!outside && in_run) {
         in_run = false;
@@ -1031,6 +1122,13 @@ static bool generate_road(layout_t* layout, const city_model_t* model,
   } else {
     ok = part && add_strip(&part->mesh, points, laterals, count, inner, outer,
                            height, for_people ? 3.0f : o->road_texture_length);
+  }
+  if (ok && part && road->bridge && road->class == ROAD_CLASS_PATH &&
+      road->layer >= 1) {
+    /* The footbridge finishes its own parts: adding the parapet may move
+     * the deck, so no pointer to it is kept. */
+    ok = raise_footbridge(chunk, road, part, o);
+    part = NULL;
   }
   if (ok && part) finish_part(chunk, part);
   stats->roads++;

@@ -102,5 +102,5 @@ campanili, parks, water and trees, benches, bus stops, traffic signals that cars
 obey, a minimap in the corner, rain with wet roads, and the church bell on the hour.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
-glTF import, bridges, chunk streaming, weather. See the end of
+glTF import, chunk streaming, bridges for cars. See the end of
 `docs/architecture.md` for the measured performance baseline.
