@@ -8,4 +8,6 @@ void run_vehicle_tests(void);
 void run_camera_tests(void);
 void run_audio_tests(void);
 void run_world_tests(void);
+void run_osm_tests(void);
+void run_city_tests(void);
 #endif  // TESTS_TEST_GROUPS_H_

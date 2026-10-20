@@ -14,3 +14,4 @@ __pycache__/
 data/*
 !data/README.md
 assets_cooked/
+!data/*.PROVENANCE.md

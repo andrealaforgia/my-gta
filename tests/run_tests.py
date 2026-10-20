@@ -25,7 +25,7 @@ GROUPS = (
     "audio",
     "world",
     "osm",
-    "roadgraph",
+    "city",
     "generator",
     "package",
 )

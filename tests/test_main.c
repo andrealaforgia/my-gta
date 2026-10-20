@@ -18,6 +18,8 @@ static const test_group_t groups[] = {
     {"camera", run_camera_tests},
     {"audio", run_audio_tests},
     {"world", run_world_tests},
+    {"osm", run_osm_tests},
+    {"city", run_city_tests},
 };
 
 int main(int argc, char* argv[]) {
