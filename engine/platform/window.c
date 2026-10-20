@@ -14,7 +14,8 @@ static void open_first_controller(window_t* window) {
     if (!SDL_IsGameController(i)) continue;
     window->controller = SDL_GameControllerOpen(i);
     if (window->controller) {
-      LOG_INFO("platform", "controller: %s", SDL_GameControllerName(window->controller));
+      LOG_INFO("platform", "controller: %s",
+               SDL_GameControllerName(window->controller));
       return;
     }
   }
@@ -22,12 +23,14 @@ static void open_first_controller(window_t* window) {
 
 static void read_sizes(window_t* window) {
   SDL_GetWindowSize(window->window, &window->width, &window->height);
-  SDL_GL_GetDrawableSize(window->window, &window->drawable_width, &window->drawable_height);
+  SDL_GL_GetDrawableSize(window->window, &window->drawable_width,
+                         &window->drawable_height);
 }
 
 bool window_open(window_t* window, window_options_t options) {
   SDL_memset(window, 0, sizeof(*window));
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) != 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) !=
+      0) {
     LOG_ERROR("platform", "SDL_Init: %s", SDL_GetError());
     return false;
   }
@@ -36,11 +39,13 @@ bool window_open(window_t* window, window_options_t options) {
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-  Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
+  Uint32 flags =
+      SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
   if (options.fullscreen) flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
   if (options.hidden) flags |= SDL_WINDOW_HIDDEN;
-  window->window = SDL_CreateWindow(options.title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                    options.width, options.height, flags);
+  window->window = SDL_CreateWindow(options.title, SDL_WINDOWPOS_CENTERED,
+                                    SDL_WINDOWPOS_CENTERED, options.width,
+                                    options.height, flags);
   if (!window->window) {
     LOG_ERROR("platform", "SDL_CreateWindow: %s", SDL_GetError());
     SDL_Quit();
@@ -58,8 +63,8 @@ bool window_open(window_t* window, window_options_t options) {
     LOG_WARN("platform", "vsync not available: %s", SDL_GetError());
   read_sizes(window);
   open_first_controller(window);
-  LOG_INFO("platform", "window %dx%d, drawable %dx%d", window->width, window->height,
-           window->drawable_width, window->drawable_height);
+  LOG_INFO("platform", "window %dx%d, drawable %dx%d", window->width,
+           window->height, window->drawable_width, window->drawable_height);
   return true;
 }
 
@@ -73,23 +78,45 @@ void window_close(window_t* window) {
 
 static void handle_key(window_events_t* events, SDL_Scancode key) {
   switch (key) {
-    case SDL_SCANCODE_ESCAPE: events->quit = true; break;
-    case SDL_SCANCODE_R: events->reset_vehicle = true; break;
-    case SDL_SCANCODE_P: events->toggle_pause = true; break;
-    case SDL_SCANCODE_C: events->toggle_camera = true; break;
-    case SDL_SCANCODE_F1: events->toggle_debug = true; break;
-    case SDL_SCANCODE_F11: events->toggle_fullscreen = true; break;
-    case SDL_SCANCODE_M: events->toggle_mute = true; break;
-    default: break;
+    case SDL_SCANCODE_ESCAPE:
+      events->quit = true;
+      break;
+    case SDL_SCANCODE_R:
+      events->reset_vehicle = true;
+      break;
+    case SDL_SCANCODE_P:
+      events->toggle_pause = true;
+      break;
+    case SDL_SCANCODE_C:
+      events->toggle_camera = true;
+      break;
+    case SDL_SCANCODE_F1:
+      events->toggle_debug = true;
+      break;
+    case SDL_SCANCODE_F11:
+      events->toggle_fullscreen = true;
+      break;
+    case SDL_SCANCODE_M:
+      events->toggle_mute = true;
+      break;
+    default:
+      break;
   }
 }
 
 static void handle_button(window_events_t* events, Uint8 button) {
   switch (button) {
-    case SDL_CONTROLLER_BUTTON_Y: events->reset_vehicle = true; break;
-    case SDL_CONTROLLER_BUTTON_START: events->toggle_pause = true; break;
-    case SDL_CONTROLLER_BUTTON_BACK: events->toggle_camera = true; break;
-    default: break;
+    case SDL_CONTROLLER_BUTTON_Y:
+      events->reset_vehicle = true;
+      break;
+    case SDL_CONTROLLER_BUTTON_START:
+      events->toggle_pause = true;
+      break;
+    case SDL_CONTROLLER_BUTTON_BACK:
+      events->toggle_camera = true;
+      break;
+    default:
+      break;
   }
 }
 
@@ -98,11 +125,15 @@ window_events_t window_poll(window_t* window) {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
-      case SDL_QUIT: events.quit = true; break;
+      case SDL_QUIT:
+        events.quit = true;
+        break;
       case SDL_KEYDOWN:
         if (!event.key.repeat) handle_key(&events, event.key.keysym.scancode);
         break;
-      case SDL_CONTROLLERBUTTONDOWN: handle_button(&events, event.cbutton.button); break;
+      case SDL_CONTROLLERBUTTONDOWN:
+        handle_button(&events, event.cbutton.button);
+        break;
       case SDL_CONTROLLERDEVICEADDED:
         if (!window->controller) open_first_controller(window);
         break;
@@ -119,26 +150,31 @@ window_events_t window_poll(window_t* window) {
           events.resized = true;
         }
         break;
-      default: break;
+      default:
+        break;
     }
   }
   return events;
 }
 
-static float axis(const SDL_GameController* controller, SDL_GameControllerAxis which) {
-  Sint16 raw = SDL_GameControllerGetAxis((SDL_GameController*)controller, which);
+static float axis(const SDL_GameController* controller,
+                  SDL_GameControllerAxis which) {
+  Sint16 raw =
+      SDL_GameControllerGetAxis((SDL_GameController*)controller, which);
   return apply_dead_zone((float)raw / 32767.0f, CONTROLLER_DEAD_ZONE);
 }
 
 driving_input_t window_driving_input(const window_t* window) {
-  driving_input_t keyboard = driving_input_from_keys(SDL_GetKeyboardState(NULL));
+  driving_input_t keyboard =
+      driving_input_from_keys(SDL_GetKeyboardState(NULL));
   if (!window->controller) return keyboard;
   driving_input_t pad = {0};
   pad.steering = axis(window->controller, SDL_CONTROLLER_AXIS_LEFTX);
   pad.throttle = axis(window->controller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
   pad.brake = axis(window->controller, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-  pad.handbrake = SDL_GameControllerGetButton((SDL_GameController*)window->controller,
-                                              SDL_CONTROLLER_BUTTON_A) != 0;
+  pad.handbrake =
+      SDL_GameControllerGetButton((SDL_GameController*)window->controller,
+                                  SDL_CONTROLLER_BUTTON_A) != 0;
   return driving_input_merge(keyboard, pad);
 }
 
@@ -147,10 +183,12 @@ void window_swap(window_t* window) { SDL_GL_SwapWindow(window->window); }
 void window_toggle_fullscreen(window_t* window) {
   Uint32 flags = SDL_GetWindowFlags(window->window);
   bool fullscreen = (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
-  SDL_SetWindowFullscreen(window->window, fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+  SDL_SetWindowFullscreen(window->window,
+                          fullscreen ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
   read_sizes(window);
 }
 
 double platform_seconds(void) {
-  return (double)SDL_GetPerformanceCounter() / (double)SDL_GetPerformanceFrequency();
+  return (double)SDL_GetPerformanceCounter() /
+         (double)SDL_GetPerformanceFrequency();
 }

@@ -74,7 +74,8 @@ static void integrating_angular_velocity_turns_the_orientation(void) {
   quat_t q = quat_identity();
   vec3_t omega = vec3(0, (float)M_PI, 0); /* half a turn per second */
   for (int i = 0; i < 100; i++) q = quat_integrate(q, omega, 0.005f);
-  assert(near_to(vec3_length(vec3(q.x, q.y, q.z)), sinf((float)M_PI / 4), 1e-3));
+  assert(
+      near_to(vec3_length(vec3(q.x, q.y, q.z)), sinf((float)M_PI / 4), 1e-3));
   vec3_t forward = quat_forward(q);
   assert(near_to(forward.x, -1, 1e-3) && near_to(forward.z, 0, 1e-3));
 }
@@ -114,7 +115,8 @@ static void rigid_inverse_undoes_the_transform(void) {
   mat4_t m = transform_to_matrix(t);
   mat4_t inverse = mat4_inverse_rigid(m);
   vec3_t p = vec3(4, 5, 6);
-  assert(near_vec(mat4_transform_point(inverse, mat4_transform_point(m, p)), p));
+  assert(
+      near_vec(mat4_transform_point(inverse, mat4_transform_point(m, p)), p));
 }
 
 static void general_inverse_undoes_scale_too(void) {
@@ -123,7 +125,8 @@ static void general_inverse_undoes_scale_too(void) {
   mat4_t m = transform_to_matrix(t);
   mat4_t inverse = mat4_inverse(m);
   vec3_t p = vec3(4, 5, 6);
-  assert(near_vec(mat4_transform_point(inverse, mat4_transform_point(m, p)), p));
+  assert(
+      near_vec(mat4_transform_point(inverse, mat4_transform_point(m, p)), p));
 }
 
 static void perspective_maps_near_to_minus_one_and_far_to_one(void) {
@@ -144,15 +147,18 @@ static void look_at_faces_the_target_down_minus_z(void) {
   assert(near_vec(mat4_transform_point(view, vec3(0, 0, 0)), vec3(0, 0, -10)));
   assert(near_vec(mat4_transform_point(view, vec3(1, 0, 10)), vec3(1, 0, 0)));
   mat4_t from_east = mat4_look_at(vec3(10, 0, 0), vec3(0, 0, 0), vec3(0, 1, 0));
-  assert(near_vec(mat4_transform_point(from_east, vec3(0, 0, 0)), vec3(0, 0, -10)));
+  assert(near_vec(mat4_transform_point(from_east, vec3(0, 0, 0)),
+                  vec3(0, 0, -10)));
   /* Looking west from the east, north (-Z) is on the right. */
-  assert(near_vec(mat4_transform_point(from_east, vec3(10, 0, -1)), vec3(1, 0, 0)));
+  assert(near_vec(mat4_transform_point(from_east, vec3(10, 0, -1)),
+                  vec3(1, 0, 0)));
 }
 
 /* ---- transform ---- */
 
 static void transforms_apply_scale_then_rotation_then_translation(void) {
-  transform_t t = {vec3(10, 0, 0), quat_from_axis_angle(vec3(0, 1, 0), (float)M_PI / 2),
+  transform_t t = {vec3(10, 0, 0),
+                   quat_from_axis_angle(vec3(0, 1, 0), (float)M_PI / 2),
                    vec3(2, 2, 2)};
   assert(near_vec(transform_point(t, vec3(0, 0, -1)), vec3(8, 0, 0)));
   assert(near_vec(transform_inverse_point(t, vec3(8, 0, 0)), vec3(0, 0, -1)));
@@ -184,7 +190,8 @@ static void boxes_grow_to_contain_points_and_test_overlap(void) {
 
 static void boxes_transform_to_a_bounding_box_of_their_corners(void) {
   aabb_t unit = aabb_from_center(vec3(0, 0, 0), vec3(1, 0.5f, 2));
-  transform_t t = {vec3(5, 0, 0), quat_from_axis_angle(vec3(0, 1, 0), (float)M_PI / 2),
+  transform_t t = {vec3(5, 0, 0),
+                   quat_from_axis_angle(vec3(0, 1, 0), (float)M_PI / 2),
                    vec3(1, 1, 1)};
   aabb_t world = aabb_transform(unit, t);
   assert(near_vec(world.min, vec3(3, -0.5f, -1)));
@@ -234,11 +241,16 @@ static void frustum_keeps_what_the_camera_can_see(void) {
   mat4_t view = mat4_look_at(vec3(0, 0, 0), vec3(0, 0, -1), vec3(0, 1, 0));
   mat4_t proj = mat4_perspective(1.0f, 1.0f, 0.1f, 100.0f);
   frustum_t f = frustum_from_matrix(mat4_multiply(proj, view));
-  assert(frustum_intersects_aabb(f, aabb_from_center(vec3(0, 0, -10), vec3(1, 1, 1))));
-  assert(!frustum_intersects_aabb(f, aabb_from_center(vec3(0, 0, 10), vec3(1, 1, 1))));
-  assert(!frustum_intersects_aabb(f, aabb_from_center(vec3(0, 0, -200), vec3(1, 1, 1))));
-  assert(!frustum_intersects_aabb(f, aabb_from_center(vec3(50, 0, -10), vec3(1, 1, 1))));
-  assert(frustum_intersects_aabb(f, aabb_from_center(vec3(50, 0, -10), vec3(49, 1, 1))));
+  assert(frustum_intersects_aabb(
+      f, aabb_from_center(vec3(0, 0, -10), vec3(1, 1, 1))));
+  assert(!frustum_intersects_aabb(
+      f, aabb_from_center(vec3(0, 0, 10), vec3(1, 1, 1))));
+  assert(!frustum_intersects_aabb(
+      f, aabb_from_center(vec3(0, 0, -200), vec3(1, 1, 1))));
+  assert(!frustum_intersects_aabb(
+      f, aabb_from_center(vec3(50, 0, -10), vec3(1, 1, 1))));
+  assert(frustum_intersects_aabb(
+      f, aabb_from_center(vec3(50, 0, -10), vec3(49, 1, 1))));
   assert(frustum_intersects_sphere(f, vec3(0, 0, -10), 1));
   assert(!frustum_intersects_sphere(f, vec3(0, 0, 10), 1));
 }

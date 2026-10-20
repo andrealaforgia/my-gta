@@ -10,7 +10,8 @@ audio_state_t audio_state_default(void) {
   return state;
 }
 
-static void bandpass_set(bandpass_t* filter, float frequency, float q, int sample_rate) {
+static void bandpass_set(bandpass_t* filter, float frequency, float q,
+                         int sample_rate) {
   float omega = 2.0f * (float)M_PI * frequency / (float)sample_rate;
   float alpha = sinf(omega) / (2.0f * q);
   float a0 = 1.0f + alpha;
@@ -24,7 +25,8 @@ static void bandpass_set(bandpass_t* filter, float frequency, float q, int sampl
 }
 
 static float bandpass_run(bandpass_t* f, float x) {
-  float y = f->b0 * x + f->b1 * f->x1 + f->b2 * f->x2 - f->a1 * f->y1 - f->a2 * f->y2;
+  float y =
+      f->b0 * x + f->b1 * f->x1 + f->b2 * f->x2 - f->a1 * f->y1 - f->a2 * f->y2;
   f->x2 = f->x1;
   f->x1 = x;
   f->y2 = f->y1;
@@ -46,7 +48,9 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   return mixer;
 }
 
-void audio_mixer_set_state(audio_mixer_t* mixer, audio_state_t state) { mixer->target = state; }
+void audio_mixer_set_state(audio_mixer_t* mixer, audio_state_t state) {
+  mixer->target = state;
+}
 
 void audio_mixer_trigger_impact(audio_mixer_t* mixer, float strength) {
   if (strength > mixer->impact_strength) {
@@ -81,9 +85,12 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
   float gain = distance_gain(s->listener_distance) * s->master_volume;
   for (int i = 0; i < frames; i++) {
     mixer->rpm_smoothed = smooth(mixer->rpm_smoothed, s->rpm, smoothing);
-    mixer->throttle_smoothed = smooth(mixer->throttle_smoothed, s->throttle, smoothing);
-    mixer->skid_smoothed = smooth(mixer->skid_smoothed, s->skid, smoothing * 2.0f);
-    mixer->wind_smoothed = smooth(mixer->wind_smoothed, s->speed_mps, smoothing);
+    mixer->throttle_smoothed =
+        smooth(mixer->throttle_smoothed, s->throttle, smoothing);
+    mixer->skid_smoothed =
+        smooth(mixer->skid_smoothed, s->skid, smoothing * 2.0f);
+    mixer->wind_smoothed =
+        smooth(mixer->wind_smoothed, s->speed_mps, smoothing);
 
     float engine = 0;
     if (s->engine_running) {
@@ -102,21 +109,28 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       /* A drone at the firing rate with its octave carries the pitch; the
        * piped bursts give the engine its texture. */
       float angle = 2.0f * (float)M_PI * mixer->phase;
-      float drone = sinf(angle) * 0.5f + sinf(2.0f * angle) * 0.22f + sinf(3.0f * angle) * 0.08f;
+      float drone = sinf(angle) * 0.5f + sinf(2.0f * angle) * 0.22f +
+                    sinf(3.0f * angle) * 0.08f;
       float piped = bandpass_run(&mixer->pipe_low, burst) * 2.2f +
                     bandpass_run(&mixer->pipe_high, burst) * 1.4f;
-      float intake_target = noise(mixer) * (0.02f + 0.12f * mixer->throttle_smoothed) *
+      float intake_target = noise(mixer) *
+                            (0.02f + 0.12f * mixer->throttle_smoothed) *
                             (mixer->rpm_smoothed / 6000.0f);
-      mixer->intake_lowpass = smooth(mixer->intake_lowpass, intake_target, 0.25f);
-      engine = (piped + drone * (0.5f + 0.5f * load) + mixer->intake_lowpass) * (0.5f + 0.5f * load) * 2.5f;
+      mixer->intake_lowpass =
+          smooth(mixer->intake_lowpass, intake_target, 0.25f);
+      engine = (piped + drone * (0.5f + 0.5f * load) + mixer->intake_lowpass) *
+               (0.5f + 0.5f * load) * 2.5f;
     }
 
-    float skid = bandpass_run(&mixer->skid_filter, noise(mixer)) * mixer->skid_smoothed * 1.4f;
+    float skid = bandpass_run(&mixer->skid_filter, noise(mixer)) *
+                 mixer->skid_smoothed * 1.4f;
 
     float impact = 0;
     if (mixer->impact > 1e-4f) {
-      mixer->impact_lowpass = smooth(mixer->impact_lowpass, noise(mixer), 0.08f);
-      impact = mixer->impact_lowpass * mixer->impact * mixer->impact_strength * 6.0f;
+      mixer->impact_lowpass =
+          smooth(mixer->impact_lowpass, noise(mixer), 0.08f);
+      impact =
+          mixer->impact_lowpass * mixer->impact * mixer->impact_strength * 6.0f;
       mixer->impact *= expf(-dt * 9.0f);
     } else {
       mixer->impact_strength = 0;

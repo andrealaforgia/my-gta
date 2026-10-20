@@ -14,7 +14,9 @@ driving_input_t driving_input_from_keys(const unsigned char* keys) {
   return input;
 }
 
-static float larger_magnitude(float a, float b) { return fabsf(a) >= fabsf(b) ? a : b; }
+static float larger_magnitude(float a, float b) {
+  return fabsf(a) >= fabsf(b) ? a : b;
+}
 
 driving_input_t driving_input_merge(driving_input_t a, driving_input_t b) {
   driving_input_t merged;
@@ -37,8 +39,8 @@ steering_filter_t steering_filter_create(float rate, float half_lock_speed) {
   return filter;
 }
 
-float steering_filter_update(steering_filter_t* filter, float demand, float speed_mps,
-                             float dt) {
+float steering_filter_update(steering_filter_t* filter, float demand,
+                             float speed_mps, float dt) {
   /* Full lock at rest, half at half_lock_speed, a quarter at twice it. */
   float ratio = speed_mps / filter->half_lock_speed;
   float speed_factor = 1.0f / (1.0f + ratio * ratio);

@@ -29,7 +29,11 @@ typedef enum {
   ROAD_CLASS_COUNT
 } road_class_t;
 
-typedef enum { HEIGHT_TAGGED, HEIGHT_FROM_LEVELS, HEIGHT_DEFAULT } height_source_t;
+typedef enum {
+  HEIGHT_TAGGED,
+  HEIGHT_FROM_LEVELS,
+  HEIGHT_DEFAULT
+} height_source_t;
 
 typedef struct {
   int64_t source_id;
@@ -59,7 +63,8 @@ typedef struct {
   height_source_t height_source;
   int levels;
   char category[CITY_TEXT_LENGTH];
-  local_point_t* points; /* closed ring, last point not repeated, anticlockwise from above */
+  /* Closed ring, last point not repeated, anticlockwise from above. */
+  local_point_t* points;
   size_t point_count;
 } city_building_t;
 

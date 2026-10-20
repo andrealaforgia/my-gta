@@ -9,7 +9,8 @@
 
 static void usage(void) {
   printf(
-      "city-import --input <file.osm> --output <directory> [--no-service-roads]\n\n"
+      "city-import --input <file.osm> --output <directory> "
+      "[--no-service-roads]\n\n"
       "Reads an OpenStreetMap XML extract and writes the intermediate city\n"
       "model (roads.txt, buildings.txt, manifest.txt) in local metres.\n"
       "Exits 1 on failure, 2 on bad arguments.\n");
@@ -20,10 +21,13 @@ int main(int argc, char* argv[]) {
   const char* output = NULL;
   city_import_options_t options = city_import_default_options();
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) input = argv[++i];
-    else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) output = argv[++i];
-    else if (strcmp(argv[i], "--no-service-roads") == 0) options.include_service_roads = false;
-    else if (strcmp(argv[i], "--help") == 0) {
+    if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
+      input = argv[++i];
+    } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+      output = argv[++i];
+    } else if (strcmp(argv[i], "--no-service-roads") == 0) {
+      options.include_service_roads = false;
+    } else if (strcmp(argv[i], "--help") == 0) {
       usage();
       return 0;
     } else {
@@ -38,8 +42,8 @@ int main(int argc, char* argv[]) {
   }
   osm_data_t osm;
   if (!osm_load(&osm, input)) return 1;
-  LOG_INFO("import", "%s: %zu nodes, %zu ways, %zu relations", input, osm.node_count, osm.way_count,
-           osm.relation_count);
+  LOG_INFO("import", "%s: %zu nodes, %zu ways, %zu relations", input,
+           osm.node_count, osm.way_count, osm.relation_count);
   city_model_t model;
   bool ok = city_import(&model, &osm, options, input);
   osm_free(&osm);

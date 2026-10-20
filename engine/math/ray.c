@@ -26,8 +26,8 @@ bool ray_triangle(ray_t ray, vec3_t a, vec3_t b, vec3_t c, ray_hit_t* hit) {
   return true;
 }
 
-static bool slab(float origin, float direction, float lo, float hi, float* t_min,
-                 float* t_max) {
+static bool slab(float origin, float direction, float lo, float hi,
+                 float* t_min, float* t_max) {
   if (fabsf(direction) < 1e-12f) return origin >= lo && origin <= hi;
   float inverse = 1.0f / direction;
   float t1 = (lo - origin) * inverse;
@@ -45,9 +45,12 @@ static bool slab(float origin, float direction, float lo, float hi, float* t_min
 bool ray_aabb(ray_t ray, aabb_t box, float* t_min, float* t_max) {
   *t_min = -INFINITY;
   *t_max = INFINITY;
-  if (!slab(ray.origin.x, ray.direction.x, box.min.x, box.max.x, t_min, t_max)) return false;
-  if (!slab(ray.origin.y, ray.direction.y, box.min.y, box.max.y, t_min, t_max)) return false;
-  if (!slab(ray.origin.z, ray.direction.z, box.min.z, box.max.z, t_min, t_max)) return false;
+  if (!slab(ray.origin.x, ray.direction.x, box.min.x, box.max.x, t_min, t_max))
+    return false;
+  if (!slab(ray.origin.y, ray.direction.y, box.min.y, box.max.y, t_min, t_max))
+    return false;
+  if (!slab(ray.origin.z, ray.direction.z, box.min.z, box.max.z, t_min, t_max))
+    return false;
   return *t_max >= 0;
 }
 

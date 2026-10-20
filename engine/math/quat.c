@@ -52,10 +52,12 @@ float quat_yaw(quat_t q) {
 }
 
 quat_t quat_integrate(quat_t q, vec3_t angular_velocity, float dt) {
-  quat_t omega = quat(angular_velocity.x, angular_velocity.y, angular_velocity.z, 0);
+  quat_t omega =
+      quat(angular_velocity.x, angular_velocity.y, angular_velocity.z, 0);
   quat_t derivative = quat_multiply(omega, q);
-  quat_t advanced = quat(q.x + derivative.x * 0.5f * dt, q.y + derivative.y * 0.5f * dt,
-                         q.z + derivative.z * 0.5f * dt, q.w + derivative.w * 0.5f * dt);
+  quat_t advanced =
+      quat(q.x + derivative.x * 0.5f * dt, q.y + derivative.y * 0.5f * dt,
+           q.z + derivative.z * 0.5f * dt, q.w + derivative.w * 0.5f * dt);
   return quat_normalize(advanced);
 }
 

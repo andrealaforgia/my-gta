@@ -20,7 +20,8 @@ static void print_help(void) {
       "gta-like: drive a car on a test track or in a generated city.\n\n"
       "  --scene=track            the test track (default)\n"
       "  --scene=city:<package>   a cooked city package directory\n"
-      "  --vehicle=<file>         vehicle parameters (assets/vehicles/hatchback.cfg)\n"
+      "  --vehicle=<file>         vehicle parameters "
+      "(assets/vehicles/hatchback.cfg)\n"
       "  --width=N --height=N     window size (1280x720)\n"
       "  --fullscreen             borderless fullscreen\n"
       "  --no-vsync               do not wait for the display\n"
@@ -28,9 +29,12 @@ static void print_help(void) {
       "  --mute                   open audio but start muted\n"
       "  --debug                  start with the debug overlay on\n"
       "  --help\n\n"
-      "Controls: arrows or WASD drive, space handbrake, R reset, P pause, C re-centre\n"
-      "the camera, F1 debug, M mute, F11 fullscreen, Esc quit. A game controller\n"
-      "steers with the left stick, triggers for throttle and brake, A handbrake,\n"
+      "Controls: arrows or WASD drive, space handbrake, R reset, P pause, C "
+      "re-centre\n"
+      "the camera, F1 debug, M mute, F11 fullscreen, Esc quit. A game "
+      "controller\n"
+      "steers with the left stick, triggers for throttle and brake, A "
+      "handbrake,\n"
       "Y reset, Start pause.\n");
 }
 
@@ -40,17 +44,27 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
   options->stage.scene = SCENE_TEST_TRACK;
   for (int i = 1; i < argc; i++) {
     const char* argument = argv[i];
-    if (strcmp(argument, "--help") == 0) options->help = true;
-    else if (strcmp(argument, "--fullscreen") == 0) options->window.fullscreen = true;
-    else if (strcmp(argument, "--no-vsync") == 0) options->window.vsync = false;
-    else if (strcmp(argument, "--no-audio") == 0) options->no_audio = true;
-    else if (strcmp(argument, "--mute") == 0) options->stage.muted = true;
-    else if (strcmp(argument, "--debug") == 0) options->stage.show_debug = true;
-    else if (strncmp(argument, "--width=", 8) == 0) options->window.width = atoi(argument + 8);
-    else if (strncmp(argument, "--height=", 9) == 0) options->window.height = atoi(argument + 9);
-    else if (strncmp(argument, "--vehicle=", 10) == 0) options->stage.vehicle_file = argument + 10;
-    else if (strcmp(argument, "--scene=track") == 0) options->stage.scene = SCENE_TEST_TRACK;
-    else if (strncmp(argument, "--scene=city:", 13) == 0) {
+    if (strcmp(argument, "--help") == 0) {
+      options->help = true;
+    } else if (strcmp(argument, "--fullscreen") == 0) {
+      options->window.fullscreen = true;
+    } else if (strcmp(argument, "--no-vsync") == 0) {
+      options->window.vsync = false;
+    } else if (strcmp(argument, "--no-audio") == 0) {
+      options->no_audio = true;
+    } else if (strcmp(argument, "--mute") == 0) {
+      options->stage.muted = true;
+    } else if (strcmp(argument, "--debug") == 0) {
+      options->stage.show_debug = true;
+    } else if (strncmp(argument, "--width=", 8) == 0) {
+      options->window.width = atoi(argument + 8);
+    } else if (strncmp(argument, "--height=", 9) == 0) {
+      options->window.height = atoi(argument + 9);
+    } else if (strncmp(argument, "--vehicle=", 10) == 0) {
+      options->stage.vehicle_file = argument + 10;
+    } else if (strcmp(argument, "--scene=track") == 0) {
+      options->stage.scene = SCENE_TEST_TRACK;
+    } else if (strncmp(argument, "--scene=city:", 13) == 0) {
       options->stage.scene = SCENE_CITY;
       options->stage.city_package = argument + 13;
     } else {
@@ -77,7 +91,8 @@ int main(int argc, char* argv[]) {
   }
   window_t window;
   if (!window_open(&window, options.window)) return EXIT_FAILURE;
-  renderer_t* renderer = renderer_create(window.drawable_width, window.drawable_height);
+  renderer_t* renderer =
+      renderer_create(window.drawable_width, window.drawable_height);
   if (!renderer) {
     window_close(&window);
     return EXIT_FAILURE;
@@ -86,7 +101,8 @@ int main(int argc, char* argv[]) {
   bool has_audio = !options.no_audio && audio_device_open(&audio);
   driving_stage_t stage;
   int status = EXIT_SUCCESS;
-  if (driving_stage_init(&stage, &window, renderer, has_audio ? &audio : NULL, options.stage)) {
+  if (driving_stage_init(&stage, &window, renderer, has_audio ? &audio : NULL,
+                         options.stage)) {
     driving_stage_run(&stage);
   } else {
     LOG_ERROR("main", "could not start the driving stage");

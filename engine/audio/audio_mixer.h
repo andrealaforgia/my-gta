@@ -32,14 +32,14 @@ typedef struct {
   audio_state_t state;
   audio_state_t target;
   unsigned noise;
-  float phase;            /* firing phase, 0..1 */
-  float pulse;            /* current exhaust pulse envelope */
+  float phase; /* firing phase, 0..1 */
+  float pulse; /* current exhaust pulse envelope */
   float pulse_jitter;
   float rpm_smoothed;
   float throttle_smoothed;
   float skid_smoothed;
   float wind_smoothed;
-  float impact;           /* impact envelope */
+  float impact; /* impact envelope */
   float impact_strength;
   bandpass_t pipe_low;
   bandpass_t pipe_high;

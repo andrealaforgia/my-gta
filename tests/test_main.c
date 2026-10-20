@@ -21,6 +21,7 @@ static const test_group_t groups[] = {
     {"osm", run_osm_tests},
     {"city", run_city_tests},
     {"generator", run_generator_tests},
+    {"citydrive", run_citydrive_tests},
 };
 
 int main(int argc, char* argv[]) {

@@ -79,6 +79,7 @@ bool font5x7_has_glyph(char c) { return find(c) != (const glyph_t*)0; }
 bool font5x7_pixel(char c, int row, int column) {
   const glyph_t* glyph = find(c);
   if (!glyph) glyph = find('?');
-  if (row < 0 || row >= FONT5X7_HEIGHT || column < 0 || column >= FONT5X7_WIDTH) return false;
+  if (row < 0 || row >= FONT5X7_HEIGHT || column < 0 || column >= FONT5X7_WIDTH)
+    return false;
   return glyph->rows[row][column] == '#';
 }

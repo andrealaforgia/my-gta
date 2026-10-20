@@ -34,8 +34,9 @@ chase_camera_params_t chase_camera_default_params(void);
 chase_camera_t chase_camera_create(chase_camera_params_t params);
 void chase_camera_reset(chase_camera_t* camera, transform_t target);
 /* world may be NULL when no collision avoidance is wanted. */
-void chase_camera_update(chase_camera_t* camera, transform_t target, vec3_t target_velocity,
-                         const physics_world_t* world, float dt);
+void chase_camera_update(chase_camera_t* camera, transform_t target,
+                         vec3_t target_velocity, const physics_world_t* world,
+                         float dt);
 render_camera_t chase_camera_render(const chase_camera_t* camera);
 
 #endif  // ENGINE_CAMERA_CHASE_CAMERA_H_

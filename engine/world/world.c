@@ -21,15 +21,17 @@ static entity_t* free_slot(world_t* world) {
   size_t capacity = world->capacity ? world->capacity * 2 : 64;
   entity_t* grown = realloc(world->entities, capacity * sizeof(entity_t));
   if (!grown) return NULL;
-  memset(grown + world->capacity, 0, (capacity - world->capacity) * sizeof(entity_t));
+  memset(grown + world->capacity, 0,
+         (capacity - world->capacity) * sizeof(entity_t));
   entity_t* slot = &grown[world->capacity];
   world->entities = grown;
   world->capacity = capacity;
   return slot;
 }
 
-uint32_t world_add(world_t* world, transform_t transform, mesh_handle_t mesh, material_t material,
-                   aabb_t local_bounds, const char* label) {
+uint32_t world_add(world_t* world, transform_t transform, mesh_handle_t mesh,
+                   material_t material, aabb_t local_bounds,
+                   const char* label) {
   entity_t* entity = free_slot(world);
   if (!entity) return 0;
   memset(entity, 0, sizeof(*entity));
@@ -47,7 +49,8 @@ uint32_t world_add(world_t* world, transform_t transform, mesh_handle_t mesh, ma
 
 entity_t* world_entity(world_t* world, uint32_t id) {
   for (size_t i = 0; i < world->capacity; i++)
-    if (world->entities[i].used && world->entities[i].id == id) return &world->entities[i];
+    if (world->entities[i].used && world->entities[i].id == id)
+      return &world->entities[i];
   return NULL;
 }
 
@@ -67,11 +70,13 @@ void world_set_transform(world_t* world, uint32_t id, transform_t transform) {
 
 size_t world_count(const world_t* world) { return world->count; }
 
-void world_for_each_visible(const world_t* world, frustum_t frustum, entity_visitor_t visit,
-                            void* context) {
+void world_for_each_visible(const world_t* world, frustum_t frustum,
+                            entity_visitor_t visit, void* context) {
   for (size_t i = 0; i < world->capacity; i++) {
     const entity_t* entity = &world->entities[i];
-    if (!entity->used || !frustum_intersects_aabb(frustum, entity->world_bounds)) continue;
+    if (!entity->used ||
+        !frustum_intersects_aabb(frustum, entity->world_bounds))
+      continue;
     if (!visit(entity, context)) return;
   }
 }

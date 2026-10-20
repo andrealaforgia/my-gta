@@ -17,11 +17,14 @@ static double cross(local_point_t a, local_point_t b, local_point_t c) {
   return (b.x - a.x) * (-(c.z - a.z)) - (-(b.z - a.z)) * (c.x - a.x);
 }
 
-static bool inside(local_point_t p, local_point_t a, local_point_t b, local_point_t c) {
-  return cross(a, b, p) >= -1e-9 && cross(b, c, p) >= -1e-9 && cross(c, a, p) >= -1e-9;
+static bool inside(local_point_t p, local_point_t a, local_point_t b,
+                   local_point_t c) {
+  return cross(a, b, p) >= -1e-9 && cross(b, c, p) >= -1e-9 &&
+         cross(c, a, p) >= -1e-9;
 }
 
-size_t triangulate_polygon(const local_point_t* points, size_t count, uint32_t* out, bool* clean) {
+size_t triangulate_polygon(const local_point_t* points, size_t count,
+                           uint32_t* out, bool* clean) {
   *clean = true;
   if (count < 3) return 0;
   uint32_t* remaining = malloc(count * sizeof(uint32_t));
@@ -30,12 +33,14 @@ size_t triangulate_polygon(const local_point_t* points, size_t count, uint32_t* 
     return 0;
   }
   bool reversed = polygon_signed_area(points, count) < 0;
-  for (size_t i = 0; i < count; i++) remaining[i] = (uint32_t)(reversed ? count - 1 - i : i);
+  for (size_t i = 0; i < count; i++)
+    remaining[i] = (uint32_t)(reversed ? count - 1 - i : i);
   size_t left = count, triangles = 0, guard = 0;
   while (left > 3 && guard < count * count) {
     bool clipped = false;
     for (size_t i = 0; i < left; i++) {
-      uint32_t ia = remaining[(i + left - 1) % left], ib = remaining[i], ic = remaining[(i + 1) % left];
+      uint32_t ia = remaining[(i + left - 1) % left], ib = remaining[i],
+               ic = remaining[(i + 1) % left];
       local_point_t a = points[ia], b = points[ib], c = points[ic];
       if (cross(a, b, c) <= 1e-9) continue; /* reflex or flat */
       bool ear = true;

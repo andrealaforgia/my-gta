@@ -43,7 +43,8 @@ typedef struct {
 } city_generator_stats_t;
 
 city_generator_options_t city_generator_default_options(void);
-bool city_generator_options_load(city_generator_options_t* options, const char* path);
+bool city_generator_options_load(city_generator_options_t* options,
+                                 const char* path);
 uint64_t city_generator_options_hash(const city_generator_options_t* options);
 bool city_generate(city_package_t* package, const city_model_t* model,
                    const city_generator_options_t* options, const char* name,

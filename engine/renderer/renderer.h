@@ -62,25 +62,27 @@ material_t material_rough(vec3_t base_color, float roughness);
 
 renderer_t* renderer_create(int drawable_width, int drawable_height);
 void renderer_destroy(renderer_t* renderer);
-void renderer_resize(renderer_t* renderer, int drawable_width, int drawable_height);
+void renderer_resize(renderer_t* renderer, int drawable_width,
+                     int drawable_height);
 
-mesh_handle_t renderer_upload_mesh(renderer_t* renderer, const mesh_data_t* mesh);
+mesh_handle_t renderer_upload_mesh(renderer_t* renderer,
+                                   const mesh_data_t* mesh);
 void renderer_release_mesh(renderer_t* renderer, mesh_handle_t mesh);
 /* RGBA8, tightly packed, repeats with mipmaps. */
-texture_handle_t renderer_upload_texture(renderer_t* renderer, int width, int height,
-                                         const uint8_t* rgba);
+texture_handle_t renderer_upload_texture(renderer_t* renderer, int width,
+                                         int height, const uint8_t* rgba);
 void renderer_release_texture(renderer_t* renderer, texture_handle_t texture);
 
 void renderer_begin_frame(renderer_t* renderer, render_camera_t camera,
                           render_environment_t environment);
-void renderer_draw_mesh(renderer_t* renderer, mesh_handle_t mesh, material_t material,
-                        mat4_t model);
+void renderer_draw_mesh(renderer_t* renderer, mesh_handle_t mesh,
+                        material_t material, mat4_t model);
 void renderer_draw_line(renderer_t* renderer, vec3_t a, vec3_t b, vec3_t color);
-void renderer_draw_box_outline(renderer_t* renderer, mat4_t model, vec3_t half_extents,
-                               vec3_t color);
+void renderer_draw_box_outline(renderer_t* renderer, mat4_t model,
+                               vec3_t half_extents, vec3_t color);
 /* Screen-space text in a built-in 5x7 font; x, y in pixels from top-left. */
-void renderer_draw_text(renderer_t* renderer, float x, float y, float scale, vec3_t color,
-                        const char* text);
+void renderer_draw_text(renderer_t* renderer, float x, float y, float scale,
+                        vec3_t color, const char* text);
 void renderer_end_frame(renderer_t* renderer);
 
 mat4_t renderer_view_projection(const renderer_t* renderer);

@@ -14,7 +14,8 @@ void mesh_data_free(mesh_data_t* mesh) {
   *mesh = mesh_data_create();
 }
 
-static bool grow(void** items, size_t* capacity, size_t needed, size_t item_size) {
+static bool grow(void** items, size_t* capacity, size_t needed,
+                 size_t item_size) {
   if (needed <= *capacity) return true;
   size_t capacity_wanted = *capacity ? *capacity : 64;
   while (capacity_wanted < needed) capacity_wanted *= 2;
@@ -26,16 +27,17 @@ static bool grow(void** items, size_t* capacity, size_t needed, size_t item_size
 }
 
 bool mesh_data_add_vertex(mesh_data_t* mesh, vertex_t vertex) {
-  if (!grow((void**)&mesh->vertices, &mesh->vertex_capacity, mesh->vertex_count + 1,
-            sizeof(vertex_t)))
+  if (!grow((void**)&mesh->vertices, &mesh->vertex_capacity,
+            mesh->vertex_count + 1, sizeof(vertex_t)))
     return false;
   mesh->vertices[mesh->vertex_count++] = vertex;
   return true;
 }
 
-bool mesh_data_add_triangle(mesh_data_t* mesh, uint32_t a, uint32_t b, uint32_t c) {
-  if (!grow((void**)&mesh->indices, &mesh->index_capacity, mesh->index_count + 3,
-            sizeof(uint32_t)))
+bool mesh_data_add_triangle(mesh_data_t* mesh, uint32_t a, uint32_t b,
+                            uint32_t c) {
+  if (!grow((void**)&mesh->indices, &mesh->index_capacity,
+            mesh->index_count + 3, sizeof(uint32_t)))
     return false;
   mesh->indices[mesh->index_count++] = a;
   mesh->indices[mesh->index_count++] = b;
@@ -48,8 +50,8 @@ static vertex_t vertex(vec3_t position, vec3_t normal, float u, float v) {
   return result;
 }
 
-bool mesh_data_add_quad(mesh_data_t* mesh, vec3_t a, vec3_t b, vec3_t c, vec3_t d,
-                        float uv_scale) {
+bool mesh_data_add_quad(mesh_data_t* mesh, vec3_t a, vec3_t b, vec3_t c,
+                        vec3_t d, float uv_scale) {
   vec3_t normal = vec3_normalize(vec3_cross(vec3_sub(b, a), vec3_sub(d, a)));
   /* Planar uv: project onto the two axes most aligned with the quad. */
   vec3_t u_axis = vec3_normalize(vec3_sub(b, a));
@@ -60,7 +62,8 @@ bool mesh_data_add_quad(mesh_data_t* mesh, vec3_t a, vec3_t b, vec3_t c, vec3_t 
     vec3_t relative = vec3_sub(corners[i], a);
     float u = vec3_dot(relative, u_axis) * uv_scale;
     float v = vec3_dot(relative, v_axis) * uv_scale;
-    if (!mesh_data_add_vertex(mesh, vertex(corners[i], normal, u, v))) return false;
+    if (!mesh_data_add_vertex(mesh, vertex(corners[i], normal, u, v)))
+      return false;
   }
   return mesh_data_add_triangle(mesh, base, base + 1, base + 2) &&
          mesh_data_add_triangle(mesh, base, base + 2, base + 3);
@@ -80,16 +83,18 @@ bool mesh_data_add_box(mesh_data_t* mesh, vec3_t c, vec3_t h) {
          mesh_data_add_quad(mesh, p[0], p[1], p[5], p[4], 1);   /* -Y */
 }
 
-bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius, float width,
-                              int segments) {
+bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius,
+                              float width, int segments) {
   uint32_t base = (uint32_t)mesh->vertex_count;
   float half = width * 0.5f;
   /* Rim vertices: for each segment, one on each side, plus cap centres. */
   for (int i = 0; i < segments; i++) {
     float angle = (float)i / (float)segments * 2.0f * (float)M_PI;
     vec3_t radial = vec3(0, cosf(angle), sinf(angle));
-    vec3_t left = vec3_add(center, vec3_add(vec3_scale(radial, radius), vec3(-half, 0, 0)));
-    vec3_t right = vec3_add(center, vec3_add(vec3_scale(radial, radius), vec3(half, 0, 0)));
+    vec3_t left = vec3_add(
+        center, vec3_add(vec3_scale(radial, radius), vec3(-half, 0, 0)));
+    vec3_t right = vec3_add(
+        center, vec3_add(vec3_scale(radial, radius), vec3(half, 0, 0)));
     float u = (float)i / (float)segments;
     if (!mesh_data_add_vertex(mesh, vertex(left, radial, u, 0))) return false;
     if (!mesh_data_add_vertex(mesh, vertex(right, radial, u, 1))) return false;
@@ -106,14 +111,17 @@ bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius, fl
     float x = side ? half : -half;
     vec3_t normal = vec3(side ? 1.0f : -1.0f, 0, 0);
     uint32_t centre_index = (uint32_t)mesh->vertex_count;
-    if (!mesh_data_add_vertex(mesh, vertex(vec3_add(center, vec3(x, 0, 0)), normal, 0.5f, 0.5f)))
+    if (!mesh_data_add_vertex(
+            mesh, vertex(vec3_add(center, vec3(x, 0, 0)), normal, 0.5f, 0.5f)))
       return false;
     uint32_t rim = (uint32_t)mesh->vertex_count;
     for (int i = 0; i < segments; i++) {
       float angle = (float)i / (float)segments * 2.0f * (float)M_PI;
-      vec3_t p = vec3_add(center, vec3(x, cosf(angle) * radius, sinf(angle) * radius));
-      if (!mesh_data_add_vertex(mesh, vertex(p, normal, 0.5f + cosf(angle) * 0.5f,
-                                             0.5f + sinf(angle) * 0.5f)))
+      vec3_t p =
+          vec3_add(center, vec3(x, cosf(angle) * radius, sinf(angle) * radius));
+      if (!mesh_data_add_vertex(mesh,
+                                vertex(p, normal, 0.5f + cosf(angle) * 0.5f,
+                                       0.5f + sinf(angle) * 0.5f)))
         return false;
     }
     for (int i = 0; i < segments; i++) {
@@ -132,8 +140,8 @@ bool mesh_data_add_grid(mesh_data_t* mesh, float half_size, float spacing) {
     for (int x = 0; x < cells; x++) {
       float x0 = -half_size + x * spacing, x1 = x0 + spacing;
       float z0 = -half_size + z * spacing, z1 = z0 + spacing;
-      if (!mesh_data_add_quad(mesh, vec3(x0, 0, z1), vec3(x1, 0, z1), vec3(x1, 0, z0),
-                              vec3(x0, 0, z0), 1.0f / spacing))
+      if (!mesh_data_add_quad(mesh, vec3(x0, 0, z1), vec3(x1, 0, z1),
+                              vec3(x1, 0, z0), vec3(x0, 0, z0), 1.0f / spacing))
         return false;
     }
   }
@@ -145,7 +153,8 @@ bool mesh_data_append(mesh_data_t* mesh, const mesh_data_t* other) {
   for (size_t i = 0; i < other->vertex_count; i++)
     if (!mesh_data_add_vertex(mesh, other->vertices[i])) return false;
   for (size_t i = 0; i + 2 < other->index_count; i += 3)
-    if (!mesh_data_add_triangle(mesh, base + other->indices[i], base + other->indices[i + 1],
+    if (!mesh_data_add_triangle(mesh, base + other->indices[i],
+                                base + other->indices[i + 1],
                                 base + other->indices[i + 2]))
       return false;
   return true;
@@ -153,8 +162,11 @@ bool mesh_data_append(mesh_data_t* mesh, const mesh_data_t* other) {
 
 aabb_t mesh_data_bounds(const mesh_data_t* mesh) {
   aabb_t box = aabb_empty();
-  for (size_t i = 0; i < mesh->vertex_count; i++) box = aabb_include(box, mesh->vertices[i].position);
+  for (size_t i = 0; i < mesh->vertex_count; i++)
+    box = aabb_include(box, mesh->vertices[i].position);
   return box;
 }
 
-size_t mesh_data_triangle_count(const mesh_data_t* mesh) { return mesh->index_count / 3; }
+size_t mesh_data_triangle_count(const mesh_data_t* mesh) {
+  return mesh->index_count / 3;
+}

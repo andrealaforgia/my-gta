@@ -33,14 +33,15 @@ typedef struct {
 mesh_data_t mesh_data_create(void);
 void mesh_data_free(mesh_data_t* mesh);
 bool mesh_data_add_vertex(mesh_data_t* mesh, vertex_t vertex);
-bool mesh_data_add_triangle(mesh_data_t* mesh, uint32_t a, uint32_t b, uint32_t c);
+bool mesh_data_add_triangle(mesh_data_t* mesh, uint32_t a, uint32_t b,
+                            uint32_t c);
 /* Anticlockwise a, b, c, d seen from the front; the normal is computed. */
-bool mesh_data_add_quad(mesh_data_t* mesh, vec3_t a, vec3_t b, vec3_t c, vec3_t d,
-                        float uv_scale);
+bool mesh_data_add_quad(mesh_data_t* mesh, vec3_t a, vec3_t b, vec3_t c,
+                        vec3_t d, float uv_scale);
 bool mesh_data_add_box(mesh_data_t* mesh, vec3_t center, vec3_t half_extents);
 /* A cylinder along the local X axis (a wheel), centred at center. */
-bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius, float width,
-                              int segments);
+bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius,
+                              float width, int segments);
 bool mesh_data_add_grid(mesh_data_t* mesh, float half_size, float spacing);
 bool mesh_data_append(mesh_data_t* mesh, const mesh_data_t* other);
 aabb_t mesh_data_bounds(const mesh_data_t* mesh);

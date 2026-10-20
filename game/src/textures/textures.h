@@ -14,10 +14,11 @@
 
 typedef struct {
   texture_handle_t asphalt;
-  texture_handle_t road;     /* asphalt with edge and dashed centre lines */
+  texture_handle_t road; /* asphalt with edge and dashed centre lines */
   texture_handle_t concrete;
   texture_handle_t grass;
   texture_handle_t facade;
+  texture_handle_t facades[4];
   texture_handle_t roof;
   texture_handle_t checker;
 } texture_set_t;

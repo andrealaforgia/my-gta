@@ -39,6 +39,7 @@ bool config_has(const config_t* config, const char* key);
 float config_get_float(config_t* config, const char* key, float fallback);
 int config_get_int(config_t* config, const char* key, int fallback);
 bool config_get_bool(config_t* config, const char* key, bool fallback);
-const char* config_get_string(config_t* config, const char* key, const char* fallback);
+const char* config_get_string(config_t* config, const char* key,
+                              const char* fallback);
 
 #endif  // ENGINE_CORE_CONFIG_H_

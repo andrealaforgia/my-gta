@@ -16,13 +16,16 @@ typedef struct {
 static track_t flat_track(float friction) {
   track_t track;
   track.world = physics_world_create();
-  vec3_t vertices[4] = {vec3(-500, 0, 500), vec3(500, 0, 500), vec3(500, 0, -500), vec3(-500, 0, -500)};
+  vec3_t vertices[4] = {vec3(-500, 0, 500), vec3(500, 0, 500),
+                        vec3(500, 0, -500), vec3(-500, 0, -500)};
   uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
-  physics_add_static_mesh(track.world, vertices, 4, indices, 6, COLLISION_LAYER_GROUND, friction, 0);
+  physics_add_static_mesh(track.world, vertices, 4, indices, 6,
+                          COLLISION_LAYER_GROUND, friction, 0);
   vehicle_params_t params;
   bool loaded = vehicle_params_load(&params, "assets/vehicles/hatchback.cfg");
   assert(loaded);
-  assert(vehicle_create(&track.car, track.world, &params, vec3(0, 0.9f, 0), quat_identity()));
+  assert(vehicle_create(&track.car, track.world, &params, vec3(0, 0.9f, 0),
+                        quat_identity()));
   return track;
 }
 
@@ -46,7 +49,7 @@ static void parameters_load_from_the_tuning_file(void) {
   assert(vehicle_params_load(&params, "assets/vehicles/hatchback.cfg"));
   assert(near(params.mass, 1150));
   assert(params.gear_count == 5);
-  assert(near(params.gear_ratios[0], 3.5f));
+  assert(near(params.gear_ratios[0], 2.8f));
   assert(params.torque_point_count == 7);
   assert(near_to(vehicle_engine_torque(&params, 4000), 170, 1.0f));
   assert(near_to(vehicle_engine_torque(&params, 7000), 0, 1e-6));
@@ -82,6 +85,7 @@ static void full_throttle_reaches_fifty_in_a_plausible_time(void) {
     seconds += step;
   }
   assert(seconds > 2.0f && seconds < 10.0f);
+  drive(&track, input, 4.0f); /* well past 50 km/h the gearbox has shifted up */
   assert(vehicle_gear(&track.car) >= 2);
   const rigid_body_t* body = physics_body(track.world, track.car.body);
   /* Straight line: forward is -Z. */
@@ -153,7 +157,8 @@ static void a_slippery_surface_lengthens_the_stop(void) {
   drive(&dry, input, 2.5f);
   drive(&wet, input, 2.5f);
   assert(vehicle_forward_speed(&dry.car) < 0.5f);
-  assert(vehicle_forward_speed(&wet.car) > vehicle_forward_speed(&dry.car) + 2.0f);
+  assert(vehicle_forward_speed(&wet.car) >
+         vehicle_forward_speed(&dry.car) + 2.0f);
   destroy(&dry);
   destroy(&wet);
 }

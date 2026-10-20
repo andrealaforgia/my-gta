@@ -8,6 +8,7 @@
 
 #include "scene.h"
 
-bool scene_build_city(scene_t* scene, scene_context_t context, const char* package_directory);
+bool scene_build_city(scene_t* scene, scene_context_t context,
+                      const char* package_directory);
 
 #endif  // GAME_SRC_SCENES_CITY_SCENE_H_

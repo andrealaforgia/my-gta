@@ -27,21 +27,30 @@ city_import_options_t city_import_default_options(void) {
 
 /* ---- classification ---- */
 
-static bool classify_highway(const char* highway, bool include_service, road_class_t* class) {
+static bool classify_highway(const char* highway, bool include_service,
+                             road_class_t* class) {
   static const struct {
     const char* tag;
     road_class_t class;
-  } table[] = {{"motorway", ROAD_CLASS_MOTORWAY},        {"motorway_link", ROAD_CLASS_MOTORWAY},
-               {"trunk", ROAD_CLASS_PRIMARY},            {"trunk_link", ROAD_CLASS_PRIMARY},
-               {"primary", ROAD_CLASS_PRIMARY},          {"primary_link", ROAD_CLASS_PRIMARY},
-               {"secondary", ROAD_CLASS_SECONDARY},      {"secondary_link", ROAD_CLASS_SECONDARY},
-               {"tertiary", ROAD_CLASS_TERTIARY},        {"tertiary_link", ROAD_CLASS_TERTIARY},
-               {"residential", ROAD_CLASS_RESIDENTIAL},  {"living_street", ROAD_CLASS_RESIDENTIAL},
-               {"unclassified", ROAD_CLASS_UNCLASSIFIED}, {"road", ROAD_CLASS_UNCLASSIFIED},
+  } table[] = {{"motorway", ROAD_CLASS_MOTORWAY},
+               {"motorway_link", ROAD_CLASS_MOTORWAY},
+               {"trunk", ROAD_CLASS_PRIMARY},
+               {"trunk_link", ROAD_CLASS_PRIMARY},
+               {"primary", ROAD_CLASS_PRIMARY},
+               {"primary_link", ROAD_CLASS_PRIMARY},
+               {"secondary", ROAD_CLASS_SECONDARY},
+               {"secondary_link", ROAD_CLASS_SECONDARY},
+               {"tertiary", ROAD_CLASS_TERTIARY},
+               {"tertiary_link", ROAD_CLASS_TERTIARY},
+               {"residential", ROAD_CLASS_RESIDENTIAL},
+               {"living_street", ROAD_CLASS_RESIDENTIAL},
+               {"unclassified", ROAD_CLASS_UNCLASSIFIED},
+               {"road", ROAD_CLASS_UNCLASSIFIED},
                {"service", ROAD_CLASS_SERVICE}};
   for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
     if (strcmp(highway, table[i].tag) == 0) {
-      if (table[i].class == ROAD_CLASS_SERVICE && !include_service) return false;
+      if (table[i].class == ROAD_CLASS_SERVICE && !include_service)
+        return false;
       *class = table[i].class;
       return true;
     }
@@ -57,8 +66,8 @@ static float parse_metres(const char* text, bool* ok) {
 }
 
 static bool tag_is_yes(const char* value) {
-  return value && (strcmp(value, "yes") == 0 || strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
-                   strcmp(value, "-1") == 0);
+  return value && (strcmp(value, "yes") == 0 || strcmp(value, "true") == 0 ||
+                   strcmp(value, "1") == 0 || strcmp(value, "-1") == 0);
 }
 
 /* ---- roads ---- */
@@ -70,7 +79,8 @@ typedef struct {
 } node_use_t;
 
 static int compare_node_use(const void* a, const void* b) {
-  int64_t x = ((const node_use_t*)a)->node_id, y = ((const node_use_t*)b)->node_id;
+  int64_t x = ((const node_use_t*)a)->node_id,
+          y = ((const node_use_t*)b)->node_id;
   return x < y ? -1 : (x > y ? 1 : 0);
 }
 
@@ -88,8 +98,8 @@ typedef struct {
 } cleaned_way_t;
 
 /* Project and drop repeated consecutive nodes or coincident points. */
-static bool clean_way(const osm_data_t* osm, const projection_t* projection, const osm_way_t* way,
-                      cleaned_way_t* out) {
+static bool clean_way(const osm_data_t* osm, const projection_t* projection,
+                      const osm_way_t* way, cleaned_way_t* out) {
   out->points = calloc(way->node_count, sizeof(local_point_t));
   out->node_ids = calloc(way->node_count, sizeof(int64_t));
   out->point_count = 0;
@@ -114,11 +124,13 @@ static bool clean_way(const osm_data_t* osm, const projection_t* projection, con
 static double polyline_length(const local_point_t* points, size_t count) {
   double length = 0;
   for (size_t i = 1; i < count; i++)
-    length += hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
+    length +=
+        hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
   return length;
 }
 
-static bool emit_segment(city_model_t* model, const cleaned_way_t* cleaned, size_t from, size_t to,
+static bool emit_segment(city_model_t* model, const cleaned_way_t* cleaned,
+                         size_t from, size_t to,
                          const city_import_options_t* options) {
   const osm_way_t* way = cleaned->way;
   city_road_t* road = city_model_add_road(model);
@@ -131,7 +143,8 @@ static bool emit_segment(city_model_t* model, const cleaned_way_t* cleaned, size
   if (!ok) {
     const char* lanes = osm_tag(way->tags, way->tag_count, "lanes");
     int lane_count = lanes ? atoi(lanes) : 0;
-    road->width = lane_count > 0 ? (float)lane_count * 3.25f : options->default_width[cleaned->class];
+    road->width = lane_count > 0 ? (float)lane_count * 3.25f
+                                 : options->default_width[cleaned->class];
     road->width_inferred = true;
     model->stats.widths_inferred++;
   }
@@ -175,8 +188,10 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
     c->way = way;
     c->class = class;
     if (!clean_way(osm, &model->projection, way, c)) continue;
-    if (c->point_count < 2 || polyline_length(c->points, c->point_count) < options->min_road_length) {
-      LOG_WARN("import", "way %lld is degenerate and was dropped", (long long)way->id);
+    if (c->point_count < 2 ||
+        polyline_length(c->points, c->point_count) < options->min_road_length) {
+      LOG_WARN("import", "way %lld is degenerate and was dropped",
+               (long long)way->id);
       model->stats.roads_degenerate++;
       free(c->points);
       free(c->node_ids);
@@ -187,8 +202,10 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
 
   /* Count how each node is used across the accepted ways. */
   size_t use_capacity = 0;
-  for (size_t i = 0; i < cleaned_count; i++) use_capacity += cleaned[i].point_count;
-  node_use_t* uses = calloc(use_capacity ? use_capacity : 1, sizeof(node_use_t));
+  for (size_t i = 0; i < cleaned_count; i++)
+    use_capacity += cleaned[i].point_count;
+  node_use_t* uses =
+      calloc(use_capacity ? use_capacity : 1, sizeof(node_use_t));
   size_t use_count = 0;
   for (size_t i = 0; i < cleaned_count; i++)
     for (size_t p = 0; p < cleaned[i].point_count; p++) {
@@ -198,7 +215,8 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
   qsort(uses, use_count, sizeof(node_use_t), compare_node_use);
   size_t unique = 0;
   for (size_t i = 0; i < use_count; i++) {
-    if (unique == 0 || uses[unique - 1].node_id != uses[i].node_id) uses[unique++] = uses[i];
+    if (unique == 0 || uses[unique - 1].node_id != uses[i].node_id)
+      uses[unique++] = uses[i];
   }
   use_count = unique;
   for (size_t i = 0; i < cleaned_count; i++) {
@@ -236,7 +254,8 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
       int64_t node = road->node_ids[index];
       city_junction_t* junction = NULL;
       for (size_t j = 0; j < model->junction_count; j++)
-        if (model->junctions[j].node_id == node) junction = &model->junctions[j];
+        if (model->junctions[j].node_id == node)
+          junction = &model->junctions[j];
       if (!junction) {
         junction = city_model_add_junction(model);
         if (!junction) break;
@@ -269,11 +288,14 @@ static double signed_area(const local_point_t* points, size_t count) {
   return area * 0.5;
 }
 
-static void import_building(city_model_t* model, const osm_data_t* osm, const osm_way_t* way,
+static void import_building(city_model_t* model, const osm_data_t* osm,
+                            const osm_way_t* way,
                             const city_import_options_t* options) {
-  bool closed = way->node_count >= 4 && way->node_refs[0] == way->node_refs[way->node_count - 1];
+  bool closed = way->node_count >= 4 &&
+                way->node_refs[0] == way->node_refs[way->node_count - 1];
   if (!closed) {
-    LOG_WARN("import", "building %lld is not a closed ring", (long long)way->id);
+    LOG_WARN("import", "building %lld is not a closed ring",
+             (long long)way->id);
     model->stats.buildings_malformed++;
     return;
   }
@@ -292,7 +314,8 @@ static void import_building(city_model_t* model, const osm_data_t* osm, const os
   if (!building) return;
   building->source_id = way->id;
   const char* category = osm_tag(way->tags, way->tag_count, "building");
-  snprintf(building->category, sizeof(building->category), "%s", category ? category : "yes");
+  snprintf(building->category, sizeof(building->category), "%s",
+           category ? category : "yes");
   const char* height = osm_tag(way->tags, way->tag_count, "height");
   const char* levels = osm_tag(way->tags, way->tag_count, "building:levels");
   bool ok = false;
@@ -305,17 +328,21 @@ static void import_building(city_model_t* model, const osm_data_t* osm, const os
     building->height_source = HEIGHT_FROM_LEVELS;
   } else {
     float t = (float)(stable_hash(way->id) % 1000) / 999.0f;
-    building->height = options->default_height_min + (options->default_height_max - options->default_height_min) * t;
+    building->height =
+        options->default_height_min +
+        (options->default_height_max - options->default_height_min) * t;
     building->height_source = HEIGHT_DEFAULT;
     model->stats.heights_defaulted++;
   }
-  if (building->levels == 0) building->levels = (int)(building->height / options->storey_height + 0.5f);
+  if (building->levels == 0)
+    building->levels = (int)(building->height / options->storey_height + 0.5f);
   building->points = malloc(count * sizeof(local_point_t));
   building->point_count = count;
   if (signed_area(cleaned.points, count) > 0) {
     memcpy(building->points, cleaned.points, count * sizeof(local_point_t));
   } else {
-    for (size_t i = 0; i < count; i++) building->points[i] = cleaned.points[count - 1 - i];
+    for (size_t i = 0; i < count; i++)
+      building->points[i] = cleaned.points[count - 1 - i];
   }
   free(cleaned.points);
   free(cleaned.node_ids);
@@ -326,12 +353,15 @@ static void import_buildings(city_model_t* model, const osm_data_t* osm,
                              const city_import_options_t* options) {
   for (size_t i = 0; i < osm->way_count; i++) {
     const osm_way_t* way = &osm->ways[i];
-    if (osm_tag(way->tags, way->tag_count, "building")) import_building(model, osm, way, options);
+    if (osm_tag(way->tags, way->tag_count, "building"))
+      import_building(model, osm, way, options);
   }
   for (size_t i = 0; i < osm->relation_count; i++) {
     const osm_relation_t* relation = &osm->relations[i];
     if (osm_tag(relation->tags, relation->tag_count, "building")) {
-      LOG_WARN("import", "relation %lld (multipolygon building) is not supported and was skipped",
+      LOG_WARN("import",
+               "relation %lld (multipolygon building) is not supported and was "
+               "skipped",
                (long long)relation->id);
       model->stats.relations_skipped++;
     }
@@ -352,8 +382,8 @@ static osm_bounds_t bounds_from_nodes(const osm_data_t* osm) {
   return b;
 }
 
-bool city_import(city_model_t* model, const osm_data_t* osm, city_import_options_t options,
-                 const char* source_path) {
+bool city_import(city_model_t* model, const osm_data_t* osm,
+                 city_import_options_t options, const char* source_path) {
   memset(model, 0, sizeof(*model));
   if (osm->node_count == 0) {
     LOG_ERROR("import", "no nodes in the extract");
@@ -361,14 +391,18 @@ bool city_import(city_model_t* model, const osm_data_t* osm, city_import_options
   }
   model->bounds = osm->has_bounds ? osm->bounds : bounds_from_nodes(osm);
   model->projection = projection_for_bounds(model->bounds);
-  snprintf(model->source, sizeof(model->source), "%s", source_path ? source_path : "");
+  snprintf(model->source, sizeof(model->source), "%s",
+           source_path ? source_path : "");
   time_t now = time(NULL);
-  strftime(model->import_date, sizeof(model->import_date), "%Y-%m-%d", gmtime(&now));
+  strftime(model->import_date, sizeof(model->import_date), "%Y-%m-%d",
+           gmtime(&now));
   import_roads(model, osm, &options);
   import_buildings(model, osm, &options);
-  LOG_INFO("import", "%zu road segments, %zu junctions, %zu buildings; %zu ways ignored, "
+  LOG_INFO("import",
+           "%zu road segments, %zu junctions, %zu buildings; %zu ways ignored, "
            "%zu degenerate, %zu malformed buildings, %zu relations skipped",
-           model->road_count, model->junction_count, model->building_count, model->stats.ways_ignored,
-           model->stats.roads_degenerate, model->stats.buildings_malformed, model->stats.relations_skipped);
+           model->road_count, model->junction_count, model->building_count,
+           model->stats.ways_ignored, model->stats.roads_degenerate,
+           model->stats.buildings_malformed, model->stats.relations_skipped);
   return model->road_count > 0;
 }

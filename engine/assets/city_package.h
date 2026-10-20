@@ -23,7 +23,7 @@ typedef enum { PART_COLLIDER_NONE, PART_COLLIDER_MESH } part_collider_t;
 typedef struct {
   char material[32];
   part_collider_t collider;
-  int layer;      /* collision_layer_t value */
+  int layer; /* collision_layer_t value */
   float friction;
   uint64_t source_id;
   mesh_data_t mesh;
@@ -60,8 +60,9 @@ typedef struct {
 city_package_t city_package_create(void);
 void city_package_free(city_package_t* package);
 city_chunk_t* city_package_chunk(city_package_t* package, int column, int row);
-city_part_t* city_chunk_add_part(city_chunk_t* chunk, const char* material, part_collider_t collider,
-                                 int layer, float friction, uint64_t source_id);
+city_part_t* city_chunk_add_part(city_chunk_t* chunk, const char* material,
+                                 part_collider_t collider, int layer,
+                                 float friction, uint64_t source_id);
 bool city_package_write(const city_package_t* package, const char* directory);
 bool city_package_read(city_package_t* package, const char* directory);
 size_t city_package_triangle_count(const city_package_t* package);

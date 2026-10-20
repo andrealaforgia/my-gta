@@ -51,7 +51,7 @@ CITY_GENERATE = city-generate
 CITY_VALIDATE = city-validate
 SNAPSHOT = render_snapshot
 
-.PHONY: all tools install dev_install clean lint format test sanitize snapshot city
+.PHONY: all tools install dev_install clean lint format test sanitize snapshot city fixture-city run run-city
 
 all: $(TARGET) tools
 
@@ -88,7 +88,7 @@ dev_install:
 	$(DEV_INSTALL_CMD)
 
 lint:
-	cpplint --root=engine $(ENGINE_SRC) $(GAME_SRC) $(TOOL_SRC) $(HEADERS) $(TEST_SRC)
+	cpplint --quiet --root=. $(ENGINE_SRC) $(GAME_SRC) $(TOOL_SRC) $(HEADERS) $(TEST_SRC)
 
 format:
 	clang-format -i $(ENGINE_SRC) $(GAME_SRC) $(TOOL_SRC) $(HEADERS) $(TEST_SRC)
@@ -99,10 +99,24 @@ test:
 sanitize:
 	python3 tests/run_tests.py --sanitize
 
+# make city EXTRACT=data/pordenone.osm CITY=pordenone
+EXTRACT ?= data/pordenone.osm
+CITY ?= $(basename $(notdir $(EXTRACT)))
+CITY_CONFIG ?= assets/city/default.cfg
+
 city: tools
-	./$(CITY_IMPORT) --input data/district.osm --output data/intermediate/district
-	./$(CITY_GENERATE) --input data/intermediate/district --config assets/city/default.cfg --output assets_cooked/cities/district
-	./$(CITY_VALIDATE) assets_cooked/cities/district
+	./$(CITY_IMPORT) --input $(EXTRACT) --output data/intermediate/$(CITY)
+	./$(CITY_GENERATE) --input data/intermediate/$(CITY) --config $(CITY_CONFIG) --output assets_cooked/cities/$(CITY)
+	./$(CITY_VALIDATE) assets_cooked/cities/$(CITY)
+
+fixture-city: tools
+	$(MAKE) city EXTRACT=tests/fixtures/district.osm CITY=district
+
+run: $(TARGET)
+	./$(TARGET) --scene=track
+
+run-city: $(TARGET)
+	./$(TARGET) --scene=city:assets_cooked/cities/$(CITY)
 
 clean:
 	rm -f $(ENGINE_OBJ) $(GAME_OBJ) $(TOOL_OBJ) $(DEP) $(ENGINE_LIB) $(TARGET) \

@@ -19,20 +19,24 @@ static city_model_t import_fixture(void) {
   return model;
 }
 
-static const city_road_t* road_from(const city_model_t* model, int64_t source_id, int index) {
+static const city_road_t* road_from(const city_model_t* model,
+                                    int64_t source_id, int index) {
   int seen = 0;
   for (size_t i = 0; i < model->road_count; i++)
-    if (model->roads[i].source_id == source_id && seen++ == index) return &model->roads[i];
+    if (model->roads[i].source_id == source_id && seen++ == index)
+      return &model->roads[i];
   return NULL;
 }
 
-static const city_junction_t* junction(const city_model_t* model, int64_t node_id) {
+static const city_junction_t* junction(const city_model_t* model,
+                                       int64_t node_id) {
   for (size_t i = 0; i < model->junction_count; i++)
     if (model->junctions[i].node_id == node_id) return &model->junctions[i];
   return NULL;
 }
 
-static const city_building_t* building(const city_model_t* model, int64_t source_id) {
+static const city_building_t* building(const city_model_t* model,
+                                       int64_t source_id) {
   for (size_t i = 0; i < model->building_count; i++)
     if (model->buildings[i].source_id == source_id) return &model->buildings[i];
   return NULL;
@@ -47,11 +51,13 @@ static void roads_are_split_at_junctions_and_classified(void) {
   assert(near(main_west->width, 9.0f) && !main_west->width_inferred);
   assert(main_west->point_count == 2);
   const city_road_t* south = road_from(&model, 101, 0);
-  assert(south && south->width_inferred && south->width > 4 && south->width < 8);
+  assert(south && south->width_inferred && south->width > 4 &&
+         south->width < 8);
   const city_road_t* oneway = road_from(&model, 105, 1);
   assert(oneway && oneway->oneway);
   const city_road_t* curved = road_from(&model, 107, 0);
-  assert(curved && curved->point_count == 5 && strcmp(curved->surface, "cobblestone") == 0);
+  assert(curved && curved->point_count == 5 &&
+         strcmp(curved->surface, "cobblestone") == 0);
   assert(road_from(&model, 108, 0) == NULL); /* footway ignored */
   city_model_free(&model);
 }
@@ -59,8 +65,8 @@ static void roads_are_split_at_junctions_and_classified(void) {
 static void degenerate_points_and_ways_are_cleaned(void) {
   city_model_t model = import_fixture();
   const city_road_t* stub = road_from(&model, 109, 0);
-  assert(stub && stub->point_count == 3); /* the repeated node collapsed */
-  assert(road_from(&model, 110, 0) == NULL);  /* zero length dropped */
+  assert(stub && stub->point_count == 3);    /* the repeated node collapsed */
+  assert(road_from(&model, 110, 0) == NULL); /* zero length dropped */
   assert(model.stats.ways_ignored >= 1);
   assert(model.stats.roads_degenerate == 1);
   city_model_free(&model);
@@ -72,12 +78,15 @@ static void junctions_carry_their_degree_and_position(void) {
   assert(junction(&model, 2) && junction(&model, 2)->degree == 3);
   assert(junction(&model, 8) && junction(&model, 8)->degree == 3);
   assert(junction(&model, 1) && junction(&model, 1)->degree == 2);
-  assert(junction(&model, 3) && junction(&model, 3)->degree == 3); /* corner plus the curved road */
-  assert(junction(&model, 13) && junction(&model, 13)->degree == 1); /* cul-de-sac */
+  assert(junction(&model, 3) &&
+         junction(&model, 3)->degree == 3); /* corner plus the curved road */
+  assert(junction(&model, 13) &&
+         junction(&model, 13)->degree == 1); /* cul-de-sac */
   const city_junction_t* centre = junction(&model, 5);
   const city_junction_t* corner = junction(&model, 1);
   /* n5 is north-east of n1: larger x, smaller z. */
-  assert(centre->position.x > corner->position.x + 90 && centre->position.z < corner->position.z - 90);
+  assert(centre->position.x > corner->position.x + 90 &&
+         centre->position.z < corner->position.z - 90);
   city_model_free(&model);
 }
 
@@ -85,12 +94,15 @@ static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   city_model_t model = import_fixture();
   assert(model.building_count == 4);
   const city_building_t* tagged = building(&model, 201);
-  assert(tagged && near(tagged->height, 12) && tagged->height_source == HEIGHT_TAGGED);
+  assert(tagged && near(tagged->height, 12) &&
+         tagged->height_source == HEIGHT_TAGGED);
   const city_building_t* levels = building(&model, 202);
-  assert(levels && levels->levels == 4 && levels->height_source == HEIGHT_FROM_LEVELS);
+  assert(levels && levels->levels == 4 &&
+         levels->height_source == HEIGHT_FROM_LEVELS);
   assert(near_to(levels->height, 4 * 3.2f, 1e-4));
   const city_building_t* plain = building(&model, 203);
-  assert(plain && plain->height_source == HEIGHT_DEFAULT && plain->height >= 6 && plain->height <= 15);
+  assert(plain && plain->height_source == HEIGHT_DEFAULT &&
+         plain->height >= 6 && plain->height <= 15);
   assert(plain->point_count == 6);
   assert(building(&model, 204) == NULL);
   assert(model.stats.buildings_malformed == 1);
@@ -109,7 +121,8 @@ static float signed_area_x_north(const city_building_t* b) {
 
 static void building_rings_are_anticlockwise_seen_from_above(void) {
   city_model_t model = import_fixture();
-  for (size_t i = 0; i < model.building_count; i++) assert(signed_area_x_north(&model.buildings[i]) > 0);
+  for (size_t i = 0; i < model.building_count; i++)
+    assert(signed_area_x_north(&model.buildings[i]) > 0);
   assert(building(&model, 205)->point_count == 4);
   city_model_free(&model);
 }
@@ -132,8 +145,10 @@ static void the_model_round_trips_through_its_text_format(void) {
   assert(loaded.building_count == model.building_count);
   assert(loaded.junction_count == model.junction_count);
   const city_road_t* curved = road_from(&loaded, 107, 0);
-  assert(curved && curved->point_count == 5 && strcmp(curved->surface, "cobblestone") == 0);
-  assert(near_to(curved->points[2].x, road_from(&model, 107, 0)->points[2].x, 1e-3));
+  assert(curved && curved->point_count == 5 &&
+         strcmp(curved->surface, "cobblestone") == 0);
+  assert(near_to(curved->points[2].x, road_from(&model, 107, 0)->points[2].x,
+                 1e-3));
   assert(near(loaded.projection.origin_lat, model.projection.origin_lat));
   assert(strcmp(loaded.source, "tests/fixtures/district.osm") == 0);
   city_model_free(&loaded);

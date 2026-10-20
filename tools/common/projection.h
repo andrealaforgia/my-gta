@@ -23,8 +23,9 @@ typedef struct {
 
 projection_t projection_create(double origin_lat, double origin_lon);
 projection_t projection_for_bounds(osm_bounds_t bounds);
-local_point_t projection_project(const projection_t* projection, double lat, double lon);
-void projection_unproject(const projection_t* projection, local_point_t point, double* lat,
-                          double* lon);
+local_point_t projection_project(const projection_t* projection, double lat,
+                                 double lon);
+void projection_unproject(const projection_t* projection, local_point_t point,
+                          double* lat, double* lon);
 
 #endif  // TOOLS_COMMON_PROJECTION_H_

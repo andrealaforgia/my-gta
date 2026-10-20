@@ -40,15 +40,16 @@ typedef int (*entity_visitor_t)(const entity_t* entity, void* context);
 
 world_t world_create(void);
 void world_destroy(world_t* world);
-uint32_t world_add(world_t* world, transform_t transform, mesh_handle_t mesh, material_t material,
-                   aabb_t local_bounds, const char* label);
+uint32_t world_add(world_t* world, transform_t transform, mesh_handle_t mesh,
+                   material_t material, aabb_t local_bounds, const char* label);
 void world_remove(world_t* world, uint32_t id);
 entity_t* world_entity(world_t* world, uint32_t id);
 void world_set_transform(world_t* world, uint32_t id, transform_t transform);
 size_t world_count(const world_t* world);
-/* Visits entities whose bounds meet the frustum; the visitor returns 0 to stop. */
-void world_for_each_visible(const world_t* world, frustum_t frustum, entity_visitor_t visit,
-                            void* context);
+/* Visits entities whose bounds meet the frustum; the visitor returns 0 to stop.
+ */
+void world_for_each_visible(const world_t* world, frustum_t frustum,
+                            entity_visitor_t visit, void* context);
 /* Draws the visible entities and returns how many were drawn. */
 int world_render(const world_t* world, renderer_t* renderer);
 

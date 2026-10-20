@@ -16,9 +16,10 @@ typedef struct {
   material_t rubber;
 } car_visual_t;
 
-car_visual_t car_visual_create(renderer_t* renderer, const vehicle_params_t* params);
+car_visual_t car_visual_create(renderer_t* renderer,
+                               const vehicle_params_t* params);
 void car_visual_destroy(car_visual_t* visual, renderer_t* renderer);
-void car_visual_draw(const car_visual_t* visual, renderer_t* renderer, const vehicle_t* vehicle,
-                     transform_t chassis);
+void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
+                     const vehicle_t* vehicle, transform_t chassis);
 
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

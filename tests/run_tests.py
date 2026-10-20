@@ -27,6 +27,7 @@ GROUPS = (
     "osm",
     "city",
     "generator",
+    "citydrive",
 )
 
 

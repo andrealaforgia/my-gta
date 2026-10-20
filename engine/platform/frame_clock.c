@@ -1,6 +1,7 @@
 #include "frame_clock.h"
 
-frame_clock_t frame_clock_create(double step_seconds, double max_catch_up_seconds) {
+frame_clock_t frame_clock_create(double step_seconds,
+                                 double max_catch_up_seconds) {
   frame_clock_t clock = {step_seconds, max_catch_up_seconds, 0.0, 0.0};
   return clock;
 }

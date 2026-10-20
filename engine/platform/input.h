@@ -43,6 +43,7 @@ typedef struct {
 } steering_filter_t;
 
 steering_filter_t steering_filter_create(float rate, float half_lock_speed);
-float steering_filter_update(steering_filter_t* filter, float demand, float speed_mps, float dt);
+float steering_filter_update(steering_filter_t* filter, float demand,
+                             float speed_mps, float dt);
 
 #endif  // ENGINE_PLATFORM_INPUT_H_

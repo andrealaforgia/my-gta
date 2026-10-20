@@ -50,7 +50,8 @@ static void the_font_covers_digits_and_capitals(void) {
   for (char c = 'A'; c <= 'Z'; c++) assert(font5x7_has_glyph(c));
   assert(font5x7_has_glyph('a'));
   assert(!font5x7_has_glyph('~'));
-  assert(font5x7_pixel('I', 0, 1) && font5x7_pixel('I', 3, 2) && !font5x7_pixel('I', 3, 0));
+  assert(font5x7_pixel('I', 0, 1) && font5x7_pixel('I', 3, 2) &&
+         !font5x7_pixel('I', 3, 0));
 }
 
 void run_mesh_tests(void) {

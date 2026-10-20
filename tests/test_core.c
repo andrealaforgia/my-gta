@@ -96,7 +96,8 @@ static void keyboard_maps_arrows_to_driving_actions(void) {
   keys[INPUT_SCANCODE_UP] = 0;
   keys[INPUT_SCANCODE_DOWN] = 1;
   input = driving_input_from_keys(keys);
-  assert(near(input.steering, 1) && near(input.brake, 1) && near(input.throttle, 0));
+  assert(near(input.steering, 1) && near(input.brake, 1) &&
+         near(input.throttle, 0));
 }
 
 static void controller_axes_combine_with_keyboard_by_largest_magnitude(void) {
@@ -112,13 +113,16 @@ static void controller_axes_combine_with_keyboard_by_largest_magnitude(void) {
 static void keyboard_steering_is_smoothed_and_speed_sensitive(void) {
   steering_filter_t filter = steering_filter_create(8.0f, 28.0f);
   float angle = 0;
-  for (int i = 0; i < 5; i++) angle = steering_filter_update(&filter, 1.0f, 0.0f, 1.0f / 60.0f);
+  for (int i = 0; i < 5; i++)
+    angle = steering_filter_update(&filter, 1.0f, 0.0f, 1.0f / 60.0f);
   assert(angle > 0.1f && angle < 0.9f);
-  for (int i = 0; i < 200; i++) angle = steering_filter_update(&filter, 1.0f, 0.0f, 1.0f / 60.0f);
+  for (int i = 0; i < 200; i++)
+    angle = steering_filter_update(&filter, 1.0f, 0.0f, 1.0f / 60.0f);
   assert(near_to(angle, 1.0f, 1e-3));
   steering_filter_t fast = steering_filter_create(8.0f, 28.0f);
   float at_speed = 0;
-  for (int i = 0; i < 200; i++) at_speed = steering_filter_update(&fast, 1.0f, 40.0f, 1.0f / 60.0f);
+  for (int i = 0; i < 200; i++)
+    at_speed = steering_filter_update(&fast, 1.0f, 40.0f, 1.0f / 60.0f);
   assert(at_speed < 0.5f && at_speed > 0.05f);
 }
 

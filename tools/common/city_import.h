@@ -14,14 +14,14 @@
 typedef struct {
   float default_width[ROAD_CLASS_COUNT]; /* metres, used when no width tag */
   float storey_height;                   /* metres per building:levels */
-  float default_height_min;              /* untagged buildings vary between these */
+  float default_height_min; /* untagged buildings vary between these */
   float default_height_max;
-  float min_road_length;                 /* shorter segments are degenerate */
+  float min_road_length; /* shorter segments are degenerate */
   bool include_service_roads;
 } city_import_options_t;
 
 city_import_options_t city_import_default_options(void);
-bool city_import(city_model_t* model, const osm_data_t* osm, city_import_options_t options,
-                 const char* source_path);
+bool city_import(city_model_t* model, const osm_data_t* osm,
+                 city_import_options_t options, const char* source_path);
 
 #endif  // TOOLS_COMMON_CITY_IMPORT_H_

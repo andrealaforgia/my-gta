@@ -18,4 +18,6 @@ float damp_towards(float value, float target, float rate, float dt) {
   return lerpf(value, target, 1.0f - expf(-rate * dt));
 }
 
-float signf(float value) { return value > 0 ? 1.0f : (value < 0 ? -1.0f : 0.0f); }
+float signf(float value) {
+  return value > 0 ? 1.0f : (value < 0 ? -1.0f : 0.0f);
+}

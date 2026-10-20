@@ -29,7 +29,8 @@ static float peak(const float* samples, int count) {
   return largest;
 }
 
-static void render(audio_mixer_t* mixer, audio_state_t state, float* out, int frames) {
+static void render(audio_mixer_t* mixer, audio_state_t state, float* out,
+                   int frames) {
   audio_mixer_set_state(mixer, state);
   audio_mixer_render(mixer, out, frames);
 }

@@ -116,7 +116,8 @@ mat4_t mat4_inverse(mat4_t a) {
   return r;
 }
 
-mat4_t mat4_perspective(float fov_y, float aspect, float near_plane, float far_plane) {
+mat4_t mat4_perspective(float fov_y, float aspect, float near_plane,
+                        float far_plane) {
   mat4_t r = {{0}};
   float f = 1.0f / tanf(fov_y * 0.5f);
   r.m[0] = f / aspect;
@@ -148,9 +149,10 @@ mat4_t mat4_look_at(vec3_t eye, vec3_t target, vec3_t up) {
 }
 
 vec3_t mat4_transform_point(mat4_t a, vec3_t p) {
-  return vec3(AT(a, 0, 0) * p.x + AT(a, 1, 0) * p.y + AT(a, 2, 0) * p.z + AT(a, 3, 0),
-              AT(a, 0, 1) * p.x + AT(a, 1, 1) * p.y + AT(a, 2, 1) * p.z + AT(a, 3, 1),
-              AT(a, 0, 2) * p.x + AT(a, 1, 2) * p.y + AT(a, 2, 2) * p.z + AT(a, 3, 2));
+  return vec3(
+      AT(a, 0, 0) * p.x + AT(a, 1, 0) * p.y + AT(a, 2, 0) * p.z + AT(a, 3, 0),
+      AT(a, 0, 1) * p.x + AT(a, 1, 1) * p.y + AT(a, 2, 1) * p.z + AT(a, 3, 1),
+      AT(a, 0, 2) * p.x + AT(a, 1, 2) * p.y + AT(a, 2, 2) * p.z + AT(a, 3, 2));
 }
 
 vec3_t mat4_transform_direction(mat4_t a, vec3_t d) {
@@ -161,7 +163,8 @@ vec3_t mat4_transform_direction(mat4_t a, vec3_t d) {
 
 vec3_t mat4_project_point(mat4_t a, vec3_t p) {
   vec3_t t = mat4_transform_point(a, p);
-  float w = AT(a, 0, 3) * p.x + AT(a, 1, 3) * p.y + AT(a, 2, 3) * p.z + AT(a, 3, 3);
+  float w =
+      AT(a, 0, 3) * p.x + AT(a, 1, 3) * p.y + AT(a, 2, 3) * p.z + AT(a, 3, 3);
   if (fabsf(w) < 1e-12f) return t;
   return vec3_scale(t, 1.0f / w);
 }

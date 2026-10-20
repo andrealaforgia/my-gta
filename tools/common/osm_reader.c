@@ -8,7 +8,8 @@
 
 /* ---- growable arrays ---- */
 
-static bool grow(void** items, size_t* capacity, size_t needed, size_t item_size) {
+static bool grow(void** items, size_t* capacity, size_t needed,
+                 size_t item_size) {
   if (needed <= *capacity) return true;
   size_t wanted = *capacity ? *capacity * 2 : 256;
   while (wanted < needed) wanted *= 2;
@@ -22,7 +23,7 @@ static bool grow(void** items, size_t* capacity, size_t needed, size_t item_size
 typedef struct {
   osm_data_t* data;
   size_t node_capacity, way_capacity, relation_capacity;
-  osm_way_t* way;           /* way being read */
+  osm_way_t* way; /* way being read */
   size_t ref_capacity;
   osm_relation_t* relation; /* relation being read */
   osm_tag_t** tags;         /* tag list of the open element */
@@ -42,7 +43,11 @@ static void unescape(char* text) {
   static const struct {
     const char* entity;
     char character;
-  } entities[] = {{"&amp;", '&'}, {"&quot;", '"'}, {"&apos;", '\''}, {"&lt;", '<'}, {"&gt;", '>'}};
+  } entities[] = {{"&amp;", '&'},
+                  {"&quot;", '"'},
+                  {"&apos;", '\''},
+                  {"&lt;", '<'},
+                  {"&gt;", '>'}};
   char* out = text;
   for (const char* in = text; *in;) {
     bool replaced = false;
@@ -63,11 +68,13 @@ static void unescape(char* text) {
 }
 
 /* Finds attribute `name` inside the tag text [start, end). */
-static bool attribute(const char* start, const char* end, const char* name, char* out, size_t size) {
+static bool attribute(const char* start, const char* end, const char* name,
+                      char* out, size_t size) {
   size_t name_length = strlen(name);
   for (const char* s = start; s + name_length + 2 < end; s++) {
     if (strncmp(s, name, name_length) != 0 || s[name_length] != '=') continue;
-    if (s > start && !(s[-1] == ' ' || s[-1] == '\t' || s[-1] == '\n')) continue;
+    if (s > start && !(s[-1] == ' ' || s[-1] == '\t' || s[-1] == '\n'))
+      continue;
     const char* quote = s + name_length + 1;
     if (*quote != '"' && *quote != '\'') continue;
     char delimiter = *quote;
@@ -95,8 +102,10 @@ static void add_tag(parser_t* p, const char* start, const char* end) {
   if (!p->tags) return;
   osm_tag_t tag;
   if (!attribute(start, end, "k", tag.key, sizeof(tag.key))) return;
-  if (!attribute(start, end, "v", tag.value, sizeof(tag.value))) tag.value[0] = '\0';
-  if (!grow((void**)p->tags, &p->tag_capacity, *p->tag_count + 1, sizeof(osm_tag_t))) {
+  if (!attribute(start, end, "v", tag.value, sizeof(tag.value)))
+    tag.value[0] = '\0';
+  if (!grow((void**)p->tags, &p->tag_capacity, *p->tag_count + 1,
+            sizeof(osm_tag_t))) {
     p->ok = false;
     return;
   }
@@ -105,13 +114,15 @@ static void add_tag(parser_t* p, const char* start, const char* end) {
 
 static void start_node(parser_t* p, const char* start, const char* end) {
   char id[32], lat[32], lon[32];
-  if (!attribute(start, end, "id", id, sizeof(id)) || !attribute(start, end, "lat", lat, sizeof(lat)) ||
+  if (!attribute(start, end, "id", id, sizeof(id)) ||
+      !attribute(start, end, "lat", lat, sizeof(lat)) ||
       !attribute(start, end, "lon", lon, sizeof(lon))) {
     p->ok = false;
     return;
   }
   osm_data_t* d = p->data;
-  if (!grow((void**)&d->nodes, &p->node_capacity, d->node_count + 1, sizeof(osm_node_t))) {
+  if (!grow((void**)&d->nodes, &p->node_capacity, d->node_count + 1,
+            sizeof(osm_node_t))) {
     p->ok = false;
     return;
   }
@@ -129,7 +140,8 @@ static void start_way(parser_t* p, const char* start, const char* end) {
     return;
   }
   osm_data_t* d = p->data;
-  if (!grow((void**)&d->ways, &p->way_capacity, d->way_count + 1, sizeof(osm_way_t))) {
+  if (!grow((void**)&d->ways, &p->way_capacity, d->way_count + 1,
+            sizeof(osm_way_t))) {
     p->ok = false;
     return;
   }
@@ -145,7 +157,8 @@ static void add_ref(parser_t* p, const char* start, const char* end) {
   if (!p->way) return;
   char ref[32];
   if (!attribute(start, end, "ref", ref, sizeof(ref))) return;
-  if (!grow((void**)&p->way->node_refs, &p->ref_capacity, p->way->node_count + 1, sizeof(int64_t))) {
+  if (!grow((void**)&p->way->node_refs, &p->ref_capacity,
+            p->way->node_count + 1, sizeof(int64_t))) {
     p->ok = false;
     return;
   }
@@ -159,7 +172,8 @@ static void start_relation(parser_t* p, const char* start, const char* end) {
     return;
   }
   osm_data_t* d = p->data;
-  if (!grow((void**)&d->relations, &p->relation_capacity, d->relation_count + 1, sizeof(osm_relation_t))) {
+  if (!grow((void**)&d->relations, &p->relation_capacity, d->relation_count + 1,
+            sizeof(osm_relation_t))) {
     p->ok = false;
     return;
   }
@@ -201,8 +215,8 @@ static void element(parser_t* p, const char* start, const char* end) {
     return;
   }
   const char* name_end = start;
-  while (name_end < end && *name_end != ' ' && *name_end != '/' && *name_end != '\n' &&
-         *name_end != '\t')
+  while (name_end < end && *name_end != ' ' && *name_end != '/' &&
+         *name_end != '\n' && *name_end != '\t')
     name_end++;
   size_t length = (size_t)(name_end - start);
   bool self_closing = end > start && end[-1] == '/';
@@ -246,7 +260,8 @@ bool osm_parse(osm_data_t* data, const char* xml) {
     cursor = end + 1;
   }
   if (!p.ok) {
-    LOG_ERROR("osm", "malformed element near byte %ld", (long)(cursor ? cursor - xml : -1));
+    LOG_ERROR("osm", "malformed element near byte %ld",
+              (long)(cursor ? cursor - xml : -1));
     return false;
   }
   if (p.way || p.relation) {
@@ -256,7 +271,8 @@ bool osm_parse(osm_data_t* data, const char* xml) {
   for (size_t i = 0; i < data->way_count; i++) {
     for (size_t r = 0; r < data->ways[i].node_count; r++) {
       if (!osm_find_node(data, data->ways[i].node_refs[r])) {
-        LOG_ERROR("osm", "way %lld refers to missing node %lld", (long long)data->ways[i].id,
+        LOG_ERROR("osm", "way %lld refers to missing node %lld",
+                  (long long)data->ways[i].id,
                   (long long)data->ways[i].node_refs[r]);
         return false;
       }
@@ -297,7 +313,8 @@ void osm_free(osm_data_t* data) {
     free(data->ways[i].node_refs);
     free(data->ways[i].tags);
   }
-  for (size_t i = 0; i < data->relation_count; i++) free(data->relations[i].tags);
+  for (size_t i = 0; i < data->relation_count; i++)
+    free(data->relations[i].tags);
   free(data->nodes);
   free(data->ways);
   free(data->relations);
@@ -310,7 +327,8 @@ static int compare_node_ids(const void* a, const void* b) {
 }
 
 const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id) {
-  /* Files are usually id-ordered; binary search when they are, scan otherwise. */
+  /* Files are usually id-ordered; binary search when they are, scan otherwise.
+   */
   static const osm_data_t* sorted_for = NULL;
   static bool sorted = false;
   if (sorted_for != data) {
@@ -321,7 +339,8 @@ const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id) {
   }
   if (sorted) {
     osm_node_t key = {id, 0, 0};
-    return bsearch(&key, data->nodes, data->node_count, sizeof(osm_node_t), compare_node_ids);
+    return bsearch(&key, data->nodes, data->node_count, sizeof(osm_node_t),
+                   compare_node_ids);
   }
   for (size_t i = 0; i < data->node_count; i++)
     if (data->nodes[i].id == id) return &data->nodes[i];

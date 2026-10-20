@@ -8,7 +8,8 @@ aabb_t aabb_empty(void) {
 }
 
 bool aabb_is_empty(aabb_t box) {
-  return box.min.x > box.max.x || box.min.y > box.max.y || box.min.z > box.max.z;
+  return box.min.x > box.max.x || box.min.y > box.max.y ||
+         box.min.z > box.max.z;
 }
 
 aabb_t aabb_from_center(vec3_t center, vec3_t half_extents) {
@@ -29,8 +30,8 @@ aabb_t aabb_merge(aabb_t a, aabb_t b) {
 }
 
 bool aabb_contains(aabb_t box, vec3_t p) {
-  return p.x >= box.min.x && p.x <= box.max.x && p.y >= box.min.y && p.y <= box.max.y &&
-         p.z >= box.min.z && p.z <= box.max.z;
+  return p.x >= box.min.x && p.x <= box.max.x && p.y >= box.min.y &&
+         p.y <= box.max.y && p.z >= box.min.z && p.z <= box.max.z;
 }
 
 bool aabb_overlaps(aabb_t a, aabb_t b) {
@@ -38,7 +39,9 @@ bool aabb_overlaps(aabb_t a, aabb_t b) {
          a.max.y >= b.min.y && a.min.z <= b.max.z && a.max.z >= b.min.z;
 }
 
-vec3_t aabb_center(aabb_t box) { return vec3_scale(vec3_add(box.min, box.max), 0.5f); }
+vec3_t aabb_center(aabb_t box) {
+  return vec3_scale(vec3_add(box.min, box.max), 0.5f);
+}
 
 vec3_t aabb_half_extents(aabb_t box) {
   return vec3_scale(vec3_sub(box.max, box.min), 0.5f);

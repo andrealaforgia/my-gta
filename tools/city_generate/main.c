@@ -9,10 +9,12 @@
 
 static void usage(void) {
   printf(
-      "city-generate --input <intermediate directory> --config <settings.cfg> --output <package directory> [--name <name>]\n\n"
+      "city-generate --input <intermediate directory> --config <settings.cfg> "
+      "--output <package directory> [--name <name>]\n\n"
       "Turns the intermediate city model into a cooked package: road ribbons,\n"
       "junction patches, pavements, buildings, ground tiles, chunked, with a\n"
-      "manifest carrying provenance. Exits 1 on failure, 2 on bad arguments.\n");
+      "manifest carrying provenance. Exits 1 on failure, 2 on bad "
+      "arguments.\n");
 }
 
 static const char* basename_of(const char* path) {
@@ -26,11 +28,15 @@ int main(int argc, char* argv[]) {
   const char* output = NULL;
   const char* name = NULL;
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) input = argv[++i];
-    else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) config = argv[++i];
-    else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) output = argv[++i];
-    else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) name = argv[++i];
-    else if (strcmp(argv[i], "--help") == 0) {
+    if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
+      input = argv[++i];
+    } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
+      config = argv[++i];
+    } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+      output = argv[++i];
+    } else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) {
+      name = argv[++i];
+    } else if (strcmp(argv[i], "--help") == 0) {
       usage();
       return 0;
     } else {
@@ -52,10 +58,12 @@ int main(int argc, char* argv[]) {
   }
   city_package_t package;
   city_generator_stats_t stats;
-  bool ok = city_generate(&package, &model, &options, name ? name : basename_of(output), &stats);
+  bool ok = city_generate(&package, &model, &options,
+                          name ? name : basename_of(output), &stats);
   city_model_free(&model);
   if (ok) ok = city_package_write(&package, output);
-  if (ok) LOG_INFO("generate", "wrote %s (%zu chunks)", output, package.chunk_count);
+  if (ok)
+    LOG_INFO("generate", "wrote %s (%zu chunks)", output, package.chunk_count);
   city_package_free(&package);
   return ok ? 0 : 1;
 }

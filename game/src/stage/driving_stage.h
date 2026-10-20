@@ -54,13 +54,16 @@ typedef struct {
   int last_drawn;
 } driving_stage_t;
 
-bool driving_stage_init(driving_stage_t* stage, window_t* window, renderer_t* renderer,
-                        audio_device_t* audio, stage_options_t options);
+bool driving_stage_init(driving_stage_t* stage, window_t* window,
+                        renderer_t* renderer, audio_device_t* audio,
+                        stage_options_t options);
 void driving_stage_destroy(driving_stage_t* stage);
 /* One fixed simulation step with the given input. */
-void driving_stage_step(driving_stage_t* stage, driving_input_t input, float dt);
+void driving_stage_step(driving_stage_t* stage, driving_input_t input,
+                        float dt);
 /* Advance the clock by one frame's wall time, simulate, update the camera. */
-void driving_stage_advance(driving_stage_t* stage, driving_input_t input, double frame_seconds);
+void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
+                           double frame_seconds);
 void driving_stage_render(driving_stage_t* stage);
 /* Poll the window and run until quit. */
 void driving_stage_run(driving_stage_t* stage);

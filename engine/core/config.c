@@ -22,7 +22,8 @@ static void strip_comment(char* text) {
 static bool append(config_t* config, const char* key, const char* value) {
   if (config->count == config->capacity) {
     size_t capacity = config->capacity ? config->capacity * 2 : 16;
-    config_entry_t* grown = realloc(config->entries, capacity * sizeof(config_entry_t));
+    config_entry_t* grown =
+        realloc(config->entries, capacity * sizeof(config_entry_t));
     if (!grown) return false;
     config->entries = grown;
     config->capacity = capacity;
@@ -103,18 +104,26 @@ void config_free(config_t* config) {
 }
 
 size_t config_count(const config_t* config) { return config->count; }
-size_t config_malformed_count(const config_t* config) { return config->malformed; }
-size_t config_defaulted_count(const config_t* config) { return config->defaulted; }
+size_t config_malformed_count(const config_t* config) {
+  return config->malformed;
+}
+size_t config_defaulted_count(const config_t* config) {
+  return config->defaulted;
+}
 
 static const char* find(const config_t* config, const char* key) {
   for (size_t i = 0; i < config->count; i++)
-    if (strcmp(config->entries[i].key, key) == 0) return config->entries[i].value;
+    if (strcmp(config->entries[i].key, key) == 0)
+      return config->entries[i].value;
   return NULL;
 }
 
-bool config_has(const config_t* config, const char* key) { return find(config, key) != NULL; }
+bool config_has(const config_t* config, const char* key) {
+  return find(config, key) != NULL;
+}
 
-const char* config_get_string(config_t* config, const char* key, const char* fallback) {
+const char* config_get_string(config_t* config, const char* key,
+                              const char* fallback) {
   const char* value = find(config, key);
   if (!value) {
     config->defaulted++;
@@ -151,5 +160,6 @@ bool config_get_bool(config_t* config, const char* key, bool fallback) {
     config->defaulted++;
     return fallback;
   }
-  return strcmp(value, "true") == 0 || strcmp(value, "1") == 0 || strcmp(value, "yes") == 0;
+  return strcmp(value, "true") == 0 || strcmp(value, "1") == 0 ||
+         strcmp(value, "yes") == 0;
 }

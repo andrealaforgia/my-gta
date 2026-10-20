@@ -100,14 +100,17 @@ static const char* mesh_fragment_source =
     "  vec3 h = normalize(l + v);\n"
     "  float n_dot_l = max(dot(n, l), 0.0);\n"
     "  float shininess = mix(256.0, 4.0, u_roughness);\n"
-    "  float spec = pow(max(dot(n, h), 0.0), shininess) * (1.0 - u_roughness * 0.7);\n"
+    "  float spec = pow(max(dot(n, h), 0.0), shininess) * (1.0 - u_roughness * "
+    "0.7);\n"
     "  vec3 specular_tint = mix(vec3(0.04), albedo, u_metallic);\n"
     "  vec3 diffuse = albedo * (1.0 - u_metallic);\n"
     "  vec3 hemisphere = mix(albedo * 0.35, albedo, n.y * 0.5 + 0.5);\n"
     "  vec3 color = hemisphere * u_ambient\n"
-    "             + (diffuse * n_dot_l + specular_tint * spec * n_dot_l) * u_light_color;\n"
+    "             + (diffuse * n_dot_l + specular_tint * spec * n_dot_l) * "
+    "u_light_color;\n"
     "  float distance = length(u_eye - v_world_position);\n"
-    "  float fog = clamp((distance - u_fog_start) / (u_fog_end - u_fog_start), 0.0, 1.0);\n"
+    "  float fog = clamp((distance - u_fog_start) / (u_fog_end - u_fog_start), "
+    "0.0, 1.0);\n"
     "  color = mix(color, u_sky_color, fog);\n"
     "  out_color = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);\n"
     "}\n";
@@ -118,7 +121,8 @@ static const char* line_vertex_source =
     "layout(location = 1) in vec3 in_color;\n"
     "uniform mat4 u_view_projection;\n"
     "out vec3 v_color;\n"
-    "void main() { v_color = in_color; gl_Position = u_view_projection * vec4(in_position, 1.0); }\n";
+    "void main() { v_color = in_color; gl_Position = u_view_projection * "
+    "vec4(in_position, 1.0); }\n";
 
 static const char* line_fragment_source =
     "#version 410 core\n"
@@ -134,11 +138,13 @@ static const char* text_vertex_source =
     "out vec3 v_color;\n"
     "void main() {\n"
     "  v_color = in_color;\n"
-    "  vec2 ndc = vec2(in_position.x / u_viewport.x * 2.0 - 1.0, 1.0 - in_position.y / u_viewport.y * 2.0);\n"
+    "  vec2 ndc = vec2(in_position.x / u_viewport.x * 2.0 - 1.0, 1.0 - "
+    "in_position.y / u_viewport.y * 2.0);\n"
     "  gl_Position = vec4(ndc, 0.0, 1.0);\n"
     "}\n";
 
-static GLuint compile_shader(GLenum type, const char* source, const char* name) {
+static GLuint compile_shader(GLenum type, const char* source,
+                             const char* name) {
   GLuint shader = glCreateShader(type);
   glShaderSource(shader, 1, &source, NULL);
   glCompileShader(shader);
@@ -154,7 +160,8 @@ static GLuint compile_shader(GLenum type, const char* source, const char* name) 
   return shader;
 }
 
-static GLuint link_program(const char* vertex, const char* fragment, const char* name) {
+static GLuint link_program(const char* vertex, const char* fragment,
+                           const char* name) {
   GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex, name);
   GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment, name);
   if (!vs || !fs) return 0;
@@ -178,19 +185,23 @@ static GLuint link_program(const char* vertex, const char* fragment, const char*
 
 static void check_gl(const char* where) {
   GLenum error = glGetError();
-  if (error != GL_NO_ERROR) LOG_ERROR("renderer", "GL error 0x%x at %s", error, where);
+  if (error != GL_NO_ERROR)
+    LOG_ERROR("renderer", "GL error 0x%x at %s", error, where);
 }
 
 renderer_t* renderer_create(int drawable_width, int drawable_height) {
   renderer_t* r = calloc(1, sizeof(renderer_t));
   if (!r) return NULL;
-  r->mesh_program = link_program(mesh_vertex_source, mesh_fragment_source, "mesh");
-  r->line_program = link_program(line_vertex_source, line_fragment_source, "line");
-  r->text_program = link_program(text_vertex_source, line_fragment_source, "text");
+  r->mesh_program =
+      link_program(mesh_vertex_source, mesh_fragment_source, "mesh");
+  r->line_program =
+      link_program(line_vertex_source, line_fragment_source, "line");
+  r->text_program =
+      link_program(text_vertex_source, line_fragment_source, "text");
   r->line_vertices = malloc(MAX_LINE_VERTICES * sizeof(line_vertex_t));
   r->text_vertices = malloc(MAX_TEXT_VERTICES * sizeof(text_vertex_t));
-  if (!r->mesh_program || !r->line_program || !r->text_program || !r->line_vertices ||
-      !r->text_vertices) {
+  if (!r->mesh_program || !r->line_program || !r->text_program ||
+      !r->line_vertices || !r->text_vertices) {
     renderer_destroy(r);
     return NULL;
   }
@@ -198,9 +209,11 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   glGenBuffers(1, &r->line_vbo);
   glBindVertexArray(r->line_vao);
   glBindBuffer(GL_ARRAY_BUFFER, r->line_vbo);
-  glBufferData(GL_ARRAY_BUFFER, MAX_LINE_VERTICES * sizeof(line_vertex_t), NULL, GL_STREAM_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, MAX_LINE_VERTICES * sizeof(line_vertex_t), NULL,
+               GL_STREAM_DRAW);
   glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(line_vertex_t), (void*)0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(line_vertex_t),
+                        (void*)0);
   glEnableVertexAttribArray(1);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(line_vertex_t),
                         (void*)offsetof(line_vertex_t, color));
@@ -209,9 +222,11 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   glGenBuffers(1, &r->text_vbo);
   glBindVertexArray(r->text_vao);
   glBindBuffer(GL_ARRAY_BUFFER, r->text_vbo);
-  glBufferData(GL_ARRAY_BUFFER, MAX_TEXT_VERTICES * sizeof(text_vertex_t), NULL, GL_STREAM_DRAW);
+  glBufferData(GL_ARRAY_BUFFER, MAX_TEXT_VERTICES * sizeof(text_vertex_t), NULL,
+               GL_STREAM_DRAW);
   glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(text_vertex_t), (void*)0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(text_vertex_t),
+                        (void*)0);
   glEnableVertexAttribArray(1);
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(text_vertex_t),
                         (void*)offsetof(text_vertex_t, color));
@@ -220,7 +235,8 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   static const uint8_t white[4] = {255, 255, 255, 255};
   glGenTextures(1, &r->white_texture);
   glBindTexture(GL_TEXTURE_2D, r->white_texture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+               white);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -286,10 +302,12 @@ mesh_handle_t renderer_upload_mesh(renderer_t* r, const mesh_data_t* mesh) {
   glGenBuffers(1, &m->ebo);
   glBindVertexArray(m->vao);
   glBindBuffer(GL_ARRAY_BUFFER, m->vbo);
-  glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(mesh->vertex_count * sizeof(vertex_t)),
+  glBufferData(GL_ARRAY_BUFFER,
+               (GLsizeiptr)(mesh->vertex_count * sizeof(vertex_t)),
                mesh->vertices, GL_STATIC_DRAW);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m->ebo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(mesh->index_count * sizeof(uint32_t)),
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+               (GLsizeiptr)(mesh->index_count * sizeof(uint32_t)),
                mesh->indices, GL_STATIC_DRAW);
   glEnableVertexAttribArray(0);
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void*)0);
@@ -297,7 +315,8 @@ mesh_handle_t renderer_upload_mesh(renderer_t* r, const mesh_data_t* mesh) {
   glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(vertex_t),
                         (void*)offsetof(vertex_t, normal));
   glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void*)offsetof(vertex_t, u));
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(vertex_t),
+                        (void*)offsetof(vertex_t, u));
   glBindVertexArray(0);
   m->index_count = (GLsizei)mesh->index_count;
   m->used = true;
@@ -308,7 +327,8 @@ mesh_handle_t renderer_upload_mesh(renderer_t* r, const mesh_data_t* mesh) {
 }
 
 void renderer_release_mesh(renderer_t* r, mesh_handle_t handle) {
-  if (handle.id == 0 || handle.id >= MAX_MESHES || !r->meshes[handle.id].used) return;
+  if (handle.id == 0 || handle.id >= MAX_MESHES || !r->meshes[handle.id].used)
+    return;
   gl_mesh_t* m = &r->meshes[handle.id];
   glDeleteBuffers(1, &m->vbo);
   glDeleteBuffers(1, &m->ebo);
@@ -333,11 +353,13 @@ texture_handle_t renderer_upload_texture(renderer_t* r, int width, int height,
   }
   glGenTextures(1, &r->textures[slot]);
   glBindTexture(GL_TEXTURE_2D, r->textures[slot]);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
+               GL_UNSIGNED_BYTE, rgba);
   glGenerateMipmap(GL_TEXTURE_2D);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                  GL_LINEAR_MIPMAP_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   check_gl("renderer_upload_texture");
   texture_handle_t handle = {slot};
@@ -345,7 +367,8 @@ texture_handle_t renderer_upload_texture(renderer_t* r, int width, int height,
 }
 
 void renderer_release_texture(renderer_t* r, texture_handle_t handle) {
-  if (handle.id == 0 || handle.id >= MAX_TEXTURES || !r->textures[handle.id]) return;
+  if (handle.id == 0 || handle.id >= MAX_TEXTURES || !r->textures[handle.id])
+    return;
   glDeleteTextures(1, &r->textures[handle.id]);
   r->textures[handle.id] = 0;
 }
@@ -354,12 +377,14 @@ static void set_vec3(GLuint program, const char* name, vec3_t v) {
   glUniform3f(glGetUniformLocation(program, name), v.x, v.y, v.z);
 }
 
-void renderer_begin_frame(renderer_t* r, render_camera_t camera, render_environment_t env) {
+void renderer_begin_frame(renderer_t* r, render_camera_t camera,
+                          render_environment_t env) {
   r->environment = env;
   r->eye = camera.eye;
   r->view = mat4_look_at(camera.eye, camera.target, camera.up);
   float aspect = (float)r->width / (float)r->height;
-  r->projection = mat4_perspective(camera.fov_y, aspect, camera.near_plane, camera.far_plane);
+  r->projection = mat4_perspective(camera.fov_y, aspect, camera.near_plane,
+                                   camera.far_plane);
   r->view_projection = mat4_multiply(r->projection, r->view);
   r->line_count = 0;
   r->text_count = 0;
@@ -367,37 +392,47 @@ void renderer_begin_frame(renderer_t* r, render_camera_t camera, render_environm
   r->stats.meshes_uploaded = r->meshes_uploaded;
 
   vec3_t sky = env.sky_color;
-  glClearColor(powf(sky.x, 1.0f / 2.2f), powf(sky.y, 1.0f / 2.2f), powf(sky.z, 1.0f / 2.2f), 1.0f);
+  glClearColor(powf(sky.x, 1.0f / 2.2f), powf(sky.y, 1.0f / 2.2f),
+               powf(sky.z, 1.0f / 2.2f), 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_CULL_FACE);
 
   glUseProgram(r->mesh_program);
-  glUniformMatrix4fv(glGetUniformLocation(r->mesh_program, "u_view_projection"), 1, GL_FALSE,
-                     r->view_projection.m);
+  glUniformMatrix4fv(glGetUniformLocation(r->mesh_program, "u_view_projection"),
+                     1, GL_FALSE, r->view_projection.m);
   set_vec3(r->mesh_program, "u_light_direction", vec3_normalize(env.direction));
   set_vec3(r->mesh_program, "u_light_color", env.color);
   glUniform1f(glGetUniformLocation(r->mesh_program, "u_ambient"), env.ambient);
   set_vec3(r->mesh_program, "u_eye", camera.eye);
   set_vec3(r->mesh_program, "u_sky_color", env.sky_color);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_fog_start"), env.fog_start);
+  glUniform1f(glGetUniformLocation(r->mesh_program, "u_fog_start"),
+              env.fog_start);
   glUniform1f(glGetUniformLocation(r->mesh_program, "u_fog_end"), env.fog_end);
   glUniform1i(glGetUniformLocation(r->mesh_program, "u_texture"), 0);
 }
 
-void renderer_draw_mesh(renderer_t* r, mesh_handle_t handle, material_t material, mat4_t model) {
-  if (handle.id == 0 || handle.id >= MAX_MESHES || !r->meshes[handle.id].used) return;
+void renderer_draw_mesh(renderer_t* r, mesh_handle_t handle,
+                        material_t material, mat4_t model) {
+  if (handle.id == 0 || handle.id >= MAX_MESHES || !r->meshes[handle.id].used)
+    return;
   gl_mesh_t* m = &r->meshes[handle.id];
   glUseProgram(r->mesh_program);
-  glUniformMatrix4fv(glGetUniformLocation(r->mesh_program, "u_model"), 1, GL_FALSE, model.m);
+  glUniformMatrix4fv(glGetUniformLocation(r->mesh_program, "u_model"), 1,
+                     GL_FALSE, model.m);
   set_vec3(r->mesh_program, "u_base_color", material.base_color);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_metallic"), material.metallic);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_roughness"), material.roughness);
-  bool textured = material.texture.id != 0 && material.texture.id < MAX_TEXTURES &&
+  glUniform1f(glGetUniformLocation(r->mesh_program, "u_metallic"),
+              material.metallic);
+  glUniform1f(glGetUniformLocation(r->mesh_program, "u_roughness"),
+              material.roughness);
+  bool textured = material.texture.id != 0 &&
+                  material.texture.id < MAX_TEXTURES &&
                   r->textures[material.texture.id] != 0;
-  glUniform1i(glGetUniformLocation(r->mesh_program, "u_has_texture"), textured ? 1 : 0);
+  glUniform1i(glGetUniformLocation(r->mesh_program, "u_has_texture"),
+              textured ? 1 : 0);
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, textured ? r->textures[material.texture.id] : r->white_texture);
+  glBindTexture(GL_TEXTURE_2D,
+                textured ? r->textures[material.texture.id] : r->white_texture);
   glBindVertexArray(m->vao);
   glDrawElements(GL_TRIANGLES, m->index_count, GL_UNSIGNED_INT, 0);
   r->stats.draw_calls++;
@@ -411,20 +446,25 @@ void renderer_draw_line(renderer_t* r, vec3_t a, vec3_t b, vec3_t color) {
   r->line_vertices[r->line_count++] = vb;
 }
 
-void renderer_draw_box_outline(renderer_t* r, mat4_t model, vec3_t h, vec3_t color) {
+void renderer_draw_box_outline(renderer_t* r, mat4_t model, vec3_t h,
+                               vec3_t color) {
   vec3_t corners[8];
   for (int i = 0; i < 8; i++)
     corners[i] = mat4_transform_point(
-        model, vec3((i & 1) ? h.x : -h.x, (i & 2) ? h.y : -h.y, (i & 4) ? h.z : -h.z));
-  static const int edges[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
-                                   {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+        model,
+        vec3((i & 1) ? h.x : -h.x, (i & 2) ? h.y : -h.y, (i & 4) ? h.z : -h.z));
+  static const int edges[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0},
+                                   {4, 5}, {5, 7}, {7, 6}, {6, 4},
+                                   {0, 4}, {1, 5}, {2, 6}, {3, 7}};
   for (int i = 0; i < 12; i++)
     renderer_draw_line(r, corners[edges[i][0]], corners[edges[i][1]], color);
 }
 
-static void push_text_quad(renderer_t* r, float x0, float y0, float x1, float y1, vec3_t color) {
+static void push_text_quad(renderer_t* r, float x0, float y0, float x1,
+                           float y1, vec3_t color) {
   if (r->text_count + 6 > MAX_TEXT_VERTICES) return;
-  text_vertex_t a = {x0, y0, color}, b = {x1, y0, color}, c = {x1, y1, color}, d = {x0, y1, color};
+  text_vertex_t a = {x0, y0, color}, b = {x1, y0, color}, c = {x1, y1, color},
+                d = {x0, y1, color};
   r->text_vertices[r->text_count++] = a;
   r->text_vertices[r->text_count++] = b;
   r->text_vertices[r->text_count++] = c;
@@ -433,8 +473,8 @@ static void push_text_quad(renderer_t* r, float x0, float y0, float x1, float y1
   r->text_vertices[r->text_count++] = d;
 }
 
-void renderer_draw_text(renderer_t* r, float x, float y, float scale, vec3_t color,
-                        const char* text) {
+void renderer_draw_text(renderer_t* r, float x, float y, float scale,
+                        vec3_t color, const char* text) {
   float cursor = x;
   for (const char* c = text; *c; c++) {
     if (*c == '\n') {
@@ -445,8 +485,9 @@ void renderer_draw_text(renderer_t* r, float x, float y, float scale, vec3_t col
     for (int row = 0; row < FONT5X7_HEIGHT; row++)
       for (int column = 0; column < FONT5X7_WIDTH; column++)
         if (font5x7_pixel(*c, row, column))
-          push_text_quad(r, cursor + column * scale, y + row * scale, cursor + (column + 1) * scale,
-                         y + (row + 1) * scale, color);
+          push_text_quad(r, cursor + column * scale, y + row * scale,
+                         cursor + (column + 1) * scale, y + (row + 1) * scale,
+                         color);
     cursor += (FONT5X7_WIDTH + 1) * scale;
   }
 }
@@ -454,11 +495,13 @@ void renderer_draw_text(renderer_t* r, float x, float y, float scale, vec3_t col
 void renderer_end_frame(renderer_t* r) {
   if (r->line_count > 0) {
     glUseProgram(r->line_program);
-    glUniformMatrix4fv(glGetUniformLocation(r->line_program, "u_view_projection"), 1, GL_FALSE,
-                       r->view_projection.m);
+    glUniformMatrix4fv(
+        glGetUniformLocation(r->line_program, "u_view_projection"), 1, GL_FALSE,
+        r->view_projection.m);
     glBindVertexArray(r->line_vao);
     glBindBuffer(GL_ARRAY_BUFFER, r->line_vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(r->line_count * sizeof(line_vertex_t)),
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    (GLsizeiptr)(r->line_count * sizeof(line_vertex_t)),
                     r->line_vertices);
     glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_LINES, 0, (GLsizei)r->line_count);
@@ -466,11 +509,12 @@ void renderer_end_frame(renderer_t* r) {
   }
   if (r->text_count > 0) {
     glUseProgram(r->text_program);
-    glUniform2f(glGetUniformLocation(r->text_program, "u_viewport"), (float)r->width,
-                (float)r->height);
+    glUniform2f(glGetUniformLocation(r->text_program, "u_viewport"),
+                (float)r->width, (float)r->height);
     glBindVertexArray(r->text_vao);
     glBindBuffer(GL_ARRAY_BUFFER, r->text_vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)(r->text_count * sizeof(text_vertex_t)),
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    (GLsizeiptr)(r->text_count * sizeof(text_vertex_t)),
                     r->text_vertices);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -481,7 +525,9 @@ void renderer_end_frame(renderer_t* r) {
   check_gl("renderer_end_frame");
 }
 
-mat4_t renderer_view_projection(const renderer_t* r) { return r->view_projection; }
+mat4_t renderer_view_projection(const renderer_t* r) {
+  return r->view_projection;
+}
 
 render_stats_t renderer_stats(const renderer_t* r) { return r->stats; }
 

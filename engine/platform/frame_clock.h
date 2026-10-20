@@ -14,7 +14,8 @@ typedef struct {
   double alpha; /* fraction of a step elapsed since the last simulated one */
 } frame_clock_t;
 
-frame_clock_t frame_clock_create(double step_seconds, double max_catch_up_seconds);
+frame_clock_t frame_clock_create(double step_seconds,
+                                 double max_catch_up_seconds);
 /* Returns how many fixed steps to simulate for this frame. */
 int frame_clock_advance(frame_clock_t* clock, double frame_seconds);
 

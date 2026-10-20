@@ -10,9 +10,11 @@ static const float step = 1.0f / 120.0f;
 static physics_world_t* world_with_flat_ground(void) {
   physics_world_t* world = physics_world_create();
   /* Two triangles, anticlockwise seen from above, 100 m square. */
-  vec3_t vertices[4] = {vec3(-50, 0, 50), vec3(50, 0, 50), vec3(50, 0, -50), vec3(-50, 0, -50)};
+  vec3_t vertices[4] = {vec3(-50, 0, 50), vec3(50, 0, 50), vec3(50, 0, -50),
+                        vec3(-50, 0, -50)};
   uint32_t indices[6] = {0, 1, 2, 0, 2, 3};
-  physics_add_static_mesh(world, vertices, 4, indices, 6, COLLISION_LAYER_GROUND, 1.0f, 0);
+  physics_add_static_mesh(world, vertices, 4, indices, 6,
+                          COLLISION_LAYER_GROUND, 1.0f, 0);
   return world;
 }
 
@@ -23,8 +25,8 @@ static void simulate(physics_world_t* world, float seconds) {
 
 static void a_dropped_box_lands_on_the_ground_and_rests(void) {
   physics_world_t* world = world_with_flat_ground();
-  body_handle_t handle = physics_add_body(world, vec3(0, 3, 0), quat_identity(), 100.0f,
-                                          vec3(0.5f, 0.25f, 1.0f));
+  body_handle_t handle = physics_add_body(world, vec3(0, 3, 0), quat_identity(),
+                                          100.0f, vec3(0.5f, 0.25f, 1.0f));
   simulate(world, 3.0f);
   const rigid_body_t* body = physics_body(world, handle);
   assert(near_to(body->position.y, 0.25f, 0.02f));
@@ -36,7 +38,8 @@ static void a_dropped_box_lands_on_the_ground_and_rests(void) {
 
 static void landing_reports_a_contact_with_an_impulse(void) {
   physics_world_t* world = world_with_flat_ground();
-  physics_add_body(world, vec3(0, 2, 0), quat_identity(), 100.0f, vec3(0.5f, 0.25f, 1.0f));
+  physics_add_body(world, vec3(0, 2, 0), quat_identity(), 100.0f,
+                   vec3(0.5f, 0.25f, 1.0f));
   float largest = 0;
   for (int i = 0; i < 240; i++) {
     physics_world_step(world, step);
@@ -54,10 +57,11 @@ static void landing_reports_a_contact_with_an_impulse(void) {
 
 static void a_sliding_box_is_stopped_by_a_wall(void) {
   physics_world_t* world = world_with_flat_ground();
-  physics_add_static_box(world, transform_at(vec3(10, 1, 0), quat_identity()), vec3(0.5f, 1, 5),
-                         COLLISION_LAYER_BARRIER, 0.6f, 0);
-  body_handle_t handle = physics_add_body(world, vec3(0, 0.25f, 0), quat_identity(), 100.0f,
-                                          vec3(0.5f, 0.25f, 1.0f));
+  physics_add_static_box(world, transform_at(vec3(10, 1, 0), quat_identity()),
+                         vec3(0.5f, 1, 5), COLLISION_LAYER_BARRIER, 0.6f, 0);
+  body_handle_t handle =
+      physics_add_body(world, vec3(0, 0.25f, 0), quat_identity(), 100.0f,
+                       vec3(0.5f, 0.25f, 1.0f));
   rigid_body_t* body = physics_body(world, handle);
   body->velocity = vec3(15, 0, 0);
   simulate(world, 2.0f);
@@ -69,8 +73,9 @@ static void a_sliding_box_is_stopped_by_a_wall(void) {
 
 static void friction_brings_a_sliding_box_to_rest(void) {
   physics_world_t* world = world_with_flat_ground();
-  body_handle_t handle = physics_add_body(world, vec3(0, 0.25f, 0), quat_identity(), 100.0f,
-                                          vec3(0.5f, 0.25f, 1.0f));
+  body_handle_t handle =
+      physics_add_body(world, vec3(0, 0.25f, 0), quat_identity(), 100.0f,
+                       vec3(0.5f, 0.25f, 1.0f));
   rigid_body_t* body = physics_body(world, handle);
   body->velocity = vec3(5, 0, 0);
   simulate(world, 4.0f);
@@ -81,8 +86,8 @@ static void friction_brings_a_sliding_box_to_rest(void) {
 
 static void ray_casts_report_the_surface_its_friction_and_layer(void) {
   physics_world_t* world = world_with_flat_ground();
-  physics_add_static_box(world, transform_at(vec3(0, 2, -5), quat_identity()), vec3(1, 1, 1),
-                         COLLISION_LAYER_BUILDING, 0.5f, 4242);
+  physics_add_static_box(world, transform_at(vec3(0, 2, -5), quat_identity()),
+                         vec3(1, 1, 1), COLLISION_LAYER_BUILDING, 0.5f, 4242);
   ray_t down = {vec3(3, 10, 3), vec3(0, -1, 0)};
   ray_cast_result_t result;
   assert(physics_ray_cast(world, down, 100, COLLISION_LAYER_ALL, &result));
@@ -103,10 +108,11 @@ static void ray_casts_report_the_surface_its_friction_and_layer(void) {
 static void forces_at_a_point_turn_the_body(void) {
   physics_world_t* world = physics_world_create();
   physics_world_set_gravity(world, vec3(0, 0, 0));
-  body_handle_t handle = physics_add_body(world, vec3(0, 0, 0), quat_identity(), 100.0f,
-                                          vec3(0.5f, 0.25f, 1.0f));
+  body_handle_t handle = physics_add_body(world, vec3(0, 0, 0), quat_identity(),
+                                          100.0f, vec3(0.5f, 0.25f, 1.0f));
   for (int i = 0; i < 60; i++) {
-    physics_apply_force_at_point(world, handle, vec3(100, 0, 0), vec3(0, 0, -1));
+    physics_apply_force_at_point(world, handle, vec3(100, 0, 0),
+                                 vec3(0, 0, -1));
     physics_world_step(world, step);
   }
   const rigid_body_t* body = physics_body(world, handle);
@@ -119,8 +125,8 @@ static void forces_at_a_point_turn_the_body(void) {
 
 static void previous_state_is_kept_for_interpolation(void) {
   physics_world_t* world = world_with_flat_ground();
-  body_handle_t handle = physics_add_body(world, vec3(0, 5, 0), quat_identity(), 100.0f,
-                                          vec3(0.5f, 0.25f, 1.0f));
+  body_handle_t handle = physics_add_body(world, vec3(0, 5, 0), quat_identity(),
+                                          100.0f, vec3(0.5f, 0.25f, 1.0f));
   physics_world_step(world, step);
   const rigid_body_t* body = physics_body(world, handle);
   assert(near(body->previous.position.y, 5));
@@ -132,8 +138,8 @@ static void previous_state_is_kept_for_interpolation(void) {
 
 static void colliders_can_be_listed_for_debug_drawing(void) {
   physics_world_t* world = world_with_flat_ground();
-  physics_add_static_box(world, transform_at(vec3(1, 2, 3), quat_identity()), vec3(1, 1, 1),
-                         COLLISION_LAYER_PROP, 0.5f, 7);
+  physics_add_static_box(world, transform_at(vec3(1, 2, 3), quat_identity()),
+                         vec3(1, 1, 1), COLLISION_LAYER_PROP, 0.5f, 7);
   assert(physics_collider_count(world) == 2);
   const static_collider_t* box = physics_collider_at(world, 1);
   assert(box->shape == COLLIDER_SHAPE_BOX);

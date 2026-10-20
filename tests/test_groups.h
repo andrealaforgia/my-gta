@@ -11,4 +11,5 @@ void run_world_tests(void);
 void run_osm_tests(void);
 void run_city_tests(void);
 void run_generator_tests(void);
+void run_citydrive_tests(void);
 #endif  // TESTS_TEST_GROUPS_H_
