@@ -172,6 +172,18 @@ static void the_car_follows_the_hills(void) {
   stop(&run);
 }
 
+static void the_town_sounds_follow_the_time_of_day(void) {
+  city_run_t run;
+  start(&run);
+  run.stage.hour = 12.0f;
+  audio_state_t noon = driving_stage_audio_state(&run.stage);
+  run.stage.hour = 0.5f;
+  audio_state_t midnight = driving_stage_audio_state(&run.stage);
+  assert(noon.city > 0.9f && midnight.city > 0.9f);
+  assert(noon.night < 0.05f && midnight.night > 0.9f);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -193,5 +205,6 @@ void run_citydrive_tests(void) {
   RUN(the_car_drives_along_the_spawn_road_and_through_a_junction);
   RUN(buildings_stop_the_car);
   RUN(the_car_follows_the_hills);
+  RUN(the_town_sounds_follow_the_time_of_day);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

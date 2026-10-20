@@ -18,6 +18,9 @@ typedef struct {
   float speed_mps;         /* for wind */
   float listener_distance; /* m from the car */
   float master_volume;     /* 0..1 */
+  float city;              /* 0..1: the town's background hum and birds */
+  float night;             /* 0..1: crickets in place of birds */
+  float traffic;           /* 0..1: cars passing close by */
 } audio_state_t;
 
 typedef struct {
@@ -47,18 +50,29 @@ typedef struct {
   float engine_lowpass; /* two poles that take the hiss off the engine */
   float engine_lowpass2;
   float burst_lowpass; /* the exhaust burst is coloured noise, not white */
-  float skid_phase;  /* tyre squeal oscillator, 0..1 */
-  float skid_wobble; /* fast flutter phase, 0..1 */
-  float skid_drift;  /* slow random pitch wander */
+  float skid_phase;    /* tyre squeal oscillator, 0..1 */
+  float skid_wobble;   /* fast flutter phase, 0..1 */
+  float skid_drift;    /* slow random pitch wander */
   float wind_lowpass;
   float intake_lowpass;
   float impact_lowpass;
+  float city_smoothed, night_smoothed, traffic_smoothed;
+  float city_lowpass, city_lowpass2, traffic_lowpass, traffic_lowpass2;
+  float cricket_phase, cricket_gate;
+  float bird_phase, bird_frequency, bird_envelope, bird_rate;
+  int bell_strikes_left; /* strikes still to ring */
+  float bell_timer;      /* seconds until the next strike */
+  float bell_age;        /* seconds since the current strike */
+  float bell_phases[4];
 } audio_mixer_t;
 
 audio_state_t audio_state_default(void);
 audio_mixer_t audio_mixer_create(int sample_rate);
 void audio_mixer_set_state(audio_mixer_t* mixer, audio_state_t state);
 void audio_mixer_trigger_impact(audio_mixer_t* mixer, float strength);
+/* A church bell strikes `strikes` times, two seconds apart. Ignored while a
+ * peal is still going. */
+void audio_mixer_trigger_bell(audio_mixer_t* mixer, int strikes);
 /* Mono frames in -1..1. */
 void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames);
 

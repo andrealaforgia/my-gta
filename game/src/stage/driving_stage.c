@@ -105,6 +105,13 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     return state;
   }
   state.engine_running = true;
+  state.city = 1.0f;
+  state.night = daylight_lamp_glow(stage->hour);
+  if (stage->traffic) {
+    const rigid_body_t* me = physics_body(stage->physics, car->body);
+    float d = traffic_nearest_distance(stage->traffic, me->position);
+    state.traffic = d < 30.0f ? 1.0f - d / 30.0f : 0.0f;
+  }
   state.rpm = vehicle_rpm(car);
   state.throttle =
       car->gear == VEHICLE_GEAR_REVERSE ? car->brake : car->throttle;
@@ -156,8 +163,12 @@ void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
     driving_stage_step(stage, input, (float)PHYSICS_STEP);
   stage->physics_ms = (platform_seconds() - started) * 1000.0;
   if (!stage->paused && !stage->map_open && stage->hour_seconds > 0) {
+    float before = stage->hour;
     stage->hour += (float)frame_seconds / stage->hour_seconds;
     if (stage->hour >= 24.0f) stage->hour -= 24.0f;
+    int strikes = daylight_bell_strikes(before, stage->hour);
+    if (strikes > 0 && stage->audio)
+      audio_device_trigger_bell(stage->audio, strikes);
   }
   send_audio_state(stage);
   const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);

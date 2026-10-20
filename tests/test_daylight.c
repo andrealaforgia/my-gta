@@ -66,7 +66,20 @@ static void lamps_come_on_at_dusk_and_go_off_at_dawn(void) {
   assert(daylight_lamp_glow(8.0f) < 0.05f);
 }
 
+static void the_bell_strikes_the_hour_by_day_and_stays_quiet_at_night(void) {
+  assert(daylight_bell_strikes(8.99f, 9.01f) == 9);
+  assert(daylight_bell_strikes(11.99f, 12.01f) == 12);
+  assert(daylight_bell_strikes(12.99f, 13.01f) == 1); /* one o'clock */
+  assert(daylight_bell_strikes(18.99f, 19.01f) == 7);
+  assert(daylight_bell_strikes(9.2f, 9.4f) == 0);    /* nothing mid-hour */
+  assert(daylight_bell_strikes(23.99f, 0.01f) == 0); /* asleep at midnight */
+  assert(daylight_bell_strikes(2.99f, 3.01f) == 0);
+  assert(daylight_bell_strikes(6.99f, 7.01f) == 7); /* the morning bell */
+  assert(daylight_bell_strikes(22.99f, 23.01f) == 0);
+}
+
 void run_daylight_tests(void) {
+  RUN(the_bell_strikes_the_hour_by_day_and_stays_quiet_at_night);
   RUN(noon_is_bright_with_the_sun_overhead);
   RUN(midnight_is_dark_with_stars_and_lit_lamps);
   RUN(the_sun_rises_in_the_east_and_sets_in_the_west);

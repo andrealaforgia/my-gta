@@ -45,6 +45,8 @@ traffic_car_t traffic_car(const traffic_t* traffic, size_t index);
  * `distance` metres in. For setting up scenes and tests. */
 void traffic_car_place(traffic_t* traffic, size_t index, int route,
                        int direction, float distance);
+/* Distance from a point to the nearest moving car, 1e9 with none. */
+float traffic_nearest_distance(const traffic_t* traffic, vec3_t point);
 /* Draws the cars within `range` of the eye; returns how many. */
 int traffic_draw(const traffic_t* traffic, const fleet_t* fleet,
                  renderer_t* renderer, vec3_t eye, float range,

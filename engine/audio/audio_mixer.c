@@ -6,7 +6,7 @@
 #define CYLINDERS 4
 
 audio_state_t audio_state_default(void) {
-  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f};
+  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0};
   return state;
 }
 
@@ -42,6 +42,8 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   mixer.target = mixer.state;
   mixer.noise = 0x9e3779b9u;
   mixer.rpm_smoothed = 900;
+  mixer.bell_age = 99.0f;
+  mixer.bird_rate = 1.0f / (48000.0f * 2.5f);
   bandpass_set(&mixer.pipe_low, 150, 1.4f, sample_rate);
   bandpass_set(&mixer.pipe_high, 420, 2.5f, sample_rate);
   bandpass_set(&mixer.skid_filter, 1300, 1.2f, sample_rate);
@@ -57,6 +59,13 @@ void audio_mixer_trigger_impact(audio_mixer_t* mixer, float strength) {
     mixer->impact_strength = strength > 1 ? 1 : strength;
     mixer->impact = 1.0f;
   }
+}
+
+void audio_mixer_trigger_bell(audio_mixer_t* mixer, int strikes) {
+  if (strikes <= 0 || mixer->bell_strikes_left > 0 || mixer->bell_age < 8.0f)
+    return;
+  mixer->bell_strikes_left = strikes > 12 ? 12 : strikes;
+  mixer->bell_timer = 0;
 }
 
 static float noise(audio_mixer_t* mixer) {
@@ -165,6 +174,68 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     mixer->wind_lowpass = smooth(mixer->wind_lowpass, noise(mixer), 0.015f);
     float wind = mixer->wind_lowpass * wind_level * wind_level * 0.9f;
 
-    out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind) * gain);
+    /* The town: a low rumble, cars close by, birds by day, crickets by night.
+     */
+    mixer->city_smoothed =
+        smooth(mixer->city_smoothed, s->city, smoothing * 0.1f);
+    mixer->night_smoothed =
+        smooth(mixer->night_smoothed, s->night, smoothing * 0.1f);
+    mixer->traffic_smoothed =
+        smooth(mixer->traffic_smoothed, s->traffic, smoothing * 0.3f);
+    float hush = noise(mixer);
+    mixer->city_lowpass = smooth(mixer->city_lowpass, hush, 0.01f);
+    mixer->city_lowpass2 =
+        smooth(mixer->city_lowpass2, mixer->city_lowpass, 0.02f);
+    float town = mixer->city_lowpass2 * 1.4f * mixer->city_smoothed;
+    mixer->traffic_lowpass = smooth(mixer->traffic_lowpass, hush, 0.04f);
+    mixer->traffic_lowpass2 =
+        smooth(mixer->traffic_lowpass2, mixer->traffic_lowpass, 0.1f);
+    town += mixer->traffic_lowpass2 * 2.2f * mixer->traffic_smoothed;
+    float day = (1.0f - mixer->night_smoothed) * mixer->city_smoothed;
+    if (mixer->bird_envelope < 0.01f && day > 0.05f &&
+        (noise(mixer) * 0.5f + 0.5f) < mixer->bird_rate * 24000.0f * day) {
+      mixer->bird_envelope = 1.0f;
+      mixer->bird_frequency = 3200.0f + 1800.0f * (noise(mixer) * 0.5f + 0.5f);
+    }
+    float bird = 0;
+    if (mixer->bird_envelope > 0.001f) {
+      mixer->bird_phase += mixer->bird_frequency * dt;
+      if (mixer->bird_phase >= 1.0f) mixer->bird_phase -= 1.0f;
+      mixer->bird_frequency *= 1.0f - 1.5f * dt; /* falls as it sings */
+      bird = sinf(2.0f * (float)M_PI * mixer->bird_phase) *
+             mixer->bird_envelope * 0.035f * day;
+      mixer->bird_envelope *= expf(-dt * 38.0f);
+    }
+    mixer->cricket_gate += 29.0f * dt;
+    if (mixer->cricket_gate >= 1.0f) mixer->cricket_gate -= 1.0f;
+    mixer->cricket_phase += (float)mixer->sample_rate / 11.0f * dt;
+    if (mixer->cricket_phase >= 1.0f) mixer->cricket_phase -= 1.0f;
+    float cricket = sinf(2.0f * (float)M_PI * mixer->cricket_phase) *
+                    (mixer->cricket_gate < 0.55f ? 1.0f : 0.0f) * 0.02f *
+                    mixer->night_smoothed * mixer->city_smoothed;
+    /* The bell: a strike every three seconds, each ringing out. */
+    mixer->bell_timer -= dt;
+    mixer->bell_age += dt;
+    if (mixer->bell_strikes_left > 0 && mixer->bell_timer <= 0) {
+      mixer->bell_strikes_left--;
+      mixer->bell_timer = 3.0f;
+      mixer->bell_age = 0;
+    }
+    float bell = 0;
+    if (mixer->bell_age < 8.0f) {
+      static const float ratio[4] = {0.5f, 1.0f, 2.0f, 3.0f};
+      static const float amp[4] = {0.55f, 1.0f, 0.65f, 0.3f};
+      static const float tau[4] = {1.1f, 0.9f, 0.6f, 0.35f};
+      for (int k = 0; k < 4; k++) {
+        mixer->bell_phases[k] += 220.0f * ratio[k] * dt;
+        if (mixer->bell_phases[k] >= 1.0f) mixer->bell_phases[k] -= 1.0f;
+        bell += sinf(2.0f * (float)M_PI * mixer->bell_phases[k]) * amp[k] *
+                expf(-mixer->bell_age / tau[k]);
+      }
+      bell *= 0.16f;
+    }
+    out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
+                        bird + cricket + bell) *
+                       gain);
   }
 }

@@ -315,6 +315,17 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
   }
 }
 
+float traffic_nearest_distance(const traffic_t* t, vec3_t point) {
+  float nearest = 1e9f;
+  for (size_t i = 0; i < t->car_count; i++) {
+    float dx = t->cars[i].position.x - point.x,
+          dz = t->cars[i].position.z - point.z;
+    float d = sqrtf(dx * dx + dz * dz);
+    if (d < nearest) nearest = d;
+  }
+  return nearest;
+}
+
 int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
                  vec3_t eye, float range, float lights_on) {
   int drawn = 0;

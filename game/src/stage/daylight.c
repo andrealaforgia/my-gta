@@ -76,3 +76,12 @@ render_environment_t daylight_environment(float hour) {
   e.spot_intensity = 0;
   return e;
 }
+
+int daylight_bell_strikes(float before, float now) {
+  int was = (int)floorf(wrap_hour(before));
+  int is = (int)floorf(wrap_hour(now));
+  if (was == is) return 0;
+  if (is < 7 || is > 22) return 0;
+  int strikes = is % 12;
+  return strikes == 0 ? 12 : strikes;
+}
