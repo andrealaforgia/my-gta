@@ -588,9 +588,9 @@ void driving_stage_render(driving_stage_t* stage) {
       traffic_draw(stage->traffic, &stage->fleet, r, eye, 220.0f, night);
   }
   if (stage->show_debug) draw_debug(stage, chassis);
-  if (stage->map_open)
+  if (stage->map_open) {
     draw_map(stage);
-  else {
+  } else {
     draw_hud(stage);
     draw_minimap(stage);
   }
