@@ -95,6 +95,10 @@ int main(int argc, char* argv[]) {
     stage.scene.environment.fog_end = 6000.0f;
     stage.scene.environment.shadow_radius = 0;
   }
+  if (getenv("SNAPSHOT_LOOKUP")) {
+    stage.camera.look_target = vec3_add(
+        stage.camera.position, vec3(20, atof(getenv("SNAPSHOT_LOOKUP")), -60));
+  }
   driving_stage_render(&stage);
   /* Time repeated frames for a first performance figure. */
   const int timed_frames = 60;

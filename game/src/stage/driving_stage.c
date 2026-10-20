@@ -525,6 +525,7 @@ void driving_stage_render(driving_stage_t* stage) {
   environment.fog_end = stage->scene.environment.fog_end;
   environment.shadow_radius = stage->scene.environment.shadow_radius;
   daylight_apply_weather(&environment, stage->rain);
+  environment.cloud_time = stage->rain_clock;
   /* The sun's shadows fade with it; the moon casts none. */
   if (night > 0.7f) environment.shadow_radius = 0;
   /* Headlights: a cone from the nose along the car's heading. */

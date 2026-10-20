@@ -108,7 +108,22 @@ static void rain_greys_the_day_closes_the_fog_and_hides_the_stars(void) {
   assert(half.fog_end < clear.fog_end && half.fog_end > rain.fog_end);
 }
 
+static void clouds_drift_and_thicken_with_rain(void) {
+  render_environment_t clear = daylight_environment(11.0f);
+  assert(clear.cloud_cover > 0.2f && clear.cloud_cover < 0.6f);
+  render_environment_t rain = clear;
+  daylight_apply_weather(&rain, 1.0f);
+  assert(rain.cloud_cover > 0.95f);
+  render_environment_t half = clear;
+  daylight_apply_weather(&half, 0.5f);
+  assert(half.cloud_cover > clear.cloud_cover &&
+         half.cloud_cover < rain.cloud_cover);
+  /* Clouds are as dark at night as the light that falls on them. */
+  assert(daylight_environment(0.0f).cloud_cover > 0.2f);
+}
+
 void run_daylight_tests(void) {
+  RUN(clouds_drift_and_thicken_with_rain);
   RUN(rain_greys_the_day_closes_the_fog_and_hides_the_stars);
   RUN(the_bell_strikes_the_hour_by_day_and_stays_quiet_at_night);
   RUN(noon_is_bright_with_the_sun_overhead);

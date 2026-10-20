@@ -81,7 +81,7 @@ static void rendering_draws_only_what_the_camera_sees(void) {
       {0, 1, 0}, {1, 1, 1}, 0.3f,      {0.5f, 0.6f, 0.8f},
       100,       400,       0,         {0.3f, 0.5f, 0.8f},
       0,         0,         {0, 0, 0}, {0, 0, -1},
-      0};
+      0,         0.3f,      0};
   renderer_begin_frame(renderer, camera, environment);
   assert(world_render(&world, renderer) == 1);
   assert(renderer_stats(renderer).draw_calls == 1);

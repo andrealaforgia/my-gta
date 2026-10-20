@@ -31,7 +31,7 @@ float daylight_lamp_glow(float hour) {
 render_environment_t daylight_environment(float hour) {
   hour = wrap_hour(hour);
   float height = daylight_sun_height(hour);
-  float day = smooth(-0.1f, 0.25f, height); /* 0 at night, 1 by mid-morning */
+  float day = smooth(-0.26f, 0.25f, height); /* 0 at night, 1 by mid-morning */
   float warm = 1.0f - smooth(0.0f, 0.4f, fabsf(height)); /* near the horizon */
   warm *= smooth(-0.25f, 0.0f, height);
 
@@ -74,6 +74,8 @@ render_environment_t daylight_environment(float hour) {
   e.spot_position = vec3(0, 0, 0);
   e.spot_direction = vec3(0, 0, -1);
   e.spot_intensity = 0;
+  e.cloud_cover = 0.38f;
+  e.cloud_time = 0;
   return e;
 }
 
@@ -107,4 +109,5 @@ void daylight_apply_weather(render_environment_t* e, float rain) {
   e->star_level *= 1.0f - clamp01(rain * 2.0f);
   e->sun_disc *= 1.0f - clamp01(rain * 2.0f);
   e->shadow_radius *= 1.0f - 0.5f * rain;
+  e->cloud_cover = e->cloud_cover + (1.0f - e->cloud_cover) * rain;
 }

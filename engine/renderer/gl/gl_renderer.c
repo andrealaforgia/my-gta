@@ -281,7 +281,28 @@ static const char* sky_fragment_source =
     "uniform vec3 u_sun_color;\n"
     "uniform float u_stars;\n"
     "uniform float u_sun_disc;\n"
+    "uniform float u_cloud_cover;\n"
+    "uniform float u_cloud_time;\n"
+    "uniform float u_cloud_light;\n"
     "out vec4 out_color;\n"
+    "float hash2(vec2 p) {\n"
+    "  p = fract(p * vec2(0.1031, 0.1030));\n"
+    "  p += dot(p, p.yx + 33.33);\n"
+    "  return fract((p.x + p.y) * p.x);\n"
+    "}\n"
+    "float value_noise(vec2 p) {\n"
+    "  vec2 i = floor(p), f = fract(p);\n"
+    "  f = f * f * (3.0 - 2.0 * f);\n"
+    "  return mix(mix(hash2(i), hash2(i + vec2(1, 0)), f.x),\n"
+    "             mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), f.x), "
+    "f.y);\n"
+    "}\n"
+    "float fbm(vec2 p) {\n"
+    "  float v = 0.0, a = 0.5;\n"
+    "  for (int k = 0; k < 5; k++) { v += a * value_noise(p); p = p * 2.03 + "
+    "11.7; a *= 0.5; }\n"
+    "  return v;\n"
+    "}\n"
     "float hash(vec3 p) {\n"
     "  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));\n"
     "  p *= 17.0;\n"
@@ -299,10 +320,28 @@ static const char* sky_fragment_source =
     "  color += u_sun_color * smoothstep(0.9995, 0.9999, along) * 6.0 * "
     "u_sun_disc;\n"
     "  if (dir.y > 0.0 && u_stars > 0.0) {\n"
-    "    vec3 cell = floor(dir * 140.0);\n"
+    "    vec3 scaled = dir * 260.0;\n"
+    "    vec3 cell = floor(scaled);\n"
     "    float h = hash(cell);\n"
-    "    float star = step(0.9965, h) * smoothstep(0.0, 0.35, dir.y);\n"
-    "    color += vec3(0.9, 0.92, 1.0) * star * u_stars * (0.5 + h);\n"
+    "    vec3 centre = cell + 0.25 + 0.5 * vec3(fract(h * 7.0), fract(h * "
+    "13.0), fract(h * 23.0));\n"
+    "    float d = length(scaled - centre);\n"
+    "    float star = step(0.992, h) * smoothstep(0.55, 0.0, d) * "
+    "smoothstep(0.0, 0.35, dir.y);\n"
+    "    color += vec3(0.9, 0.92, 1.0) * star * u_stars * (0.4 + h);\n"
+    "  }\n"
+    "  if (dir.y > 0.0) {\n"
+    "    vec2 sky = dir.xz / (dir.y + 0.28) * 1.1 + vec2(u_cloud_time * 0.012, "
+    "u_cloud_time * 0.005);\n"
+    "    float n = fbm(sky);\n"
+    "    float lo = 0.74 - u_cloud_cover * 0.44;\n"
+    "    float density = smoothstep(lo, lo + 0.2, n);\n"
+    "    density *= smoothstep(0.0, 0.16, dir.y);\n"
+    "    float thick = clamp((n - 0.45) * 2.0, 0.0, 1.0);\n"
+    "    vec3 cloud = mix(vec3(1.0) * u_cloud_light, vec3(0.55, 0.58, 0.64) * "
+    "u_cloud_light, thick * 0.6);\n"
+    "    cloud = mix(cloud, u_horizon, 0.2);\n"
+    "    color = mix(color, cloud, density * (0.55 + 0.4 * u_cloud_cover));\n"
     "  }\n"
     "  if (dir.y < 0.0) color = mix(u_horizon, u_horizon * 0.8, "
     "min(-dir.y * 4.0, 1.0));\n"
@@ -713,6 +752,12 @@ static void draw_sky(renderer_t* r) {
   glUniform1f(glGetUniformLocation(r->sky_program, "u_stars"), env->star_level);
   glUniform1f(glGetUniformLocation(r->sky_program, "u_sun_disc"),
               env->sun_disc);
+  glUniform1f(glGetUniformLocation(r->sky_program, "u_cloud_cover"),
+              env->cloud_cover);
+  glUniform1f(glGetUniformLocation(r->sky_program, "u_cloud_time"),
+              env->cloud_time);
+  glUniform1f(glGetUniformLocation(r->sky_program, "u_cloud_light"),
+              fminf(vec3_length(env->color) * 0.5f + 0.03f, 1.0f));
   glDisable(GL_DEPTH_TEST);
   glDisable(GL_CULL_FACE);
   glBindVertexArray(r->sky_vao);

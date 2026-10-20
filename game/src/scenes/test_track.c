@@ -163,6 +163,8 @@ bool scene_build_test_track(scene_t* scene, scene_context_t c) {
                                       1.0f,
                                       vec3(0, 0, 0),
                                       vec3(0, 0, -1),
+                                      0.0f,
+                                      0.4f,
                                       0.0f};
   scene->environment = environment;
   LOG_INFO("scene", "test track: %zu entities, %zu colliders",

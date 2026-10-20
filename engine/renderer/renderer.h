@@ -65,6 +65,10 @@ typedef struct {
   vec3_t spot_position;
   vec3_t spot_direction;
   float spot_intensity;
+  /* Clouds in the sky: how much of it they cover (0 clear, 1 overcast) and
+   * a clock in seconds that carries them along on the wind. */
+  float cloud_cover;
+  float cloud_time;
 } render_environment_t;
 
 typedef struct {
