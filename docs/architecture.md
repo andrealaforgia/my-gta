@@ -65,9 +65,9 @@ anticlockwise front faces.
 ## Performance baseline (2026-10-20)
 
 Reference machine: Apple M4 Pro, 24 GB, macOS 26.5, 1920x1080 drawable.
-`render_snapshot` on the Pordenone package without service roads (80
-chunks, 23k triangles, 1472 colliders, shadows on): 472 draw calls across
-the shadow and main passes, 17k triangles after frustum culling, 2.3 ms
-per frame measured over 60 frames with vsync off at a street-level view.
+`render_snapshot` on the full Pordenone package (90 chunks, about 100k
+triangles with trees, 2300 colliders, shadows on): about 700 draw calls
+across the shadow and main passes, 130k triangles drawn at a street-level
+view, 1.8 to 2.3 ms per frame measured over 60 frames with vsync off.
 The physics step with the car is well under a millisecond. No instancing,
 LOD or chunk streaming yet; every chunk is loaded at start.

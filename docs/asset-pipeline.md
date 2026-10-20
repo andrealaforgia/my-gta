@@ -60,7 +60,10 @@ i a b c
 
 Materials are names the game binds to its procedural textures: `road`,
 `junction`, `pavement`, `kerb`, `grass`, `roof`, `facade0..3`, `lamp`,
-`paving` (pedestrian streets, paths, squares), `parking`, `park`, `water`. The game
+`paving` (pedestrian streets, paths, squares), `parking`, `park`, `water`,
+`trunk`, `leaves`. Facade textures hold one window bay per repeat and one
+storey per repeat, so walls repeat them per `window_width` and
+`storey_height`; roofs repeat a terracotta tile texture every 2.5 m. The game
 merges all parts of one material in a chunk into one mesh, so draw calls
 are about ten per chunk. Collider parts become static triangle meshes in
 the physics world with the layer and friction given.
@@ -93,6 +96,9 @@ the physics world with the layer and friction given.
 - Areas are flat polygons: water (2 cm, no collider), parks (2.5 cm,
   no collider, tinted grass), car parks (asphalt, 1 cm below the roads,
   collider), squares (paving, 12 mm above the roads, collider).
+- Parks get trees on a jittered grid every `tree_spacing` metres, kept
+  clear of the park edge: a trunk with a collider on the prop layer and a
+  canopy of boxes without one. `tree_spacing = 0` turns them off.
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

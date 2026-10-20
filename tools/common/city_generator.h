@@ -30,6 +30,7 @@ typedef struct {
   float ground_friction;
   float building_friction;
   float lamp_spacing; /* metres between lamp posts, 0 for none */
+  float tree_spacing; /* metres between trees in parks, 0 for none */
 } city_generator_options_t;
 
 typedef struct {
@@ -40,6 +41,7 @@ typedef struct {
   size_t pavements;
   size_t ground_tiles;
   size_t lamps;
+  size_t trees;
   size_t areas;
 } city_generator_stats_t;
 

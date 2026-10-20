@@ -13,9 +13,9 @@
 #include "triangulate.h"
 
 city_generator_options_t city_generator_default_options(void) {
-  city_generator_options_t o = {150.0f, 0.06f, true, 2.0f, 0.18f,
-                                8.0f,   3.0f,  3.2f, 4,    0.25f,
-                                1.0f,   0.9f,  0.7f, 0.6f, 28.0f};
+  city_generator_options_t o = {150.0f, 0.06f, true,  2.0f,  0.18f, 8.0f,
+                                3.0f,   3.2f,  4,     0.25f, 1.0f,  0.9f,
+                                0.7f,   0.6f,  28.0f, 14.0f};
   return o;
 }
 
@@ -52,6 +52,7 @@ bool city_generator_options_load(city_generator_options_t* o,
   o->building_friction =
       config_get_float(&config, "building_friction", o->building_friction);
   o->lamp_spacing = config_get_float(&config, "lamp_spacing", o->lamp_spacing);
+  o->tree_spacing = config_get_float(&config, "tree_spacing", o->tree_spacing);
   if (config_defaulted_count(&config) > 0)
     LOG_WARN("generate", "%s: %zu settings missing, defaults used", path,
              config_defaulted_count(&config));
@@ -66,12 +67,13 @@ bool city_generator_options_load(city_generator_options_t* o,
 uint64_t city_generator_options_hash(const city_generator_options_t* o) {
   /* FNV-1a over a textual rendering so padding bytes do not matter. */
   char text[512];
-  snprintf(text, sizeof(text), "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g",
-           o->chunk_size, o->road_height, o->pavements, o->pavement_width,
-           o->kerb_height, o->road_texture_length, o->window_width,
-           o->storey_height, o->facade_variants, o->ground_uv_scale,
-           o->road_friction, o->pavement_friction, o->ground_friction,
-           o->building_friction, o->lamp_spacing);
+  snprintf(text, sizeof(text),
+           "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g %g", o->chunk_size,
+           o->road_height, o->pavements, o->pavement_width, o->kerb_height,
+           o->road_texture_length, o->window_width, o->storey_height,
+           o->facade_variants, o->ground_uv_scale, o->road_friction,
+           o->pavement_friction, o->ground_friction, o->building_friction,
+           o->lamp_spacing, o->tree_spacing);
   uint64_t hash = 1469598103934665603ull;
   for (const char* c = text; *c; c++)
     hash = (hash ^ (uint8_t)*c) * 1099511628211ull;
@@ -660,6 +662,97 @@ static bool add_area_polygon(city_chunk_t* chunk, city_part_t* part,
   return true;
 }
 
+static bool point_inside(local_point_t p, const local_point_t* ring,
+                         size_t count) {
+  bool inside = false;
+  for (size_t i = 0, j = count - 1; i < count; j = i++) {
+    bool crosses = (ring[i].z > p.z) != (ring[j].z > p.z);
+    if (!crosses) continue;
+    double at =
+        (ring[j].x - ring[i].x) * (p.z - ring[i].z) / (ring[j].z - ring[i].z) +
+        ring[i].x;
+    if (p.x < at) inside = !inside;
+  }
+  return inside;
+}
+
+/* Trees on a jittered grid inside a park: a trunk with a collider and a
+ * canopy of three boxes. Deterministic from the area's source id. */
+static bool generate_trees(layout_t* layout, const city_area_t* area,
+                           city_generator_stats_t* stats) {
+  const city_generator_options_t* o = layout->options;
+  if (o->tree_spacing <= 0 || area->point_count < 3) return true;
+  double min_x = 1e30, max_x = -1e30, min_z = 1e30, max_z = -1e30;
+  for (size_t i = 0; i < area->point_count; i++) {
+    min_x = fmin(min_x, area->points[i].x),
+    max_x = fmax(max_x, area->points[i].x);
+    min_z = fmin(min_z, area->points[i].z),
+    max_z = fmax(max_z, area->points[i].z);
+  }
+  city_chunk_t* chunk =
+      chunk_at(layout, centroid(area->points, area->point_count));
+  city_part_t* trunks = city_chunk_add_part(chunk, "trunk", PART_COLLIDER_MESH,
+                                            COLLISION_LAYER_PROP, 0.5f,
+                                            (uint64_t)area->source_id);
+  city_part_t* leaves =
+      trunks ? city_chunk_add_part(chunk, "leaves", PART_COLLIDER_NONE, 0, 0,
+                                   (uint64_t)area->source_id)
+             : NULL;
+  if (!trunks || !leaves) return false;
+  trunks = &chunk->parts[chunk->part_count - 2];
+  uint64_t seed = (uint64_t)area->source_id * 0x9e3779b97f4a7c15ull;
+  int planted = 0;
+  for (double z = min_z + o->tree_spacing * 0.5; z < max_z;
+       z += o->tree_spacing) {
+    for (double x = min_x + o->tree_spacing * 0.5; x < max_x;
+         x += o->tree_spacing) {
+      seed ^= seed >> 12, seed ^= seed << 25, seed ^= seed >> 27;
+      double jx = ((seed >> 11) % 1000) / 1000.0 - 0.5,
+             jz = ((seed >> 31) % 1000) / 1000.0 - 0.5;
+      local_point_t p = {x + jx * o->tree_spacing * 0.6,
+                         z + jz * o->tree_spacing * 0.6};
+      /* Keep the canopy inside the park. */
+      local_point_t margin[4] = {{p.x - 2.5, p.z},
+                                 {p.x + 2.5, p.z},
+                                 {p.x, p.z - 2.5},
+                                 {p.x, p.z + 2.5}};
+      bool fits = point_inside(p, area->points, area->point_count);
+      for (int k = 0; k < 4 && fits; k++)
+        fits = point_inside(margin[k], area->points, area->point_count);
+      if (!fits) continue;
+      float height = 4.5f + (float)((seed >> 40) % 300) / 100.0f;
+      float crown = 1.6f + (float)((seed >> 50) % 100) / 100.0f;
+      if (!mesh_data_add_box(&trunks->mesh,
+                             vec3((float)p.x, height * 0.5f, (float)p.z),
+                             vec3(0.18f, height * 0.5f, 0.18f)))
+        return false;
+      vec3_t top = vec3((float)p.x, height, (float)p.z);
+      if (!mesh_data_add_box(&leaves->mesh,
+                             vec3_add(top, vec3(0, crown * 0.5f, 0)),
+                             vec3(crown * 0.8f, crown * 0.9f, crown * 0.8f)) ||
+          !mesh_data_add_box(&leaves->mesh,
+                             vec3_add(top, vec3(0, crown * 0.6f, 0)),
+                             vec3(crown * 0.7f, crown * 0.6f, crown * 0.7f)) ||
+          !mesh_data_add_box(
+              &leaves->mesh,
+              vec3_add(top, vec3(crown * 0.5f, -crown * 0.2f, crown * 0.3f)),
+              vec3(crown * 0.6f, crown * 0.5f, crown * 0.6f)))
+        return false;
+      planted++;
+    }
+  }
+  if (planted == 0) {
+    mesh_data_free(&trunks->mesh);
+    mesh_data_free(&leaves->mesh);
+    chunk->part_count -= 2;
+    return true;
+  }
+  finish_part(chunk, trunks);
+  finish_part(chunk, leaves);
+  stats->trees += (size_t)planted;
+  return true;
+}
+
 static bool generate_area(layout_t* layout, const city_area_t* area,
                           city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -703,6 +796,7 @@ static bool generate_area(layout_t* layout, const city_area_t* area,
     return true;
   }
   stats->areas++;
+  if (area->kind == AREA_PARK) return generate_trees(layout, area, stats);
   return true;
 }
 
@@ -794,7 +888,7 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   for (size_t i = 0; i < merged_count && roof_ok; i++)
     roof_ok =
         add_vertex(&roof->mesh, at(merged[i], h), vec3(0, 1, 0),
-                   (float)(merged[i].x * 0.1), (float)(merged[i].z * 0.1));
+                   (float)(merged[i].x * 0.4), (float)(merged[i].z * 0.4));
   for (size_t t = 0; t < triangles && roof_ok; t++) {
     local_point_t tri[3] = {merged[indices[t * 3]], merged[indices[t * 3 + 1]],
                             merged[indices[t * 3 + 2]]};
@@ -985,12 +1079,13 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     return false;
   }
   choose_spawn(package, model, options);
-  LOG_INFO(
-      "generate",
-      "%d x %d chunks, %zu roads, %zu junction patches, %zu pavements, "
-      "%zu lamps, %zu areas, %zu buildings (%zu approximated), %zu triangles",
-      layout.columns, layout.rows, stats->roads, stats->junction_patches,
-      stats->pavements, stats->lamps, stats->areas, stats->buildings,
-      stats->buildings_unclean, city_package_triangle_count(package));
+  LOG_INFO("generate",
+           "%d x %d chunks, %zu roads, %zu junction patches, %zu pavements, "
+           "%zu lamps, %zu areas, %zu trees, %zu buildings (%zu approximated), "
+           "%zu triangles",
+           layout.columns, layout.rows, stats->roads, stats->junction_patches,
+           stats->pavements, stats->lamps, stats->areas, stats->trees,
+           stats->buildings, stats->buildings_unclean,
+           city_package_triangle_count(package));
   return true;
 }

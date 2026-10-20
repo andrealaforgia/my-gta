@@ -234,6 +234,20 @@ static void people_streets_paths_and_areas_get_their_own_surfaces(void) {
   city_package_free(&package);
 }
 
+static void trees_grow_in_parks_and_nowhere_else(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  assert(stats.trees > 0);
+  const city_part_t* trunks = part_for(&package, "trunk", 403);
+  const city_part_t* leaves = part_for(&package, "leaves", 403);
+  assert(trunks && leaves && trunks->collider == PART_COLLIDER_MESH);
+  assert(leaves->collider == PART_COLLIDER_NONE);
+  assert(part_for(&package, "trunk", 306) == NULL); /* no trees in a car park */
+  aabb_t bounds = mesh_data_bounds(&leaves->mesh);
+  assert(bounds.min.y > 2.0f && bounds.max.y < 12.0f);
+  city_package_free(&package);
+}
+
 static void lamp_posts_stand_on_the_pavements(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -259,7 +273,9 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
     for (size_t p = 0; p < package.chunks[c].part_count; p++) {
       const city_part_t* part = &package.chunks[c].parts[p];
       if (strcmp(part->material, "kerb") == 0 ||
-          strcmp(part->material, "lamp") == 0)
+          strcmp(part->material, "lamp") == 0 ||
+          strcmp(part->material, "trunk") == 0 ||
+          strcmp(part->material, "leaves") == 0)
         continue;
       bool flat = strncmp(part->material, "facade", 6) != 0;
       for (size_t i = 0; i + 2 < part->mesh.index_count; i += 3) {
@@ -347,6 +363,7 @@ void run_generator_tests(void) {
   RUN(road_ribbons_have_their_width_and_roofs_their_height);
   RUN(roads_narrow_to_fit_between_buildings);
   RUN(people_streets_paths_and_areas_get_their_own_surfaces);
+  RUN(trees_grow_in_parks_and_nowhere_else);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
   RUN(the_package_round_trips_and_validates);

@@ -73,7 +73,25 @@ uint8_t* texture_grass(unsigned seed) {
   return grainy(seed, 0.28f, 0.42f, 0.18f, 0.5f, 0.3f);
 }
 uint8_t* texture_roof(unsigned seed) {
-  return grainy(seed, 0.36f, 0.30f, 0.28f, 0.3f, 0.15f);
+  uint8_t* pixels = grainy(seed, 0.72f, 0.42f, 0.30f, 0.25f, 0.12f);
+  if (!pixels) return NULL;
+  /* Rows of coppi: each tile a half-cylinder shaded across its width,
+   * rows overlapping with a shadow line. */
+  const int tile_w = 16, row_h = 24;
+  for (int y = 0; y < TEXTURE_SIZE; y++) {
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      int row = y / row_h;
+      int shifted = x + (row % 2) * tile_w / 2;
+      float across = (float)(shifted % tile_w) / tile_w;
+      float shade = 0.75f + 0.35f * sinf(across * 3.14159f);
+      float edge = (y % row_h) < 3 ? 0.6f : 1.0f;
+      uint8_t* p = pixels + (y * TEXTURE_SIZE + x) * 4;
+      float r = p[0] / 255.0f * shade * edge, g = p[1] / 255.0f * shade * edge,
+            b = p[2] / 255.0f * shade * edge;
+      put(pixels, x, y, r, g, b);
+    }
+  }
+  return pixels;
 }
 
 uint8_t* texture_road(unsigned seed) {
@@ -94,38 +112,58 @@ uint8_t* texture_road(unsigned seed) {
   return pixels;
 }
 
+/* A rendered Friulian facade: one storey per tile vertically and one
+ * window bay per tile horizontally. Plaster in one of a few town colours,
+ * a window with a stone sill and dark shutters, a string course near the
+ * top of the tile. Seeds pick the colour and the shutter style. */
 uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns) {
-  float tint = noise(1, 2, seed);
-  float r = 0.55f + tint * 0.3f, g = 0.45f + tint * 0.25f,
-        b = 0.38f + tint * 0.2f;
-  if ((seed % 3) == 1) {
-    r = 0.78f;
-    g = 0.76f;
-    b = 0.70f;
-  }
-  uint8_t* pixels = grainy(seed, r, g, b, 0.2f, 0.08f);
+  static const float palette[][3] = {
+      {0.86f, 0.74f, 0.52f}, /* ochre */
+      {0.80f, 0.52f, 0.40f}, /* terracotta */
+      {0.90f, 0.86f, 0.76f}, /* cream */
+      {0.84f, 0.66f, 0.60f}, /* faded pink */
+      {0.78f, 0.80f, 0.70f}, /* pale sage */
+      {0.70f, 0.62f, 0.52f}, /* old stone */
+  };
+  const float* base = palette[seed % 6];
+  uint8_t* pixels = grainy(seed, base[0], base[1], base[2], 0.16f, 0.06f);
   if (!pixels) return NULL;
-  int cell_w = TEXTURE_SIZE / window_columns,
-      cell_h = TEXTURE_SIZE / window_rows;
+  int cell_w = TEXTURE_SIZE / (window_columns > 0 ? window_columns : 1);
+  int cell_h = TEXTURE_SIZE / (window_rows > 0 ? window_rows : 1);
+  bool shutters_open = (seed % 2) == 0;
   for (int y = 0; y < TEXTURE_SIZE; y++) {
     for (int x = 0; x < TEXTURE_SIZE; x++) {
       int cx = x % cell_w, cy = y % cell_h;
-      bool in_window = cx > cell_w * 0.25f && cx < cell_w * 0.75f &&
-                       cy > cell_h * 0.2f && cy < cell_h * 0.75f;
-      if (!in_window) continue;
-      unsigned which =
-          hash((unsigned)(x / cell_w), (unsigned)(y / cell_h), seed);
-      float lit = (which % 7 == 0) ? 0.9f : 0.0f;
-      float sky = 0.35f + noise((unsigned)(x / cell_w), (unsigned)(y / cell_h),
-                                seed + 5) *
-                              0.2f;
-      bool frame = cx < cell_w * 0.28f || cx > cell_w * 0.72f ||
-                   cy < cell_h * 0.23f || cy > cell_h * 0.72f;
-      if (frame)
-        put(pixels, x, y, 0.2f, 0.2f, 0.22f);
-      else
-        put(pixels, x, y, sky * 0.6f + lit * 0.9f, sky * 0.7f + lit * 0.8f,
-            sky + lit * 0.5f);
+      float fx = (float)cx / cell_w, fy = (float)cy / cell_h;
+      /* v runs up the wall: fy near 1 is the top of the storey. */
+      bool string_course = fy > 0.93f && fy < 0.97f;
+      if (string_course) {
+        put(pixels, x, y, base[0] * 0.78f, base[1] * 0.78f, base[2] * 0.76f);
+        continue;
+      }
+      bool in_window = fx > 0.36f && fx < 0.64f && fy > 0.22f && fy < 0.78f;
+      bool sill = fx > 0.32f && fx < 0.68f && fy > 0.18f && fy <= 0.22f;
+      bool shutter = shutters_open ? ((fx > 0.24f && fx < 0.35f) ||
+                                      (fx > 0.65f && fx < 0.76f)) &&
+                                         fy > 0.22f && fy < 0.78f
+                                   : false;
+      if (sill) {
+        put(pixels, x, y, 0.82f, 0.80f, 0.74f);
+      } else if (shutter) {
+        float slat = ((cy / 3) % 2) ? 0.9f : 1.0f;
+        put(pixels, x, y, 0.22f * slat, 0.30f * slat, 0.24f * slat);
+      } else if (in_window) {
+        bool frame = fx < 0.39f || fx > 0.61f || fy < 0.25f || fy > 0.75f ||
+                     (fx > 0.49f && fx < 0.51f) || (fy > 0.49f && fy < 0.51f);
+        if (frame) {
+          put(pixels, x, y, 0.80f, 0.78f, 0.72f);
+        } else {
+          float sky = 0.3f + noise((unsigned)(x / cell_w),
+                                   (unsigned)(y / cell_h), seed + 5) *
+                                 0.15f;
+          put(pixels, x, y, sky * 0.55f, sky * 0.65f, sky * 0.9f);
+        }
+      }
     }
   }
   return pixels;
