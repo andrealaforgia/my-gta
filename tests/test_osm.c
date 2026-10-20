@@ -98,7 +98,9 @@ static void street_furniture_nodes_are_told_apart(void) {
       "<node id=\"4\" lat=\"45.0\" lon=\"12.003\"><tag k=\"highway\" "
       "v=\"traffic_signals\"/></node>"
       "<node id=\"5\" lat=\"45.0\" lon=\"12.004\"><tag k=\"shop\" "
-      "v=\"bakery\"/></node></osm>";
+      "v=\"bakery\"/></node>"
+      "<node id=\"6\" lat=\"45.0\" lon=\"12.005\"><tag k=\"highway\" "
+      "v=\"crossing\"/></node></osm>";
   osm_data_t data;
   assert(osm_parse(&data, xml));
   assert(osm_find_node(&data, 1)->furniture == OSM_FURNITURE_BENCH);
@@ -106,6 +108,7 @@ static void street_furniture_nodes_are_told_apart(void) {
   assert(osm_find_node(&data, 3)->furniture == OSM_FURNITURE_BOLLARD);
   assert(osm_find_node(&data, 4)->furniture == OSM_FURNITURE_SIGNALS);
   assert(osm_find_node(&data, 5)->furniture == OSM_FURNITURE_NONE);
+  assert(osm_find_node(&data, 6)->furniture == OSM_FURNITURE_CROSSING);
   osm_free(&data);
 }
 

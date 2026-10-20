@@ -118,6 +118,9 @@ static void add_tag(parser_t* p, const char* start, const char* end) {
       else if (strcmp(key, "highway") == 0 &&
                strcmp(value, "traffic_signals") == 0)
         node->furniture = OSM_FURNITURE_SIGNALS;
+      else if (strcmp(key, "highway") == 0 && strcmp(value, "crossing") == 0 &&
+               node->furniture == OSM_FURNITURE_NONE)
+        node->furniture = OSM_FURNITURE_CROSSING;
     }
     return;
   }

@@ -944,6 +944,44 @@ static void benches_bus_stops_bollards_and_signals_stand_where_mapped(void) {
   city_model_free(&model);
 }
 
+static void mapped_crossings_get_zebra_stripes_away_from_junctions(void) {
+  /* A 6 m street with a crossing node at its middle and another 4 m from
+   * its end, where the junction already has its own. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.004\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0012\"><tag k=\"highway\" "
+      "v=\"crossing\"/></node>"
+      "<node id=\"3\" lat=\"45.0000\" lon=\"12.0024\"/>"
+      "<node id=\"4\" lat=\"45.0000\" lon=\"12.0022\"><tag k=\"highway\" "
+      "v=\"crossing\"/></node>"
+      "<node id=\"5\" lat=\"44.9992\" lon=\"12.0024\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"4\"/><nd "
+      "ref=\"3\"/><tag k=\"highway\" v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"5\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* zebra = part_for(&package, "marking", 0);
+  assert(zebra);
+  aabb_t bounds = mesh_data_bounds(&zebra->mesh);
+  /* Only the one in the middle: stripes across the 6 m street, 2.4 m long. */
+  vec3_t middle = aabb_center(bounds);
+  float x_of_crossing = 0;
+  for (size_t i = 0; i < model.road_count; i++)
+    for (size_t k = 0; k < model.roads[i].point_count; k++)
+      if (model.roads[i].node_ids[k] == 2)
+        x_of_crossing = (float)model.roads[i].points[k].x;
+  assert(near_to(middle.x, x_of_crossing, 0.3f));
+  assert(near_to(bounds.max.x - bounds.min.x, 2.4f, 0.05f));
+  assert(bounds.max.z - bounds.min.z > 3.5f &&
+         bounds.max.z - bounds.min.z < 6.0f);
+  assert(mesh_data_triangle_count(&zebra->mesh) >= 8);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -1125,6 +1163,7 @@ void run_generator_tests(void) {
   RUN(side_streets_get_a_stop_sign_at_the_main_road);
   RUN(roads_have_manhole_covers_here_and_there);
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
+  RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

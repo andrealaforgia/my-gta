@@ -24,7 +24,8 @@ typedef enum {
   OSM_FURNITURE_BENCH,
   OSM_FURNITURE_BUS_STOP,
   OSM_FURNITURE_BOLLARD,
-  OSM_FURNITURE_SIGNALS
+  OSM_FURNITURE_SIGNALS,
+  OSM_FURNITURE_CROSSING /* a pedestrian crossing on a road */
 } osm_furniture_t;
 
 typedef struct {

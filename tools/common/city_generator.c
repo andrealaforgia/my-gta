@@ -1241,6 +1241,61 @@ static bool add_oriented_box(mesh_data_t* mesh, vec3_t centre, vec3_t half,
   return mesh_data_add_box(mesh, centre, h);
 }
 
+/* Zebra stripes at a mapped crossing node on a street cars use, unless a
+ * junction is close enough to have its own. */
+static bool generate_crossings(layout_t* layout, const city_model_t* model,
+                               const road_fit_t* fits) {
+  const city_generator_options_t* o = layout->options;
+  for (size_t f = 0; f < model->furniture_count; f++) {
+    if (model->furniture[f].kind != OSM_FURNITURE_CROSSING) continue;
+    local_point_t p = {model->furniture[f].x, model->furniture[f].z};
+    size_t best_road = model->road_count;
+    double best = 2.0;
+    vec2_t direction = v2(1, 0);
+    for (size_t r = 0; r < model->road_count; r++) {
+      const city_road_t* road = &model->roads[r];
+      if (road->class == ROAD_CLASS_PATH ||
+          road->class == ROAD_CLASS_WATERWAY ||
+          road->class == ROAD_CLASS_PEDESTRIAN ||
+          road->class == ROAD_CLASS_MOTORWAY)
+        continue;
+      for (size_t k = 1; k < road->point_count; k++) {
+        double d =
+            point_segment_distance(p, road->points[k - 1], road->points[k]);
+        if (d < best) {
+          best = d, best_road = r;
+          direction =
+              v2_normalize(v2_sub(road->points[k], road->points[k - 1]));
+        }
+      }
+    }
+    if (best_road == model->road_count) continue;
+    bool near_junction = false;
+    for (size_t j = 0; j < model->junction_count && !near_junction; j++)
+      near_junction = hypot(model->junctions[j].position.x - p.x,
+                            model->junctions[j].position.z - p.z) < 14.0 &&
+                      model->junctions[j].degree >= 3;
+    if (near_junction) continue;
+    double half = fits[best_road].half_width;
+    city_chunk_t* chunk = chunk_at(layout, p);
+    city_part_t* part =
+        city_chunk_add_part(chunk, "marking", PART_COLLIDER_NONE, 0, 0, 0);
+    if (!part) return false;
+    float y = o->road_height + 0.004f;
+    for (double across = -half + 0.4; across + 0.5 <= half - 0.4; across += 1.0)
+      if (!add_marking_quad(&part->mesh, p, direction, -1.2, 1.2, across,
+                            across + 0.5, y))
+        return false;
+    if (part->mesh.vertex_count == 0) {
+      mesh_data_free(&part->mesh);
+      chunk->part_count--;
+    } else {
+      finish_part(chunk, part);
+    }
+  }
+  return true;
+}
+
 static bool generate_furniture(layout_t* layout, const city_model_t* model,
                                city_generator_stats_t* stats) {
   (void)stats;
@@ -2727,6 +2782,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     ok = generate_building(&layout, &model->buildings[b], stats);
   if (ok) ok = generate_street_trees(&layout, model, stats);
   if (ok) ok = generate_furniture(&layout, model, stats);
+  if (ok) ok = generate_crossings(&layout, model, fits);
   free(layout.arcade_edges);
   free(fits);
   free(cuts);
