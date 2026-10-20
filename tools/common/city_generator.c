@@ -573,6 +573,86 @@ static bool add_marking_quad(mesh_data_t* mesh, local_point_t centre,
 /* Stop lines and zebra crossings on every drivable arm of a junction of
  * three or more roads, just past the arm's cut: a line across the road,
  * then stripes where the arm has pavements for people to cross between. */
+static int road_rank(road_class_t class) {
+  switch (class) {
+    case ROAD_CLASS_MOTORWAY:
+      return 0;
+    case ROAD_CLASS_PRIMARY:
+      return 1;
+    case ROAD_CLASS_SECONDARY:
+      return 2;
+    case ROAD_CLASS_TERTIARY:
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+/* A stop sign at the end of each side street that meets a bigger road: a
+ * pole on the pavement just short of the junction, on the right as the
+ * driver sees it, carrying a red plate that faces the oncoming car. */
+static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
+                                const city_junction_t* junction,
+                                const junction_arm_t* arms,
+                                const arm_source_t* sources, size_t arm_count,
+                                const junction_layout_t* shape,
+                                const road_fit_t* fits) {
+  const city_generator_options_t* o = layout->options;
+  int best = 99;
+  for (size_t a = 0; a < arm_count; a++) {
+    road_class_t c = model->roads[sources[a].road].class;
+    if (c == ROAD_CLASS_PEDESTRIAN) continue;
+    best = best < road_rank(c) ? best : road_rank(c);
+  }
+  if (arm_count < 3) return true;
+  city_chunk_t* chunk = chunk_at(layout, junction->position);
+  city_part_t* poles = NULL;
+  city_part_t* plates = NULL;
+  for (size_t a = 0; a < arm_count; a++) {
+    const city_road_t* road = &model->roads[sources[a].road];
+    if (road->class == ROAD_CLASS_PEDESTRIAN || road_rank(road->class) <= best)
+      continue;
+    if (polyline_length(road->points, road->point_count) < 25.0 ||
+        fits[sources[a].road].pavement <= 0)
+      continue;
+    if (!poles) {
+      poles = city_chunk_add_part(chunk, "sign_pole", PART_COLLIDER_MESH,
+                                  COLLISION_LAYER_PROP, 0.5f,
+                                  (uint64_t)junction->node_id);
+      plates = poles
+                   ? city_chunk_add_part(chunk, "sign_red", PART_COLLIDER_NONE,
+                                         0, 0, (uint64_t)junction->node_id)
+                   : NULL;
+      if (!poles || !plates) return false;
+      poles = &chunk->parts[chunk->part_count - 2];
+    }
+    vec2_t d = {arms[a].direction.x, arms[a].direction.z};
+    /* A car heading into the junction travels along -d; its right is
+     * (dz, -dx) in this frame (x east, z south). */
+    vec2_t right = v2(d.z, -d.x);
+    double half = fits[sources[a].road].half_width;
+    local_point_t foot = offset(
+        offset(junction->position, d, shape->cut[a] + 1.4), right, half + 0.7);
+    float y0 = o->kerb_height;
+    if (!mesh_data_add_box(&poles->mesh,
+                           vec3((float)foot.x, y0 + 1.1f, (float)foot.z),
+                           vec3(0.035f, 1.1f, 0.035f)))
+      return false;
+    /* The plate: thin across the heading, square on to the car. */
+    vec3_t half_extents =
+        vec3(0.3f * (float)fabs(right.x) + 0.015f * (float)fabs(d.x), 0.3f,
+             0.3f * (float)fabs(right.z) + 0.015f * (float)fabs(d.z));
+    if (!mesh_data_add_box(&plates->mesh,
+                           vec3((float)foot.x, y0 + 2.0f, (float)foot.z),
+                           half_extents))
+      return false;
+  }
+  if (!poles) return true;
+  finish_part(chunk, poles);
+  finish_part(chunk, plates);
+  return true;
+}
+
 static bool generate_markings(layout_t* layout, const city_model_t* model,
                               const city_junction_t* junction,
                               const junction_arm_t* arms,
@@ -613,10 +693,11 @@ static bool generate_markings(layout_t* layout, const city_model_t* model,
   if (part->mesh.vertex_count == 0) {
     mesh_data_free(&part->mesh);
     chunk->part_count--;
-    return true;
+  } else {
+    finish_part(chunk, part);
   }
-  finish_part(chunk, part);
-  return true;
+  return generate_stop_signs(layout, model, junction, arms, sources, arm_count,
+                             shape, fits);
 }
 
 static bool generate_junction(layout_t* layout, const city_model_t* model,
@@ -825,6 +906,55 @@ static bool on_a_street(const city_model_t* model, const city_road_t* self,
   return false;
 }
 
+/* Round iron covers in the carriageway every forty metres or so, a little
+ * off the middle of a lane. */
+static bool generate_manholes(layout_t* layout, const city_road_t* road,
+                              const local_point_t* points,
+                              const vec2_t* laterals, size_t count,
+                              const double* halves) {
+  const city_generator_options_t* o = layout->options;
+  double length = polyline_length(points, count);
+  if (length < 20.0 || road->class == ROAD_CLASS_MOTORWAY) return true;
+  city_chunk_t* chunk = chunk_at(layout, centroid(points, count));
+  city_part_t* part = city_chunk_add_part(chunk, "manhole", PART_COLLIDER_NONE,
+                                          0, 0, (uint64_t)road->source_id);
+  if (!part) return false;
+  uint64_t seed = (uint64_t)road->source_id * 0x2545f4914f6cdd1dull + 5;
+  float y = o->road_height + 0.008f;
+  for (double along = 9.0 + (double)(seed % 17); along < length - 6.0;
+       along += 36.0 + (double)((seed >> 12) % 14)) {
+    seed ^= seed >> 12, seed ^= seed << 25, seed ^= seed >> 27;
+    size_t segment;
+    local_point_t on_line = along_polyline(points, count, along, &segment);
+    vec2_t lateral = v2_normalize(laterals[segment > 0 ? segment - 1 : 0]);
+    size_t at_point = segment < count ? segment : count - 1;
+    double side = ((seed >> 20) & 1) ? 0.5 : -0.5;
+    local_point_t centre =
+        offset(on_line, lateral,
+               side * halves[at_point] + ((seed >> 30) % 5) * 0.1 - 0.2);
+    uint32_t base = (uint32_t)part->mesh.vertex_count;
+    vec3_t up = vec3(0, 1, 0);
+    if (!add_vertex(&part->mesh, at(centre, y), up, 0.5f, 0.5f)) return false;
+    for (int k = 0; k < 12; k++) {
+      double angle = k * M_PI / 6.0;
+      local_point_t rim = {centre.x + cos(angle) * 0.34,
+                           centre.z + sin(angle) * 0.34};
+      if (!add_vertex(&part->mesh, at(rim, y), up, 0, 0)) return false;
+    }
+    for (int k = 0; k < 12; k++)
+      if (!add_face(&part->mesh, base, base + 1 + (uint32_t)k,
+                    base + 1 + (uint32_t)((k + 1) % 12), up))
+        return false;
+  }
+  if (part->mesh.vertex_count == 0) {
+    mesh_data_free(&part->mesh);
+    chunk->part_count--;
+    return true;
+  }
+  finish_part(chunk, part);
+  return true;
+}
+
 static bool generate_road(layout_t* layout, const city_model_t* model,
                           const city_road_t* road, road_fit_t fit,
                           road_cuts_t cuts, city_generator_stats_t* stats) {
@@ -936,6 +1066,8 @@ static bool generate_road(layout_t* layout, const city_model_t* model,
       road->class != ROAD_CLASS_SERVICE && road->class != ROAD_CLASS_WATERWAY)
     ok = generate_lamps(layout, road, points, laterals, count, halves,
                         pavements, stats);
+  if (ok && !for_people && !water)
+    ok = generate_manholes(layout, road, points, laterals, count, halves);
   free(points);
   free(laterals);
   free(halves);

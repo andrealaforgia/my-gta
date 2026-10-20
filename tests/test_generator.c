@@ -830,6 +830,61 @@ static void buildings_on_main_streets_get_shopfronts_at_street_level(void) {
   city_model_free(&model);
 }
 
+static void side_streets_get_a_stop_sign_at_the_main_road(void) {
+  /* A primary road through node 2 and a residential street leaving it
+   * south: only the side street gets a sign. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.998\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0012\"/>"
+      "<node id=\"3\" lat=\"45.0000\" lon=\"12.0024\"/>"
+      "<node id=\"4\" lat=\"44.9990\" lon=\"12.0012\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><tag "
+      "k=\"highway\" v=\"primary\"/></way>"
+      "<way id=\"11\"><nd ref=\"2\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* plate = part_for(&package, "sign_red", 2);
+  const city_part_t* pole = part_for(&package, "sign_pole", 2);
+  assert(plate && pole);
+  assert(mesh_data_triangle_count(&plate->mesh) == 12); /* one sign */
+  assert(mesh_data_triangle_count(&pole->mesh) == 12);
+  /* It stands just short of the junction, on the side street's right: the
+   * junction is at the origin of the street, 110 m south of the road's
+   * start, and the street runs south, so the plate is south of the
+   * junction and, for a car heading north, to the east. */
+  vec3_t where = aabb_center(mesh_data_bounds(&plate->mesh));
+  const city_junction_t* junction = NULL;
+  for (size_t j = 0; j < model.junction_count; j++)
+    if (model.junctions[j].node_id == 2) junction = &model.junctions[j];
+  assert(junction);
+  float dx = where.x - (float)junction->position.x;
+  float dz = where.z - (float)junction->position.z;
+  assert(dz > 4.0f && dz < 14.0f && dx > 1.5f && dx < 6.0f);
+  assert(where.y > 1.7f && where.y < 2.4f);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
+static void roads_have_manhole_covers_here_and_there(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  size_t covers = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++)
+      if (strcmp(package.chunks[c].parts[p].material, "manhole") == 0) {
+        covers++;
+        const city_part_t* part = &package.chunks[c].parts[p];
+        assert(part->collider == PART_COLLIDER_NONE);
+        aabb_t b = mesh_data_bounds(&part->mesh);
+        assert(b.min.y > 0.06f && b.max.y < 0.09f); /* just above the road */
+      }
+  assert(covers >= 3);
+  city_package_free(&package);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -885,6 +940,9 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
       const city_part_t* part = &package.chunks[c].parts[p];
       if (strcmp(part->material, "kerb") == 0 ||
           strcmp(part->material, "marking") == 0 ||
+          strcmp(part->material, "manhole") == 0 ||
+          strcmp(part->material, "sign_red") == 0 ||
+          strcmp(part->material, "sign_pole") == 0 ||
           strcmp(part->material, "lamp") == 0 ||
           strcmp(part->material, "lamp_light") == 0 ||
           strcmp(part->material, "trunk") == 0 ||
@@ -1001,6 +1059,8 @@ void run_generator_tests(void) {
   RUN(the_package_carries_routes_and_parking_places);
   RUN(the_town_hall_and_churches_get_towers_and_the_hall_is_brick);
   RUN(buildings_on_main_streets_get_shopfronts_at_street_level);
+  RUN(side_streets_get_a_stop_sign_at_the_main_road);
+  RUN(roads_have_manhole_covers_here_and_there);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

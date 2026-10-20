@@ -32,6 +32,7 @@ GROUPS = (
     "citymap",
     "daylight",
     "traffic",
+    "textures",
 )
 
 

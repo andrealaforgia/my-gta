@@ -99,9 +99,46 @@ uint8_t* texture_roof(unsigned seed) {
 }
 
 uint8_t* texture_road(unsigned seed) {
-  /* u runs across the road (0 left edge, 1 right edge), v along it. */
+  /* u runs across the road (0 left edge, 1 right edge), v along it. Two
+   * lanes: the tyres polish and darken a track an eighth and three eighths
+   * across each; the surface has patched stretches and a few cracks. */
   uint8_t* pixels = texture_asphalt(seed);
   if (!pixels) return NULL;
+  for (int y = 0; y < TEXTURE_SIZE; y++) {
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      float u = (float)x / TEXTURE_SIZE;
+      uint8_t* p = pixels + (y * TEXTURE_SIZE + x) * 4;
+      float shade = 1.0f;
+      /* Wheel tracks. */
+      float lane = fmodf(u * 2.0f, 1.0f);
+      float track = fminf(fabsf(lane - 0.25f), fabsf(lane - 0.75f));
+      if (track < 0.04f) shade *= 0.8f + 0.2f * (track / 0.04f);
+      /* Patched stretches: blocks of a different, slightly smoother tar. */
+      int patch = (int)hash((unsigned)(y / 48), (unsigned)(x / 96), seed + 17);
+      if (patch % 9 == 0)
+        shade *= 0.88f;
+      else if (patch % 9 == 1)
+        shade *= 1.1f;
+      p[0] = (uint8_t)fminf(p[0] * shade, 255.0f);
+      p[1] = (uint8_t)fminf(p[1] * shade, 255.0f);
+      p[2] = (uint8_t)fminf(p[2] * shade, 255.0f);
+    }
+  }
+  /* Cracks: thin dark lines that wander along the road. */
+  for (int crack = 0; crack < 5; crack++) {
+    float x = (float)(hash((unsigned)crack, 3, seed + 29) % TEXTURE_SIZE);
+    int start = (int)(hash((unsigned)crack, 5, seed + 31) % TEXTURE_SIZE);
+    for (int step = 0; step < 90; step++) {
+      int y = (start + step) % TEXTURE_SIZE;
+      x += (noise((unsigned)step, (unsigned)crack, seed + 37) - 0.5f) * 3.0f;
+      int xi = ((int)x % TEXTURE_SIZE + TEXTURE_SIZE) % TEXTURE_SIZE;
+      uint8_t* p = pixels + (y * TEXTURE_SIZE + xi) * 4;
+      p[0] = (uint8_t)(p[0] * 0.55f);
+      p[1] = (uint8_t)(p[1] * 0.55f);
+      p[2] = (uint8_t)(p[2] * 0.55f);
+    }
+  }
+  /* Paint on top: edge lines and a dashed centre line. */
   for (int y = 0; y < TEXTURE_SIZE; y++) {
     for (int x = 0; x < TEXTURE_SIZE; x++) {
       float u = (float)x / TEXTURE_SIZE;
