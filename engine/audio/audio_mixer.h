@@ -48,7 +48,8 @@ typedef struct {
   float engine_lowpass2;
   float burst_lowpass; /* the exhaust burst is coloured noise, not white */
   float skid_phase;  /* tyre squeal oscillator, 0..1 */
-  float skid_wobble; /* slow vibrato phase, 0..1 */
+  float skid_wobble; /* fast flutter phase, 0..1 */
+  float skid_drift;  /* slow random pitch wander */
   float wind_lowpass;
   float intake_lowpass;
   float impact_lowpass;

@@ -124,8 +124,9 @@ static void the_engine_is_not_mostly_hiss(void) {
   }
 }
 
-/* Cornering hard makes the tyres sing. It must be a note, not a hiss. */
-static void tyre_squeal_is_a_tone_not_a_hiss(void) {
+/* Cornering hard scrapes the tyres. It must not be a clean sung note, and
+ * a light touch of skid must stay nearly silent. */
+static void tyre_scrape_is_rough_not_a_sung_note(void) {
   audio_mixer_t mixer = audio_mixer_create(RATE);
   audio_state_t state = audio_state_default();
   state.engine_running = false;
@@ -133,8 +134,16 @@ static void tyre_squeal_is_a_tone_not_a_hiss(void) {
   float out[RATE];
   render(&mixer, state, out, RATE);
   render(&mixer, state, out, RATE);
-  assert(peak(out, RATE) > 0.05f);
-  assert(tonality_at(out, RATE, (int)(RATE / 780.0f + 0.5f)) > 0.6f);
+  assert(peak(out, RATE) > 0.03f);
+  /* No lag near the old 780 Hz squeal repeats itself. */
+  float best = 0;
+  for (int lag = RATE / 1000; lag < RATE / 400; lag++)
+    best = fmaxf(best, tonality_at(out, RATE, lag));
+  assert(best < 0.5f);
+  state.skid = 0.2f;
+  render(&mixer, state, out, RATE);
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE) < 0.02f);
 }
 
 static void silence_when_the_engine_is_off(void) {
@@ -188,6 +197,6 @@ void run_audio_tests(void) {
   RUN(the_engine_is_not_mostly_hiss);
   RUN(silence_when_the_engine_is_off);
   RUN(skid_and_impact_voices_start_from_state_and_fade);
-  RUN(tyre_squeal_is_a_tone_not_a_hiss);
+  RUN(tyre_scrape_is_rough_not_a_sung_note);
   RUN(distance_attenuates_the_engine);
 }

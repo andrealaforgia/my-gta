@@ -34,6 +34,7 @@ vehicle_params_t vehicle_params_default(void) {
   p.tyre_friction = 1.0f;
   p.tyre_lateral_stiffness = 9.0f;
   p.rolling_resistance = 0.015f;
+  p.roll_centre_lift = 0.0f;
   p.drag_coefficient = 0.4f;
   p.max_steer_angle = 0.55f;
   p.steering_rate = 7.0f;
@@ -131,6 +132,8 @@ bool vehicle_params_load(vehicle_params_t* params, const char* path) {
       &config, "tyre_lateral_stiffness", p->tyre_lateral_stiffness);
   p->rolling_resistance =
       config_get_float(&config, "rolling_resistance", p->rolling_resistance);
+  p->roll_centre_lift =
+      config_get_float(&config, "roll_centre_lift", p->roll_centre_lift);
   p->drag_coefficient =
       config_get_float(&config, "drag_coefficient", p->drag_coefficient);
   p->max_steer_angle =
@@ -441,8 +444,9 @@ static void update_wheel(vehicle_t* vehicle, physics_world_t* world,
       (fabsf(slip) > SKID_SLIP_ANGLE && fabsf(v_forward) > 2.0f);
   vec3_t force =
       vec3_add(vec3_scale(forward, f_long), vec3_scale(side, f_side));
-  physics_apply_force_at_world_point(world, vehicle->body, force,
-                                     wheel->contact_point);
+  physics_apply_force_at_world_point(
+      world, vehicle->body, force,
+      vec3_add_scaled(wheel->contact_point, up, p->roll_centre_lift));
 
   wheel->spin = v_forward / p->wheel_radius;
   if (locked && fabsf(v_forward) > 0.5f) wheel->spin = 0;
@@ -481,10 +485,9 @@ void vehicle_update(vehicle_t* vehicle, physics_world_t* world,
   for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
     update_wheel(vehicle, world, body, i, drive, brake, dt);
     if (vehicle->wheels[i].skidding)
-      vehicle->skid_intensity =
-          fmaxf(vehicle->skid_intensity,
-                clampf((vehicle->wheels[i].grip_use - 1.15f) / 0.65f, 0.0f,
-                       1.0f));
+      vehicle->skid_intensity = fmaxf(
+          vehicle->skid_intensity,
+          clampf((vehicle->wheels[i].grip_use - 1.3f) / 0.8f, 0.0f, 1.0f));
   }
 
   float speed = vec3_length(body->velocity);

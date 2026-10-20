@@ -52,6 +52,10 @@ typedef struct {
   /* Lateral force per radian of slip, as a fraction of load. */
   float tyre_lateral_stiffness;
   float rolling_resistance; /* fraction of load */
+  /* How far above the tyre contact the horizontal tyre forces act on the
+   * body: the suspension's roll centre. The lower the car's real centre of
+   * mass sits relative to it, the less the body leans in a corner. */
+  float roll_centre_lift;
   float drag_coefficient;   /* N per (m/s)^2 */
   float max_steer_angle;    /* radians at full lock */
   float steering_rate;

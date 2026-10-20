@@ -209,7 +209,76 @@ static void the_handbrake_locks_the_rear_and_marks_a_skid(void) {
   destroy(&track);
 }
 
+/* How far the body has rolled about its own length, in radians. */
+static float roll_angle(const track_t* track) {
+  const rigid_body_t* body = physics_body(track->world, track->car.body);
+  return asinf(quat_right(body->rotation).y); /* the right side's height */
+}
+
+static void a_hard_corner_leans_the_body_a_few_degrees_not_a_dozen(void) {
+  track_t track = flat_track(1.0f);
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&track, throttle, 6.0f); /* up to speed */
+  driving_input_t hold = {0.25f, 0, 0, false};
+  float worst = 0;
+  driving_input_t turn = {0.25f, 0, 1.0f, false};
+  int steps = (int)(4.0f / step);
+  for (int i = 0; i < steps; i++) {
+    vehicle_update(&track.car, track.world, turn, step);
+    physics_world_step(track.world, step);
+    worst = fmaxf(worst, fabsf(roll_angle(&track)));
+  }
+  (void)hold;
+  /* A hatchback pulling most of a g leans three to four degrees. */
+  assert(worst < 0.075f);
+  assert(worst > 0.01f); /* but it does lean */
+  destroy(&track);
+}
+
+static void the_car_does_not_tip_over_in_a_sudden_swerve(void) {
+  track_t track = flat_track(1.0f);
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&track, throttle, 7.0f);
+  float worst = 0;
+  for (int swerve = 0; swerve < 6; swerve++) {
+    driving_input_t turn = {0.5f, 0, swerve % 2 ? -1.0f : 1.0f, false};
+    for (int i = 0; i < (int)(0.5f / step); i++) {
+      vehicle_update(&track.car, track.world, turn, step);
+      physics_world_step(track.world, step);
+      worst = fmaxf(worst, fabsf(roll_angle(&track)));
+    }
+  }
+  assert(worst < 0.12f); /* under about 7 degrees */
+  assert(quat_up(physics_body(track.world, track.car.body)->rotation).y >
+         0.95f);
+  destroy(&track);
+}
+
+static float pitch_angle(const track_t* track) {
+  const rigid_body_t* body = physics_body(track->world, track->car.body);
+  return asinf(quat_forward(body->rotation).y); /* nose up is positive */
+}
+
+static void hard_braking_dips_the_nose_a_couple_of_degrees(void) {
+  track_t track = flat_track(1.0f);
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&track, throttle, 9.0f);
+  driving_input_t brake = {0, 1, 0, false};
+  float dip = 0;
+  for (int i = 0; i < (int)(2.0f / step); i++) {
+    vehicle_update(&track.car, track.world, brake, step);
+    physics_world_step(track.world, step);
+    dip = fmaxf(dip, -pitch_angle(&track));
+  }
+  assert(dip < 0.06f); /* under about 3.5 degrees */
+  assert(dip > 0.005f);
+  destroy(&track);
+}
+
 void run_vehicle_tests(void) {
+  RUN(hard_braking_dips_the_nose_a_couple_of_degrees);
+  RUN(a_hard_corner_leans_the_body_a_few_degrees_not_a_dozen);
+  RUN(the_car_does_not_tip_over_in_a_sudden_swerve);
   RUN(parameters_load_from_the_tuning_file);
   RUN(the_car_settles_on_its_wheels);
   RUN(full_throttle_reaches_fifty_in_a_plausible_time);

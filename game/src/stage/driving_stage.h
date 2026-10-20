@@ -9,6 +9,7 @@
 #include <stdbool.h>
 
 #include "audio_device.h"
+#include "audio_mixer.h"
 #include "car_visual.h"
 #include "chase_camera.h"
 #include "frame_clock.h"
@@ -60,6 +61,8 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
                         renderer_t* renderer, audio_device_t* audio,
                         stage_options_t options);
 void driving_stage_destroy(driving_stage_t* stage);
+/* What the car should sound like now: silent while paused or on the map. */
+audio_state_t driving_stage_audio_state(const driving_stage_t* stage);
 /* One fixed simulation step with the given input. */
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt);

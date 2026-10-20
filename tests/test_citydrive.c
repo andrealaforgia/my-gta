@@ -171,10 +171,26 @@ static void the_car_follows_the_hills(void) {
   stop(&run);
 }
 
+static void the_map_and_the_pause_silence_the_engine(void) {
+  city_run_t run;
+  start(&run);
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&run, throttle, 1.0f);
+  assert(driving_stage_audio_state(&run.stage).engine_running);
+  run.stage.map_open = true;
+  audio_state_t on_the_map = driving_stage_audio_state(&run.stage);
+  assert(!on_the_map.engine_running && on_the_map.skid == 0);
+  run.stage.map_open = false;
+  run.stage.paused = true;
+  assert(!driving_stage_audio_state(&run.stage).engine_running);
+  stop(&run);
+}
+
 void run_citydrive_tests(void) {
   cook_fixture_city();
   RUN(the_city_loads_with_roads_buildings_and_a_spawn_on_a_road);
   RUN(the_car_drives_along_the_spawn_road_and_through_a_junction);
   RUN(buildings_stop_the_car);
   RUN(the_car_follows_the_hills);
+  RUN(the_map_and_the_pause_silence_the_engine);
 }

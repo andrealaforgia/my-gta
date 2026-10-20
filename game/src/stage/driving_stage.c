@@ -68,10 +68,15 @@ void driving_stage_destroy(driving_stage_t* stage) {
   stage->physics = NULL;
 }
 
-static void send_audio_state(driving_stage_t* stage) {
-  if (!stage->audio) return;
+audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
   const vehicle_t* car = &stage->vehicle;
   audio_state_t state = audio_state_default();
+  /* Paused, or looking at the map: the world holds still and so does its
+   * sound. A frozen engine note would only hum. */
+  if (stage->paused || stage->map_open) {
+    state.engine_running = false;
+    return state;
+  }
   state.engine_running = true;
   state.rpm = vehicle_rpm(car);
   state.throttle =
@@ -81,10 +86,16 @@ static void send_audio_state(driving_stage_t* stage) {
   const rigid_body_t* body = physics_body(stage->physics, car->body);
   state.listener_distance =
       body ? vec3_distance(stage->camera.position, body->position) : 5.0f;
-  audio_device_set_state(stage->audio, state);
-  if (car->impact_impulse > IMPACT_THRESHOLD)
+  return state;
+}
+
+static void send_audio_state(driving_stage_t* stage) {
+  if (!stage->audio) return;
+  audio_device_set_state(stage->audio, driving_stage_audio_state(stage));
+  if (!stage->paused && !stage->map_open &&
+      stage->vehicle.impact_impulse > IMPACT_THRESHOLD)
     audio_device_trigger_impact(stage->audio,
-                                car->impact_impulse / IMPACT_FULL);
+                                stage->vehicle.impact_impulse / IMPACT_FULL);
 }
 
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,

@@ -44,7 +44,7 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   mixer.rpm_smoothed = 900;
   bandpass_set(&mixer.pipe_low, 150, 1.4f, sample_rate);
   bandpass_set(&mixer.pipe_high, 420, 2.5f, sample_rate);
-  bandpass_set(&mixer.skid_filter, 900, 6.0f, sample_rate);
+  bandpass_set(&mixer.skid_filter, 1300, 1.2f, sample_rate);
   return mixer;
 }
 
@@ -130,18 +130,23 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       engine = mixer->engine_lowpass2 * 1.3f;
     }
 
-    /* A squeal, not a hiss: a tone near 800 Hz with a touch of vibrato
-     * and its octave, with only a little narrow-band noise on top. */
-    mixer->skid_wobble += 7.0f * dt;
+    /* Rubber scrubbing the road: a rough, wandering scrape rather than a
+     * clean note. The pitch drifts at random, the level flutters fast, and
+     * a good share is band-limited noise, so it reads as tyres and not as
+     * a singer. */
+    mixer->skid_wobble += (180.0f + 140.0f * noise(mixer)) * dt;
     if (mixer->skid_wobble >= 1.0f) mixer->skid_wobble -= 1.0f;
-    float squeal_hz =
-        780.0f * (1.0f + 0.03f * sinf(2.0f * (float)M_PI * mixer->skid_wobble));
-    mixer->skid_phase += squeal_hz * dt;
+    mixer->skid_drift = smooth(mixer->skid_drift, noise(mixer), 0.0008f);
+    float scrape_hz = 640.0f * (1.0f + 3.0f * mixer->skid_drift);
+    mixer->skid_phase += scrape_hz * dt;
     if (mixer->skid_phase >= 1.0f) mixer->skid_phase -= 1.0f;
-    float squeal_angle = 2.0f * (float)M_PI * mixer->skid_phase;
-    float squeal = sinf(squeal_angle) + 0.35f * sinf(2.0f * squeal_angle);
-    float skid = (squeal * 0.5f +
-                  bandpass_run(&mixer->skid_filter, noise(mixer)) * 0.12f) *
+    float scrape_angle = 2.0f * (float)M_PI * mixer->skid_phase;
+    float flutter =
+        0.55f + 0.45f * sinf(2.0f * (float)M_PI * mixer->skid_wobble);
+    float scrape =
+        (sinf(scrape_angle) + 0.6f * sinf(2.7f * scrape_angle)) * flutter;
+    float skid = (scrape * 0.16f +
+                  bandpass_run(&mixer->skid_filter, noise(mixer)) * 0.35f) *
                  mixer->skid_smoothed * mixer->skid_smoothed;
 
     float impact = 0;
