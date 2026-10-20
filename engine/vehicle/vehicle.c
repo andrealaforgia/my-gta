@@ -483,7 +483,8 @@ void vehicle_update(vehicle_t* vehicle, physics_world_t* world,
     if (vehicle->wheels[i].skidding)
       vehicle->skid_intensity =
           fmaxf(vehicle->skid_intensity,
-                clampf(vehicle->wheels[i].grip_use - 0.8f, 0.2f, 1.0f));
+                clampf((vehicle->wheels[i].grip_use - 1.15f) / 0.65f, 0.0f,
+                       1.0f));
   }
 
   float speed = vec3_length(body->velocity);
