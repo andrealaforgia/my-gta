@@ -1001,6 +1001,53 @@ static void mapped_crossings_get_zebra_stripes_away_from_junctions(void) {
   city_model_free(&model);
 }
 
+static void pitched_roofs_sprout_chimneys_above_the_ridge(void) {
+  /* Twelve 20 x 10 m houses in a row, 9 m high. */
+  char xml[8192];
+  int length = snprintf(
+      xml, sizeof(xml),
+      "<osm><bounds minlat=\"44.998\" minlon=\"11.999\" maxlat=\"45.003\" "
+      "maxlon=\"12.006\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0050\"/>"
+      "<way id=\"9\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>");
+  for (int i = 0; i < 12; i++) {
+    double lon0 = 12.0001 + i * 0.0004, lon1 = lon0 + 0.00026;
+    length += snprintf(
+        xml + length, sizeof(xml) - (size_t)length,
+        "<node id=\"%d\" lat=\"45.0004\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.0004\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00049\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00049\" lon=\"%.6f\"/>"
+        "<way id=\"%d\"><nd ref=\"%d\"/><nd ref=\"%d\"/><nd ref=\"%d\"/><nd "
+        "ref=\"%d\"/><nd ref=\"%d\"/><tag k=\"building\" v=\"yes\"/><tag "
+        "k=\"height\" v=\"9\"/></way>",
+        10 + 4 * i, lon0, 11 + 4 * i, lon1, 12 + 4 * i, lon1, 13 + 4 * i, lon0,
+        100 + i, 10 + 4 * i, 11 + 4 * i, 12 + 4 * i, 13 + 4 * i, 10 + 4 * i);
+  }
+  length += snprintf(xml + length, sizeof(xml) - (size_t)length, "</osm>");
+  assert((size_t)length < sizeof(xml));
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  int chimneys = 0;
+  for (int i = 0; i < 12; i++) {
+    const city_part_t* chimney = part_for(&package, "chimney", 100 + i);
+    if (!chimney) continue;
+    chimneys++;
+    aabb_t b = mesh_data_bounds(&chimney->mesh);
+    const city_part_t* roof = roof_for(&package, 100 + i);
+    float ridge = mesh_data_bounds(&roof->mesh).max.y;
+    assert(b.max.y > ridge + 0.5f &&
+           b.max.y < ridge + 2.0f);            /* stands clear above */
+    assert(b.min.y < ridge && b.min.y > 8.5f); /* rooted in the roof */
+    assert(b.max.x - b.min.x < 0.8f && b.max.z - b.min.z < 0.8f);
+  }
+  assert(chimneys >= 3 && chimneys <= 9); /* many, not all */
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -1057,6 +1104,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
       if (strcmp(part->material, "kerb") == 0 ||
           strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "manhole") == 0 ||
+          strcmp(part->material, "chimney") == 0 ||
           strcmp(part->material, "furniture") == 0 ||
           strcmp(part->material, "signal_red") == 0 ||
           strcmp(part->material, "signal_amber") == 0 ||
@@ -1184,6 +1232,7 @@ void run_generator_tests(void) {
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
   RUN(a_package_with_crossings_has_no_empty_parts);
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
+  RUN(pitched_roofs_sprout_chimneys_above_the_ridge);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

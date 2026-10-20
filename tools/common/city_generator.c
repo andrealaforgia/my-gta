@@ -2232,6 +2232,42 @@ static bool add_clock_faces(layout_t* layout, const city_building_t* building,
   return true;
 }
 
+/* A brick chimney on a pitched roof, standing on the slope a little off
+ * the ridge and rising above it. About four buildings in ten have one. */
+static bool add_chimney(layout_t* layout, const city_building_t* building,
+                        city_chunk_t* chunk, float h) {
+  unsigned hash = (unsigned)((uint64_t)building->source_id * 1103515245u >> 5);
+  if (hash % 100 >= 42) return true;
+  bounding_rectangle_t r =
+      bounding_rectangle(building->points, building->point_count);
+  double half_span = (r.across_max - r.across_min) * 0.5;
+  float rise = (float)fmin(half_span * 0.6, 4.0);
+  double along = r.along_min + (r.along_max - r.along_min) *
+                                   (0.25 + 0.5 * ((hash >> 8) % 100) / 100.0);
+  double side = ((hash >> 16) & 1) ? 0.35 : -0.35;
+  double across = 0.5 * (r.across_min + r.across_max) + side * half_span;
+  local_point_t p = {r.axis.x * along + r.across.x * across,
+                     r.axis.z * along + r.across.z * across};
+  float base = h + rise * 0.55f, top = h + rise + 1.3f;
+  city_part_t* part = city_chunk_add_part(chunk, "chimney", PART_COLLIDER_NONE,
+                                          0, 0, (uint64_t)building->source_id);
+  if (!part) return false;
+  if (!mesh_data_add_box(&part->mesh,
+                         vec3((float)p.x, 0.5f * (base + top), (float)p.z),
+                         vec3(0.28f, 0.5f * (top - base), 0.28f)))
+    return false;
+  float lift =
+      layout->terrain && layout->terrain->cols > 0
+          ? (float)terrain_at(
+                layout, centroid(building->points, building->point_count).x,
+                centroid(building->points, building->point_count).z)
+          : 0.0f;
+  for (size_t v = 0; v < part->mesh.vertex_count; v++)
+    part->mesh.vertices[v].position.y += lift;
+  finish_part(chunk, part);
+  return true;
+}
+
 /* Finishes the building's parts, with its landmark tower and clock. */
 static bool finish_landmark_building(layout_t* layout,
                                      const city_building_t* building,
@@ -2246,6 +2282,12 @@ static bool finish_landmark_building(layout_t* layout,
                     &axis, &clock_height))
     return false;
   finish_building(layout, building, chunk, walls, roof);
+  if (landmark == LANDMARK_NONE) {
+    roof_shape_t shape = roof_shape(building);
+    if ((shape == ROOF_HIPPED || shape == ROOF_GABLED) &&
+        !add_chimney(layout, building, chunk, building->height))
+      return false;
+  }
   if (clock_height > 0 &&
       !add_clock_faces(layout, building, chunk, centre, axis, clock_height))
     return false;
