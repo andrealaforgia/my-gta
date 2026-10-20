@@ -1370,10 +1370,42 @@ static bool add_portico(const layout_t* layout, city_part_t* walls,
          add_face(&walkway->mesh, f, f + 2, f + 3, up);
 }
 
+/* True when edge i of a building runs alongside a main street or a
+ * pedestrian street close by and the building is tall enough for a shop
+ * on its ground floor; most buildings on such a street have one. */
+static bool edge_faces_shops(const city_model_t* model,
+                             const city_building_t* building, size_t i) {
+  if (building->height < 6.0f) return false;
+  unsigned hash = (unsigned)((uint64_t)building->source_id * 2654435761u >> 9);
+  if (hash % 100 >= 65) return false;
+  local_point_t a = building->points[i];
+  local_point_t b = building->points[(i + 1) % building->point_count];
+  if (hypot(b.x - a.x, b.z - a.z) < 5.0) return false;
+  vec2_t direction = v2_normalize(v2_sub(b, a));
+  local_point_t middle = {(a.x + b.x) * 0.5, (a.z + b.z) * 0.5};
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    bool main_street = road->class == ROAD_CLASS_PRIMARY ||
+                       road->class == ROAD_CLASS_SECONDARY ||
+                       road->class == ROAD_CLASS_TERTIARY ||
+                       road->class == ROAD_CLASS_PEDESTRIAN;
+    if (!main_street) continue;
+    for (size_t k = 1; k < road->point_count; k++) {
+      vec2_t along = v2_normalize(v2_sub(road->points[k], road->points[k - 1]));
+      if (fabs(direction.x * along.x + direction.z * along.z) < 0.9) continue;
+      if (point_segment_distance(middle, road->points[k - 1], road->points[k]) <
+          road->width * 0.5 + 7.5)
+        return true;
+    }
+  }
+  return false;
+}
+
 static bool add_walls(const layout_t* layout, city_part_t* walls,
-                      city_part_t* walkway, const local_point_t* ring,
-                      size_t count, float h, const ridge_t* ridge, float skirt,
-                      const bool* arcaded) {
+                      city_part_t* walkway, city_part_t* shops,
+                      const local_point_t* ring, size_t count, float h,
+                      const ridge_t* ridge, float skirt, const bool* arcaded,
+                      const bool* shop) {
   const city_generator_options_t* o = layout->options;
   for (size_t i = 0; i < count; i++) {
     local_point_t a = ring[i], b = ring[(i + 1) % count];
@@ -1383,8 +1415,10 @@ static bool add_walls(const layout_t* layout, city_part_t* walls,
     vec2_t direction = v2_normalize(along);
     vec3_t normal = vec3((float)-direction.z, 0, (float)direction.x);
     bool portico = arcaded && arcaded[i];
+    bool shopfront = !portico && shop && shop[i];
     float storey = o->storey_height;
-    float bottom = portico ? fminf(h, 1.5f * storey) : -skirt;
+    float bottom = portico ? fminf(h, 1.5f * storey)
+                           : (shopfront ? fminf(h, storey) : -skirt);
     /* Split where the edge crosses the ridge so the top follows it. */
     local_point_t pieces[3] = {a, b, b};
     size_t piece_count = 2;
@@ -1409,8 +1443,14 @@ static bool add_walls(const layout_t* layout, city_part_t* walls,
       float u1 = (float)((travelled + span) / o->window_width);
       uint32_t base = (uint32_t)walls->mesh.vertex_count;
       /* Above a portico the texture restarts at a clean storey line. */
-      float v_bottom = portico ? 0.0f : -skirt / storey;
+      float v_bottom =
+          portico ? 0.0f : (shopfront ? bottom / storey : -skirt / storey);
       float v_shift = portico ? bottom / storey : 0.0f;
+      if (shopfront && !add_wall_quad(shops, p, q, -skirt, bottom, normal,
+                                      (float)(travelled / 4.0),
+                                      (float)((travelled + span) / 4.0),
+                                      -skirt / storey, bottom / storey))
+        return false;
       if (!add_vertex(&walls->mesh, at(p, bottom), normal, u0, v_bottom) ||
           !add_vertex(&walls->mesh, at(q, bottom), normal, u1, v_bottom) ||
           !add_vertex(&walls->mesh, at(q, top_q), normal, u1,
@@ -1676,13 +1716,37 @@ static void place_on_terrain(const layout_t* layout,
  * walkway part is dropped when no edge needed one. */
 static void finish_building(layout_t* layout, const city_building_t* building,
                             city_chunk_t* chunk, city_part_t* walls,
-                            city_part_t* roof, city_part_t* walkway) {
+                            city_part_t* roof) {
   place_on_terrain(layout, building, walls, roof);
   finish_part(chunk, walls);
   finish_part(chunk, roof);
+  /* The walkway and the shop fronts are the last two parts; keep the ones
+   * that have anything in them. */
+  size_t n = chunk->part_count;
+  city_part_t* walkway = &chunk->parts[n - 2];
+  city_part_t* shops = &chunk->parts[n - 1];
+  if (shops->mesh.vertex_count == 0) {
+    mesh_data_free(&shops->mesh);
+    chunk->part_count--;
+  } else {
+    float base = 0;
+    if (layout->terrain && layout->terrain->cols > 0) {
+      local_point_t c = centroid(building->points, building->point_count);
+      base = (float)terrain_at(layout, c.x, c.z);
+    }
+    for (size_t v = 0; v < shops->mesh.vertex_count; v++)
+      shops->mesh.vertices[v].position.y += base;
+    finish_part(chunk, shops);
+  }
   if (walkway->mesh.vertex_count == 0) {
     mesh_data_free(&walkway->mesh);
-    chunk->part_count--; /* the walkway is the last part */
+    if (chunk->part_count == n) {
+      chunk->parts[n - 2] = chunk->parts[n - 1]; /* the shops move down */
+      chunk->part_count--;
+    }
+    /* With no shops the walkway was the last part left. */
+    else
+      chunk->part_count--;
   } else {
     finish_part(chunk, walkway);
   }
@@ -1841,8 +1905,8 @@ static bool add_clock_faces(layout_t* layout, const city_building_t* building,
 static bool finish_landmark_building(layout_t* layout,
                                      const city_building_t* building,
                                      city_chunk_t* chunk, city_part_t* walls,
-                                     city_part_t* roof, city_part_t* walkway,
-                                     landmark_t landmark, float skirt) {
+                                     city_part_t* roof, landmark_t landmark,
+                                     float skirt) {
   local_point_t centre = {0, 0};
   vec2_t axis = v2(1, 0);
   float clock_height = 0;
@@ -1850,7 +1914,7 @@ static bool finish_landmark_building(layout_t* layout,
       !add_landmark(layout, building, walls, roof, skirt, landmark, &centre,
                     &axis, &clock_height))
     return false;
-  finish_building(layout, building, chunk, walls, roof, walkway);
+  finish_building(layout, building, chunk, walls, roof);
   if (clock_height > 0 &&
       !add_clock_faces(layout, building, chunk, centre, axis, clock_height))
     return false;
@@ -1893,17 +1957,32 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
                                  COLLISION_LAYER_GROUND, o->pavement_friction,
                                  (uint64_t)building->source_id)
            : NULL;
-  if (!walls || !roof || !walkway) return false;
-  /* Adding parts may have moved the array: walls, roof, walkway are the last
-   * three. */
-  walls = &chunk->parts[chunk->part_count - 3];
-  roof = &chunk->parts[chunk->part_count - 2];
-  walkway = &chunk->parts[chunk->part_count - 1];
+  city_part_t* shops =
+      walkway
+          ? city_chunk_add_part(chunk, "shopfront", PART_COLLIDER_MESH,
+                                COLLISION_LAYER_BUILDING, o->building_friction,
+                                (uint64_t)building->source_id)
+          : NULL;
+  if (!walls || !roof || !walkway || !shops) return false;
+  /* Adding parts may have moved the array: walls, roof, walkway and shops are
+   * the last four. */
+  walls = &chunk->parts[chunk->part_count - 4];
+  roof = &chunk->parts[chunk->part_count - 3];
+  walkway = &chunk->parts[chunk->part_count - 2];
+  shops = &chunk->parts[chunk->part_count - 1];
   bool* arcaded = calloc(count, sizeof(bool));
-  if (!arcaded) return false;
+  bool* shop = calloc(count, sizeof(bool));
+  if (!arcaded || !shop) {
+    free(arcaded);
+    free(shop);
+    return false;
+  }
   double depth = building_depth(building);
-  for (size_t i = 0; i < count; i++)
+  for (size_t i = 0; i < count; i++) {
     arcaded[i] = edge_faces_arcade(layout->model, o, building, i, depth);
+    shop[i] = landmark == LANDMARK_NONE &&
+              edge_faces_shops(layout->model, building, i);
+  }
   float h = building->height;
   ridge_t ridge_data;
   const ridge_t* ridge = NULL;
@@ -1918,18 +1997,19 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   }
   /* On sloping ground the walls reach below the walkway so no gap shows. */
   float skirt = layout->terrain && layout->terrain->cols > 0 ? 3.0f : 0.0f;
-  bool walls_ok = add_walls(layout, walls, walkway, building->points, count, h,
-                            ridge, skirt, arcaded);
+  bool walls_ok = add_walls(layout, walls, walkway, shops, building->points,
+                            count, h, ridge, skirt, arcaded, shop);
   free(arcaded);
+  free(shop);
   if (!walls_ok) return false;
   for (size_t hole = 0; hole < building->hole_count; hole++)
-    if (!add_walls(layout, walls, walkway, building->holes[hole].points,
-                   building->holes[hole].count, h, ridge, skirt, NULL))
+    if (!add_walls(layout, walls, walkway, shops, building->holes[hole].points,
+                   building->holes[hole].count, h, ridge, skirt, NULL, NULL))
       return false;
   bool pitched = false;
   if (!add_pitched_roof(roof, walls, building, h, o, &pitched)) return false;
   if (pitched) {
-    if (!finish_landmark_building(layout, building, chunk, walls, roof, walkway,
+    if (!finish_landmark_building(layout, building, chunk, walls, roof,
                                   landmark, skirt))
       return false;
     stats->buildings++;
@@ -1994,8 +2074,8 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   free(hole_points);
   free(hole_counts);
   if (!roof_ok) return false;
-  if (!finish_landmark_building(layout, building, chunk, walls, roof, walkway,
-                                landmark, skirt))
+  if (!finish_landmark_building(layout, building, chunk, walls, roof, landmark,
+                                skirt))
     return false;
   stats->buildings++;
   return true;

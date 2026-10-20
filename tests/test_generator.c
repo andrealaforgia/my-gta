@@ -770,6 +770,66 @@ static void the_town_hall_and_churches_get_towers_and_the_hall_is_brick(void) {
   city_model_free(&model);
 }
 
+static void buildings_on_main_streets_get_shopfronts_at_street_level(void) {
+  /* A secondary road with eight 12 x 12 m buildings along its north side at
+   * 5 m from its edge, and one house 200 m off. */
+  char xml[8192];
+  int length = snprintf(
+      xml, sizeof(xml),
+      "<osm><bounds minlat=\"44.995\" minlon=\"11.999\" maxlat=\"45.003\" "
+      "maxlon=\"12.004\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0030\"/>"
+      "<way id=\"9\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"secondary\"/></way>");
+  for (int i = 0; i < 8; i++) {
+    double lon0 = 12.0002 + i * 0.00032, lon1 = lon0 + 0.00017;
+    length += snprintf(
+        xml + length, sizeof(xml) - (size_t)length,
+        "<node id=\"%d\" lat=\"45.00008\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00008\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00020\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00020\" lon=\"%.6f\"/>"
+        "<way id=\"%d\"><nd ref=\"%d\"/><nd ref=\"%d\"/><nd ref=\"%d\"/><nd "
+        "ref=\"%d\"/><nd ref=\"%d\"/><tag k=\"building\" v=\"yes\"/><tag "
+        "k=\"height\" v=\"13\"/></way>",
+        10 + 4 * i, lon0, 11 + 4 * i, lon1, 12 + 4 * i, lon1, 13 + 4 * i, lon0,
+        100 + i, 10 + 4 * i, 11 + 4 * i, 12 + 4 * i, 13 + 4 * i, 10 + 4 * i);
+  }
+  length += snprintf(
+      xml + length, sizeof(xml) - (size_t)length,
+      "<node id=\"90\" lat=\"44.9970\" lon=\"12.0002\"/>"
+      "<node id=\"91\" lat=\"44.9970\" lon=\"12.00037\"/>"
+      "<node id=\"92\" lat=\"44.99712\" lon=\"12.00037\"/>"
+      "<node id=\"93\" lat=\"44.99712\" lon=\"12.0002\"/>"
+      "<way id=\"200\"><nd ref=\"90\"/><nd ref=\"91\"/><nd ref=\"92\"/><nd "
+      "ref=\"93\"/><nd ref=\"90\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"9\"/></way></osm>");
+  assert((size_t)length < sizeof(xml));
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  int shops = 0;
+  for (int i = 0; i < 8; i++) {
+    const city_part_t* shop = part_for(&package, "shopfront", 100 + i);
+    if (!shop) continue;
+    shops++;
+    aabb_t band = mesh_data_bounds(&shop->mesh);
+    assert(near_to(band.max.y, 3.2f, 0.01f) && band.min.y <= 0.0f);
+    assert(shop->collider == PART_COLLIDER_MESH);
+    /* The plain walls start where the shop window ends. */
+    const city_part_t* walls = facade_for(&package, 100 + i);
+    assert(walls &&
+           near_to(mesh_data_bounds(&walls->mesh).max.y, 13.0f, 0.01f));
+    /* The sides without a shop still reach the ground. */
+    assert(mesh_data_bounds(&walls->mesh).min.y <= 0.0f);
+  }
+  assert(shops >= 3 && shops <= 7); /* most, not all */
+  assert(part_for(&package, "shopfront", 200) ==
+         NULL); /* the house, far from a street */
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -940,6 +1000,7 @@ void run_generator_tests(void) {
   RUN(single_trees_stand_where_they_are_mapped);
   RUN(the_package_carries_routes_and_parking_places);
   RUN(the_town_hall_and_churches_get_towers_and_the_hall_is_brick);
+  RUN(buildings_on_main_streets_get_shopfronts_at_street_level);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

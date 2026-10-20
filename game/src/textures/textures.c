@@ -261,6 +261,68 @@ uint8_t* texture_facade_brick(unsigned seed) {
   return pixels;
 }
 
+/* A shop front, 4 m by one storey: a striped awning over a signboard, two
+ * display windows and a door between them. Glass has alpha 0 so it lights up
+ * at night. */
+uint8_t* texture_shopfront(unsigned seed) {
+  static const float awnings[][3] = {{0.75f, 0.12f, 0.12f},
+                                     {0.12f, 0.4f, 0.2f},
+                                     {0.12f, 0.22f, 0.5f},
+                                     {0.85f, 0.6f, 0.1f}};
+  static const float walls[][3] = {{0.8f, 0.74f, 0.6f},
+                                   {0.62f, 0.55f, 0.46f},
+                                   {0.86f, 0.82f, 0.74f},
+                                   {0.3f, 0.3f, 0.32f}};
+  const float* awning = awnings[seed % 4];
+  const float* wall = walls[(seed / 4) % 4];
+  uint8_t* pixels = grainy(seed, wall[0], wall[1], wall[2], 0.14f, 0.06f);
+  if (!pixels) return NULL;
+  for (int y = 0; y < TEXTURE_SIZE; y++) {
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      float fx = (float)x / TEXTURE_SIZE;
+      float fy = 1.0f - (float)y / TEXTURE_SIZE; /* up the front */
+      if (fy > 0.84f) {
+        /* The signboard. */
+        float lettering = ((x / 6) % 3 == 0 && fy > 0.89f && fy < 0.95f &&
+                           fx > 0.12f && fx < 0.88f)
+                              ? 0.9f
+                              : 0.14f;
+        put(pixels, x, y, 0.14f + lettering * 0.7f, 0.12f + lettering * 0.65f,
+            0.1f + lettering * 0.5f);
+      } else if (fy > 0.7f) {
+        /* The awning, striped, shaded darker at the lower lip. */
+        bool stripe = ((x / 16) % 2) == 0;
+        float shade = 0.75f + 0.25f * (fy - 0.7f) / 0.14f;
+        float r = stripe ? awning[0] : 0.9f, g = stripe ? awning[1] : 0.9f,
+              b = stripe ? awning[2] : 0.88f;
+        put(pixels, x, y, r * shade, g * shade, b * shade);
+      } else {
+        bool window =
+            fy > 0.1f && fy < 0.66f &&
+            ((fx > 0.07f && fx < 0.43f) || (fx > 0.57f && fx < 0.93f));
+        bool door = fy < 0.64f && fx >= 0.45f && fx <= 0.55f;
+        if (window) {
+          bool frame = (fx > 0.07f && fx < 0.085f) ||
+                       (fx > 0.415f && fx < 0.43f) ||
+                       (fx > 0.57f && fx < 0.585f) ||
+                       (fx > 0.915f && fx < 0.93f) || fy < 0.12f || fy > 0.645f;
+          if (frame) {
+            put(pixels, x, y, 0.18f, 0.16f, 0.14f);
+          } else {
+            float glow = 0.3f + 0.25f * noise((unsigned)(x / 24),
+                                              (unsigned)(y / 24), seed);
+            put(pixels, x, y, glow * 0.6f, glow * 0.7f, glow * 0.8f);
+            pixels[(y * TEXTURE_SIZE + x) * 4 + 3] = 0;
+          }
+        } else if (door) {
+          put(pixels, x, y, 0.2f, 0.14f, 0.1f);
+        }
+      }
+    }
+  }
+  return pixels;
+}
+
 uint8_t* texture_roof_slate(unsigned seed) {
   uint8_t* pixels = grainy(seed, 0.34f, 0.35f, 0.38f, 0.2f, 0.1f);
   if (!pixels) return NULL;
@@ -330,6 +392,7 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.roof = upload(renderer, texture_roof(6));
   set.facade_fresco = upload(renderer, texture_facade_fresco(5));
   set.facade_brick = upload(renderer, texture_facade_brick(23));
+  set.shopfront = upload(renderer, texture_shopfront(31));
   set.roof_slate = upload(renderer, texture_roof_slate(8));
   set.roof_flat = upload(renderer, texture_roof_flat(9));
   set.checker = upload(renderer, texture_checker());

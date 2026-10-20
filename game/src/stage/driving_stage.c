@@ -448,7 +448,8 @@ void driving_stage_render(driving_stage_t* stage) {
     if (!entity->used) continue;
     if (strncmp(entity->label, "lamp_light", 10) == 0)
       entity->material.emissive = 2.4f * night;
-    else if (strncmp(entity->label, "facade", 6) == 0)
+    else if (strncmp(entity->label, "facade", 6) == 0 ||
+             strncmp(entity->label, "shopfront", 9) == 0)
       entity->material.window_glow = night;
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);

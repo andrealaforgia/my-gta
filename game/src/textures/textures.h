@@ -24,6 +24,7 @@ typedef struct {
   texture_handle_t roof;
   texture_handle_t facade_fresco; /* painted fronts along the Corso */
   texture_handle_t facade_brick;  /* the Municipio */
+  texture_handle_t shopfront; /* ground-floor shops on main streets */
   texture_handle_t roof_slate;
   texture_handle_t roof_flat;
   texture_handle_t checker;
@@ -39,6 +40,7 @@ uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns);
 uint8_t* texture_roof(unsigned seed);
 uint8_t* texture_facade_fresco(unsigned seed);
 uint8_t* texture_facade_brick(unsigned seed);
+uint8_t* texture_shopfront(unsigned seed);
 uint8_t* texture_roof_slate(unsigned seed);
 uint8_t* texture_roof_flat(unsigned seed);
 uint8_t* texture_checker(void);
