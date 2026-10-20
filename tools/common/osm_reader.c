@@ -1,5 +1,6 @@
 #include "osm_reader.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,7 @@ typedef struct {
   osm_way_t* way; /* way being read */
   size_t ref_capacity;
   osm_relation_t* relation; /* relation being read */
+  size_t open_node;         /* index of the node being read, or SIZE_MAX */
   size_t member_capacity;
   osm_tag_t** tags; /* tag list of the open element */
   size_t* tag_count;
@@ -100,6 +102,14 @@ static bool open_tags(parser_t* p, osm_tag_t** tags, size_t* count) {
 }
 
 static void add_tag(parser_t* p, const char* start, const char* end) {
+  if (p->open_node != SIZE_MAX) {
+    char key[64], value[64];
+    if (attribute(start, end, "k", key, sizeof(key)) &&
+        attribute(start, end, "v", value, sizeof(value)) &&
+        strcmp(key, "natural") == 0 && strcmp(value, "tree") == 0)
+      p->data->nodes[p->open_node].tree = true;
+    return;
+  }
   if (!p->tags) return;
   osm_tag_t tag;
   if (!attribute(start, end, "k", tag.key, sizeof(tag.key))) return;
@@ -131,7 +141,9 @@ static void start_node(parser_t* p, const char* start, const char* end) {
   node->id = strtoll(id, NULL, 10);
   node->lat = strtod(lat, NULL);
   node->lon = strtod(lon, NULL);
+  node->tree = false;
   p->tags = NULL; /* node tags are not kept */
+  p->open_node = d->node_count - 1;
 }
 
 static void start_way(parser_t* p, const char* start, const char* end) {
@@ -234,6 +246,7 @@ static void element(parser_t* p, const char* start, const char* end) {
       p->tags = NULL;
     } else if (strncmp(name, "node", 4) == 0) {
       p->tags = NULL;
+      p->open_node = SIZE_MAX;
     }
     return;
   }
@@ -245,6 +258,7 @@ static void element(parser_t* p, const char* start, const char* end) {
   bool self_closing = end > start && end[-1] == '/';
   if (length == 4 && strncmp(start, "node", 4) == 0) {
     start_node(p, name_end, end);
+    if (self_closing) p->open_node = SIZE_MAX;
   } else if (length == 3 && strncmp(start, "way", 3) == 0) {
     start_way(p, name_end, end);
     if (self_closing) p->way = NULL;
@@ -268,6 +282,7 @@ bool osm_parse(osm_data_t* data, const char* xml) {
   parser_t p;
   memset(&p, 0, sizeof(p));
   p.data = data;
+  p.open_node = SIZE_MAX;
   p.ok = true;
   const char* cursor = xml;
   while (p.ok && (cursor = strchr(cursor, '<')) != NULL) {
@@ -356,16 +371,20 @@ static int compare_node_ids(const void* a, const void* b) {
 const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id) {
   /* Files are usually id-ordered; binary search when they are, scan otherwise.
    */
-  static const osm_data_t* sorted_for = NULL;
+  static const osm_node_t* sorted_for = NULL;
+  static size_t sorted_count = 0;
   static bool sorted = false;
-  if (sorted_for != data) {
+  /* Keyed by the node array, not the data struct: a struct on the stack
+   * can be reused for another extract at the same address. */
+  if (sorted_for != data->nodes || sorted_count != data->node_count) {
     sorted = true;
     for (size_t i = 1; i < data->node_count && sorted; i++)
       if (data->nodes[i - 1].id > data->nodes[i].id) sorted = false;
-    sorted_for = data;
+    sorted_for = data->nodes;
+    sorted_count = data->node_count;
   }
   if (sorted) {
-    osm_node_t key = {id, 0, 0};
+    osm_node_t key = {id, 0, 0, false};
     return bsearch(&key, data->nodes, data->node_count, sizeof(osm_node_t),
                    compare_node_ids);
   }

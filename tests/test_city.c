@@ -408,6 +408,38 @@ static void an_elevation_lattice_becomes_a_terrain_that_survives_the_model(
   city_model_free(&model);
 }
 
+static void single_trees_are_imported_and_survive_the_model(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0002\" lon=\"12.0010\"><tag k=\"natural\" "
+      "v=\"tree\"/></node>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  assert(model.tree_count == 1);
+  /* 0.0002 degrees (22 m) north of the street, over its middle. */
+  const city_road_t* street = road_from(&model, 10, 0);
+  assert(street);
+  assert(near_to(model.trees[0].z, street->points[0].z - 22.2, 0.5));
+  assert(near_to(model.trees[0].x,
+                 0.5 * (street->points[0].x + street->points[1].x), 1.0));
+  const char* directory = "/tmp/gta-like-test-trees-model";
+  assert(city_model_write(&model, directory));
+  city_model_t loaded;
+  assert(city_model_read(&loaded, directory));
+  assert(loaded.tree_count == 1);
+  assert(near_to(loaded.trees[0].z, model.trees[0].z, 1e-3));
+  city_model_free(&loaded);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -447,5 +479,6 @@ void run_city_tests(void) {
   RUN(untagged_buildings_take_heights_from_their_kind);
   RUN(tunnels_and_driveways_are_not_drawn_but_alleys_are);
   RUN(an_elevation_lattice_becomes_a_terrain_that_survives_the_model);
+  RUN(single_trees_are_imported_and_survive_the_model);
   RUN(the_model_round_trips_through_its_text_format);
 }

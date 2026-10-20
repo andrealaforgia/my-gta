@@ -62,6 +62,8 @@ have a PBF.
   five, church 16 m), else the median of tagged buildings within 80 m
   varied by a storey up or down by the way id, else two to four storeys.
   Rings are made anticlockwise.
+- Single nodes tagged `natural=tree` become street trees (a trunk with a
+  collider and a crown); no other node tags are read. Pordenone has 37.
 - Interior corners of roads are replaced by arcs (quadratic, up to 8 m
   back from the corner) and two segments meeting end to end at a node
   nothing else uses, with the same class, width and direction rules, are

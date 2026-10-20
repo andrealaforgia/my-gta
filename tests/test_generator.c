@@ -625,6 +625,35 @@ static void a_slender_tower_gets_a_tall_spire(void) {
   city_model_free(&model);
 }
 
+static void single_trees_stand_where_they_are_mapped(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0003\" lon=\"12.0010\"><tag k=\"natural\" "
+      "v=\"tree\"/></node>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  city_generator_options_t options = city_generator_default_options();
+  city_package_t package;
+  city_generator_stats_t stats;
+  assert(city_generate(&package, &model, &options, "tree", &stats));
+  assert(stats.trees == 1);
+  const city_part_t* trunk = part_for(&package, "trunk", 0);
+  assert(trunk && trunk->collider == PART_COLLIDER_MESH);
+  vec3_t where = aabb_center(mesh_data_bounds(&trunk->mesh));
+  assert(near_to(where.x, model.trees[0].x, 0.3) &&
+         near_to(where.z, model.trees[0].z, 0.3));
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -786,6 +815,7 @@ void run_generator_tests(void) {
   RUN(footpaths_stop_at_the_pavement_instead_of_crossing_the_road);
   RUN(buildings_on_a_named_street_get_a_portico);
   RUN(a_slender_tower_gets_a_tall_spire);
+  RUN(single_trees_stand_where_they_are_mapped);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

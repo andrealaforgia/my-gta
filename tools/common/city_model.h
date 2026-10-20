@@ -131,6 +131,8 @@ typedef struct {
   size_t building_count;
   city_area_t* areas;
   size_t area_count;
+  local_point_t* trees; /* single mapped trees */
+  size_t tree_count;
   city_terrain_t terrain;
   projection_t projection;
   osm_bounds_t bounds;

@@ -1061,6 +1061,44 @@ static bool generate_trees(layout_t* layout, const city_area_t* area,
   return true;
 }
 
+/* The mapped single trees, each a trunk and a crown like a park's, with a
+ * collider on the trunk. They sit on the ground where they were mapped. */
+static bool generate_street_trees(layout_t* layout, const city_model_t* model,
+                                  city_generator_stats_t* stats) {
+  if (layout->options->tree_spacing <= 0) return true;
+  for (size_t t = 0; t < model->tree_count; t++) {
+    local_point_t p = model->trees[t];
+    city_chunk_t* chunk = chunk_at(layout, p);
+    city_part_t* trunks = city_chunk_add_part(
+        chunk, "trunk", PART_COLLIDER_MESH, COLLISION_LAYER_PROP, 0.5f, 0);
+    city_part_t* leaves =
+        trunks
+            ? city_chunk_add_part(chunk, "leaves", PART_COLLIDER_NONE, 0, 0, 0)
+            : NULL;
+    if (!trunks || !leaves) return false;
+    trunks = &chunk->parts[chunk->part_count - 2];
+    uint64_t seed = (uint64_t)(t + 1) * 0x9e3779b97f4a7c15ull;
+    seed ^= seed >> 12, seed ^= seed << 25, seed ^= seed >> 27;
+    float height = 5.0f + (float)((seed >> 40) % 300) / 100.0f;
+    float crown = 1.8f + (float)((seed >> 50) % 100) / 100.0f;
+    vec3_t top = vec3((float)p.x, height, (float)p.z);
+    if (!mesh_data_add_box(&trunks->mesh,
+                           vec3((float)p.x, height * 0.5f, (float)p.z),
+                           vec3(0.18f, height * 0.5f, 0.18f)) ||
+        !mesh_data_add_box(&leaves->mesh,
+                           vec3_add(top, vec3(0, crown * 0.5f, 0)),
+                           vec3(crown * 0.8f, crown * 0.9f, crown * 0.8f)) ||
+        !mesh_data_add_box(&leaves->mesh,
+                           vec3_add(top, vec3(0, crown * 0.6f, 0)),
+                           vec3(crown * 0.7f, crown * 0.6f, crown * 0.7f)))
+      return false;
+    finish_part(chunk, trunks);
+    finish_part(chunk, leaves);
+    stats->trees++;
+  }
+  return true;
+}
+
 static bool generate_area(layout_t* layout, const city_area_t* area,
                           city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -2068,6 +2106,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   }
   for (size_t b = 0; ok && b < model->building_count; b++)
     ok = generate_building(&layout, &model->buildings[b], stats);
+  if (ok) ok = generate_street_trees(&layout, model, stats);
   free(layout.arcade_edges);
   free(fits);
   free(cuts);

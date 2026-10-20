@@ -70,7 +70,25 @@ static void projection_centre_comes_from_the_bounds(void) {
          near(projection.origin_lon, 12.0));
 }
 
+static void tagged_nodes_are_noticed_when_they_are_trees(void) {
+  const char* xml =
+      "<osm><node id=\"1\" lat=\"45.0\" lon=\"12.0\"><tag k=\"natural\" "
+      "v=\"tree\"/><tag k=\"leaf_type\" v=\"broadleaved\"/></node>"
+      "<node id=\"2\" lat=\"45.0\" lon=\"12.001\"><tag k=\"amenity\" "
+      "v=\"bench\"/></node>"
+      "<node id=\"3\" lat=\"45.0\" lon=\"12.002\"/>"
+      "<node id=\"4\" lat=\"45.0\" lon=\"12.003\"><tag k=\"natural\" "
+      "v=\"tree\"/></node></osm>";
+  osm_data_t data;
+  assert(osm_parse(&data, xml));
+  assert(data.node_count == 4);
+  assert(osm_find_node(&data, 1)->tree && osm_find_node(&data, 4)->tree);
+  assert(!osm_find_node(&data, 2)->tree && !osm_find_node(&data, 3)->tree);
+  osm_free(&data);
+}
+
 void run_osm_tests(void) {
+  RUN(tagged_nodes_are_noticed_when_they_are_trees);
   RUN(the_fixture_loads_with_nodes_ways_tags_and_relations);
   RUN(a_missing_or_broken_file_is_reported);
   RUN(unknown_elements_are_skipped_and_entities_unescaped);

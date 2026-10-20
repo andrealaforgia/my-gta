@@ -23,6 +23,7 @@ typedef struct {
   int64_t id;
   double lat;
   double lon;
+  bool tree; /* tagged natural=tree; no other node tags are kept */
 } osm_node_t;
 
 typedef struct {
