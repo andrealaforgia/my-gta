@@ -212,10 +212,11 @@ static bool write_manifest(const city_model_t* model, const char* directory) {
           "roads_degenerate %zu "
           "buildings_accepted %zu buildings_malformed %zu relations_skipped "
           "%zu widths_inferred %zu "
-          "heights_defaulted %zu\n",
+          "heights_defaulted %zu\nroads_merged %zu\nbends_rounded %zu\n",
           s->ways_total, s->roads_accepted, s->ways_ignored,
           s->roads_degenerate, s->buildings_accepted, s->buildings_malformed,
-          s->relations_skipped, s->widths_inferred, s->heights_defaulted);
+          s->relations_skipped, s->widths_inferred, s->heights_defaulted,
+          s->roads_merged, s->bends_rounded);
   fclose(file);
   return true;
 }

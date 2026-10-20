@@ -25,6 +25,8 @@ city_import_options_t city_import_default_options(void) {
   o.default_height_max = 15.0f;
   o.min_road_length = 0.5f;
   o.snap_distance = 2.0f;
+  o.bend_radius = 8.0f;
+  o.neighbour_reach = 80.0f;
   o.include_service_roads = true;
   return o;
 }
@@ -300,6 +302,136 @@ static void snap_dangling_ends(city_model_t* model, cleaned_way_t* ways,
   }
 }
 
+/* Two segments meeting end to end at a node nothing else uses are one
+ * road with a bend in it, not a junction: join them so the bend is
+ * rounded like any other. Only like with like, and one-way roads only
+ * head to tail. */
+static bool join_roads(city_road_t* first, bool first_at_end,
+                       city_road_t* second, bool second_at_end) {
+  if (first->class != second->class || first->oneway != second->oneway ||
+      fabs(first->width - second->width) > 0.01 ||
+      first->layer != second->layer || first->bridge != second->bridge ||
+      first->tunnel != second->tunnel)
+    return false;
+  if (first->oneway && (!first_at_end || second_at_end)) return false;
+  size_t count = first->point_count + second->point_count - 1;
+  local_point_t* points = malloc(count * sizeof(local_point_t));
+  int64_t* ids = malloc(count * sizeof(int64_t));
+  if (!points || !ids) {
+    free(points);
+    free(ids);
+    return false;
+  }
+  size_t n = 0;
+  for (size_t i = 0; i < first->point_count; i++) {
+    size_t k = first_at_end ? i : first->point_count - 1 - i;
+    points[n] = first->points[k], ids[n] = first->node_ids[k], n++;
+  }
+  for (size_t i = 1; i < second->point_count; i++) {
+    size_t k = second_at_end ? second->point_count - 1 - i : i;
+    points[n] = second->points[k], ids[n] = second->node_ids[k], n++;
+  }
+  free(first->points);
+  free(first->node_ids);
+  first->points = points, first->node_ids = ids, first->point_count = n;
+  return true;
+}
+
+static void merge_through_roads(city_model_t* model) {
+  for (size_t j = 0; j < model->junction_count;) {
+    city_junction_t* junction = &model->junctions[j];
+    size_t found[2] = {SIZE_MAX, SIZE_MAX};
+    bool at_end[2] = {false, false};
+    int hits = 0;
+    for (size_t r = 0; r < model->road_count && hits <= 2; r++) {
+      city_road_t* road = &model->roads[r];
+      for (int end = 0; end < 2; end++) {
+        size_t index = end ? road->point_count - 1 : 0;
+        if (road->node_ids[index] != junction->node_id) continue;
+        if (hits < 2) found[hits] = r, at_end[hits] = end;
+        hits++;
+      }
+    }
+    if (junction->degree != 2 || hits != 2 || found[0] == found[1] ||
+        !join_roads(&model->roads[found[0]], at_end[0], &model->roads[found[1]],
+                    at_end[1])) {
+      j++;
+      continue;
+    }
+    city_road_t* gone = &model->roads[found[1]];
+    free(gone->points);
+    free(gone->node_ids);
+    memmove(gone, gone + 1,
+            (model->road_count - found[1] - 1) * sizeof(city_road_t));
+    model->road_count--;
+    memmove(junction, junction + 1,
+            (model->junction_count - j - 1) * sizeof(city_junction_t));
+    model->junction_count--;
+    model->stats.roads_merged++;
+  }
+}
+
+/* Mapped roads are polylines with corners where the real road curves.
+ * Each interior corner that turns more than a few degrees is replaced by
+ * a quadratic arc tangent to both legs, reaching at most `radius` or
+ * just under half a leg back from the corner, so neighbouring arcs never
+ * overlap. The ends of a road, and so its junction geometry, do not
+ * move. */
+static void round_bends(city_model_t* model, float radius) {
+  if (radius <= 0) return;
+  for (size_t r = 0; r < model->road_count; r++) {
+    city_road_t* road = &model->roads[r];
+    if (road->point_count < 3) continue;
+    size_t capacity = road->point_count * 12;
+    local_point_t* points = malloc(capacity * sizeof(local_point_t));
+    int64_t* ids = malloc(capacity * sizeof(int64_t));
+    if (!points || !ids) {
+      free(points);
+      free(ids);
+      return;
+    }
+    size_t n = 0;
+    points[n] = road->points[0], ids[n] = road->node_ids[0], n++;
+    for (size_t i = 1; i + 1 < road->point_count; i++) {
+      local_point_t prev = road->points[i - 1], p = road->points[i],
+                    next = road->points[i + 1];
+      double l1 = hypot(p.x - prev.x, p.z - prev.z);
+      double l2 = hypot(next.x - p.x, next.z - p.z);
+      double cosine = l1 > 1e-9 && l2 > 1e-9
+                          ? ((p.x - prev.x) * (next.x - p.x) +
+                             (p.z - prev.z) * (next.z - p.z)) /
+                                (l1 * l2)
+                          : 1.0;
+      double angle = acos(fmax(-1.0, fmin(1.0, cosine)));
+      double d = fmin(radius, fmin(l1, l2) * 0.45);
+      if (angle < 0.12 || d < 0.5) {
+        points[n] = p, ids[n] = road->node_ids[i], n++;
+        continue;
+      }
+      local_point_t a = {p.x - (p.x - prev.x) / l1 * d,
+                         p.z - (p.z - prev.z) / l1 * d};
+      local_point_t b = {p.x + (next.x - p.x) / l2 * d,
+                         p.z + (next.z - p.z) / l2 * d};
+      int samples = (int)(angle / 0.17) + 2;
+      if (samples > 10) samples = 10;
+      for (int k = 0; k <= samples; k++) {
+        double t = (double)k / samples, u = 1.0 - t;
+        local_point_t q = {u * u * a.x + 2 * u * t * p.x + t * t * b.x,
+                           u * u * a.z + 2 * u * t * p.z + t * t * b.z};
+        points[n] = q;
+        ids[n] = k == samples / 2 ? road->node_ids[i] : 0;
+        n++;
+      }
+      model->stats.bends_rounded++;
+    }
+    size_t last = road->point_count - 1;
+    points[n] = road->points[last], ids[n] = road->node_ids[last], n++;
+    free(road->points);
+    free(road->node_ids);
+    road->points = points, road->node_ids = ids, road->point_count = n;
+  }
+}
+
 static void import_roads(city_model_t* model, const osm_data_t* osm,
                          const city_import_options_t* options) {
   cleaned_way_t* cleaned = calloc(osm->way_count, sizeof(cleaned_way_t));
@@ -423,6 +555,8 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
     }
   }
   free(uses);
+  merge_through_roads(model);
+  round_bends(model, options->bend_radius);
 }
 
 /* ---- rings: closed outlines from ways or multipolygon relations ---- */
@@ -602,6 +736,80 @@ static local_point_t* anticlockwise_copy(const local_point_t* points,
   return copy;
 }
 
+/* Kinds of building whose height is known without a tag. Zero means no
+ * idea. */
+static float typical_height(const char* category,
+                            const city_import_options_t* options) {
+  static const char* two_storey[] = {
+      "house", "detached", "semidetached_house", "terrace", "farm", "villa"};
+  static const char* low[] = {"hut",     "shed",  "garage", "garages",   "roof",
+                              "carport", "kiosk", "cabin",  "greenhouse"};
+  for (size_t i = 0; i < sizeof(two_storey) / sizeof(two_storey[0]); i++)
+    if (strcmp(category, two_storey[i]) == 0)
+      return 2.0f * options->storey_height;
+  for (size_t i = 0; i < sizeof(low) / sizeof(low[0]); i++)
+    if (strcmp(category, low[i]) == 0) return 3.0f;
+  if (strcmp(category, "bungalow") == 0) return options->storey_height;
+  if (strcmp(category, "apartments") == 0) return 5.0f * options->storey_height;
+  if (strcmp(category, "church") == 0 || strcmp(category, "cathedral") == 0)
+    return 16.0f;
+  return 0;
+}
+
+static local_point_t ring_centre(const local_point_t* points, size_t count) {
+  local_point_t c = {0, 0};
+  for (size_t i = 0; i < count; i++) c.x += points[i].x, c.z += points[i].z;
+  if (count) c.x /= (double)count, c.z /= (double)count;
+  return c;
+}
+
+static int compare_floats(const void* a, const void* b) {
+  float fa = *(const float*)a, fb = *(const float*)b;
+  return (fa > fb) - (fa < fb);
+}
+
+/* Untagged buildings of no telling kind take the median height of the
+ * tagged buildings around them, which keeps a street of palazzi at the
+ * palazzi's height; with nobody nearby, a deterministic default. */
+static void settle_heights(city_model_t* model,
+                           const city_import_options_t* options) {
+  size_t count = model->building_count;
+  float* nearby = malloc((count ? count : 1) * sizeof(float));
+  if (!nearby) return;
+  for (size_t b = 0; b < count; b++) {
+    city_building_t* building = &model->buildings[b];
+    if (building->height_source != HEIGHT_DEFAULT) continue;
+    local_point_t centre = ring_centre(building->points, building->point_count);
+    size_t found = 0;
+    for (size_t o = 0; o < count; o++) {
+      const city_building_t* other = &model->buildings[o];
+      if (other->height_source != HEIGHT_TAGGED &&
+          other->height_source != HEIGHT_FROM_LEVELS)
+        continue;
+      local_point_t oc = ring_centre(other->points, other->point_count);
+      if (hypot(oc.x - centre.x, oc.z - centre.z) <= options->neighbour_reach)
+        nearby[found++] = other->height;
+    }
+    if (found > 0) {
+      qsort(nearby, found, sizeof(float), compare_floats);
+      building->height =
+          found % 2 ? nearby[found / 2]
+                    : 0.5f * (nearby[found / 2 - 1] + nearby[found / 2]);
+      building->height_source = HEIGHT_FROM_NEIGHBOURS;
+    } else {
+      float t = (float)(stable_hash(building->source_id) % 1000) / 999.0f;
+      building->height =
+          options->default_height_min +
+          (options->default_height_max - options->default_height_min) * t;
+      model->stats.heights_defaulted++;
+    }
+    if (building->levels == 0)
+      building->levels =
+          (int)(building->height / options->storey_height + 0.5f);
+  }
+  free(nearby);
+}
+
 static void add_building(city_model_t* model, int64_t source_id,
                          const osm_tag_t* tags, size_t tag_count,
                          const ring_t* ring,
@@ -628,14 +836,16 @@ static void add_building(city_model_t* model, int64_t source_id,
     building->height = (float)building->levels * options->storey_height;
     building->height_source = HEIGHT_FROM_LEVELS;
   } else {
-    float t = (float)(stable_hash(source_id) % 1000) / 999.0f;
-    building->height =
-        options->default_height_min +
-        (options->default_height_max - options->default_height_min) * t;
-    building->height_source = HEIGHT_DEFAULT;
-    model->stats.heights_defaulted++;
+    float typical = typical_height(building->category, options);
+    if (typical > 0) {
+      building->height = typical;
+      building->height_source = HEIGHT_FROM_CATEGORY;
+    } else {
+      building->height = 0; /* settled once the neighbours are known */
+      building->height_source = HEIGHT_DEFAULT;
+    }
   }
-  if (building->levels == 0)
+  if (building->levels == 0 && building->height > 0)
     building->levels = (int)(building->height / options->storey_height + 0.5f);
   building->points = anticlockwise_copy(ring->points, ring->count);
   building->point_count = building->points ? ring->count : 0;
@@ -853,14 +1063,16 @@ bool city_import(city_model_t* model, const osm_data_t* osm,
            gmtime(&now));
   import_roads(model, osm, &options);
   import_buildings_and_areas(model, osm, &options);
+  settle_heights(model, &options);
   LOG_INFO("import",
            "%zu road segments, %zu junctions, %zu buildings, %zu areas; %zu "
            "ways ignored, "
            "%zu degenerate, %zu malformed buildings, %zu relations skipped, "
-           "%zu ends snapped",
+           "%zu ends snapped, %zu roads merged, %zu bends rounded",
            model->road_count, model->junction_count, model->building_count,
            model->area_count, model->stats.ways_ignored,
            model->stats.roads_degenerate, model->stats.buildings_malformed,
-           model->stats.relations_skipped, model->stats.ends_snapped);
+           model->stats.relations_skipped, model->stats.ends_snapped,
+           model->stats.roads_merged, model->stats.bends_rounded);
   return model->road_count > 0;
 }

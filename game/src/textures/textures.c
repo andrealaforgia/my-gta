@@ -72,6 +72,9 @@ uint8_t* texture_concrete(unsigned seed) {
 uint8_t* texture_grass(unsigned seed) {
   return grainy(seed, 0.28f, 0.42f, 0.18f, 0.5f, 0.3f);
 }
+uint8_t* texture_earth(unsigned seed) {
+  return grainy(seed, 0.50f, 0.45f, 0.37f, 0.35f, 0.2f);
+}
 uint8_t* texture_roof(unsigned seed) {
   uint8_t* pixels = grainy(seed, 0.72f, 0.42f, 0.30f, 0.25f, 0.12f);
   if (!pixels) return NULL;
@@ -196,6 +199,7 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.road = upload(renderer, texture_road(2));
   set.concrete = upload(renderer, texture_concrete(3));
   set.grass = upload(renderer, texture_grass(4));
+  set.earth = upload(renderer, texture_earth(17));
   set.facade = upload(renderer, texture_facade(5, 1, 1));
   set.facades[0] = set.facade;
   set.facades[1] = upload(renderer, texture_facade(7, 1, 1));

@@ -43,7 +43,9 @@ typedef enum {
 typedef enum {
   HEIGHT_TAGGED,
   HEIGHT_FROM_LEVELS,
-  HEIGHT_DEFAULT
+  HEIGHT_DEFAULT,         /* a deterministic guess, nothing better known */
+  HEIGHT_FROM_CATEGORY,   /* houses and huts have typical heights */
+  HEIGHT_FROM_NEIGHBOURS, /* the median of tagged buildings nearby */
 } height_source_t;
 
 typedef struct {
@@ -106,6 +108,8 @@ typedef struct {
   size_t ends_snapped;
   size_t widths_inferred;
   size_t heights_defaulted;
+  size_t roads_merged;  /* segments joined end to end through a bend */
+  size_t bends_rounded; /* interior corners replaced by arcs */
 } city_stats_t;
 
 typedef struct {

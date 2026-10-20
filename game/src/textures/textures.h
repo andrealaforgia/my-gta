@@ -17,6 +17,7 @@ typedef struct {
   texture_handle_t road; /* asphalt with edge and dashed centre lines */
   texture_handle_t concrete;
   texture_handle_t grass;
+  texture_handle_t earth; /* bare yards and courtyards between buildings */
   texture_handle_t facade;
   texture_handle_t facades[4];
   texture_handle_t roof;
@@ -28,6 +29,7 @@ uint8_t* texture_asphalt(unsigned seed);
 uint8_t* texture_road(unsigned seed);
 uint8_t* texture_concrete(unsigned seed);
 uint8_t* texture_grass(unsigned seed);
+uint8_t* texture_earth(unsigned seed);
 uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns);
 uint8_t* texture_roof(unsigned seed);
 uint8_t* texture_checker(void);

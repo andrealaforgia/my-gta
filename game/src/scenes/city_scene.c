@@ -22,6 +22,7 @@ static material_t material_for(const char* name,
       {"pavement", textures->concrete, vec3(0.95f, 0.95f, 0.95f), 0.9f},
       {"kerb", textures->concrete, vec3(0.75f, 0.75f, 0.75f), 0.9f},
       {"grass", textures->grass, vec3(0.9f, 0.9f, 0.9f), 1.0f},
+      {"ground", textures->earth, vec3(0.95f, 0.95f, 0.95f), 1.0f},
       {"roof", textures->roof, vec3(0.9f, 0.9f, 0.9f), 0.9f},
       {"facade0", textures->facades[0], vec3(1, 1, 1), 0.8f},
       {"facade1", textures->facades[1], vec3(1, 1, 1), 0.8f},
@@ -109,9 +110,10 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   if (!city_package_read(&package, package_directory)) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
   static const char* materials[] = {
-      "grass",   "road",    "junction", "pavement", "kerb",   "roof",
-      "facade0", "facade1", "facade2",  "facade3",  "lamp",   "paving",
-      "parking", "park",    "water",    "trunk",    "leaves", "marking"};
+      "grass", "road",    "junction", "pavement", "kerb",
+      "roof",  "facade0", "facade1",  "facade2",  "facade3",
+      "lamp",  "paving",  "parking",  "park",     "water",
+      "trunk", "leaves",  "marking",  "ground"};
   int draws = 0, colliders = 0;
   bool ok = true;
   for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {

@@ -153,17 +153,17 @@ static void lateral_offsets(const local_point_t* points, size_t count,
 /* A strip between offsets a..b (metres right of the centre line, negative is
  * left) at height y, with uv u across 0..1 and v along in texture repeats. */
 static bool add_strip(mesh_data_t* mesh, const local_point_t* points,
-                      const vec2_t* laterals, size_t count, double from,
-                      double to, float y, float texture_length) {
+                      const vec2_t* laterals, size_t count, const double* from,
+                      const double* to, float y, float texture_length) {
   uint32_t base = (uint32_t)mesh->vertex_count;
   double distance = 0;
   for (size_t i = 0; i < count; i++) {
     if (i > 0) distance += v2_length(v2_sub(points[i], points[i - 1]));
     float v = (float)(distance / texture_length);
-    if (!add_vertex(mesh, at(offset(points[i], laterals[i], from), y),
+    if (!add_vertex(mesh, at(offset(points[i], laterals[i], from[i]), y),
                     vec3(0, 1, 0), 0, v))
       return false;
-    if (!add_vertex(mesh, at(offset(points[i], laterals[i], to), y),
+    if (!add_vertex(mesh, at(offset(points[i], laterals[i], to[i]), y),
                     vec3(0, 1, 0), 1, v))
       return false;
   }
@@ -178,14 +178,14 @@ static bool add_strip(mesh_data_t* mesh, const local_point_t* points,
 
 /* A vertical face along the offset line, from y0 to y1, facing `outward`. */
 static bool add_kerb(mesh_data_t* mesh, const local_point_t* points,
-                     const vec2_t* laterals, size_t count, double along,
+                     const vec2_t* laterals, size_t count, const double* along,
                      float y0, float y1, bool facing_right) {
   uint32_t base = (uint32_t)mesh->vertex_count;
   for (size_t i = 0; i < count; i++) {
     vec2_t right = v2_normalize(laterals[i]);
     vec3_t normal = vec3((float)(facing_right ? right.x : -right.x), 0,
                          (float)(facing_right ? right.z : -right.z));
-    local_point_t p = offset(points[i], laterals[i], along);
+    local_point_t p = offset(points[i], laterals[i], along[i]);
     if (!add_vertex(mesh, at(p, y0), normal, (float)i, 0) ||
         !add_vertex(mesh, at(p, y1), normal, (float)i, 1))
       return false;
@@ -259,16 +259,36 @@ static double point_segment_distance(local_point_t p, local_point_t a,
   return hypot(p.x - (a.x + abx * t), p.z - (a.z + abz * t));
 }
 
+/* The part of a road's centre line that matters when fitting its width
+ * around `focus`: only samples within `reach` of it. A reach of zero
+ * means the whole road. */
+typedef struct {
+  local_point_t point;
+  double reach;
+} focus_t;
+
+static bool in_focus(focus_t focus, local_point_t sample) {
+  return focus.reach <= 0 || hypot(sample.x - focus.point.x,
+                                   sample.z - focus.point.z) <= focus.reach;
+}
+
 /* The nearest building edge to the road's centre line, sampled every two
  * metres, or a large number when nothing is near. */
 static double corridor_half_width(const city_model_t* model,
-                                  const city_road_t* road, double reach) {
+                                  const city_road_t* road, double reach,
+                                  focus_t focus) {
   double min_x = 1e30, max_x = -1e30, min_z = 1e30, max_z = -1e30;
   for (size_t i = 0; i < road->point_count; i++) {
     min_x = fmin(min_x, road->points[i].x),
     max_x = fmax(max_x, road->points[i].x);
     min_z = fmin(min_z, road->points[i].z),
     max_z = fmax(max_z, road->points[i].z);
+  }
+  if (focus.reach > 0) {
+    min_x = fmax(min_x, focus.point.x - focus.reach);
+    max_x = fmin(max_x, focus.point.x + focus.reach);
+    min_z = fmax(min_z, focus.point.z - focus.reach);
+    max_z = fmin(max_z, focus.point.z + focus.reach);
   }
   double nearest = 1e30;
   for (size_t b = 0; b < model->building_count; b++) {
@@ -290,6 +310,7 @@ static double corridor_half_width(const city_model_t* model,
         for (int k = 0; k <= samples; k++) {
           double t = (double)k / (double)samples;
           local_point_t sample = {p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t};
+          if (!in_focus(focus, sample)) continue;
           double d = point_segment_distance(sample, a, c);
           if (d < nearest) nearest = d;
         }
@@ -302,17 +323,27 @@ static double corridor_half_width(const city_model_t* model,
 /* Half the gap to the nearest other road's centre line that shares no
  * node with this one (paths and streams excepted), or a large number. */
 static double corridor_to_roads(const city_model_t* model,
-                                const city_road_t* road, double reach) {
+                                const city_road_t* road, double reach,
+                                focus_t focus) {
   double nearest = 1e30;
   for (size_t r = 0; r < model->road_count; r++) {
     const city_road_t* other = &model->roads[r];
     if (other == road || other->class == ROAD_CLASS_PATH ||
         other->class == ROAD_CLASS_WATERWAY)
       continue;
+    if (focus.reach > 0) {
+      bool near = false;
+      for (size_t k = 0; k < other->point_count && !near; k++)
+        near = hypot(other->points[k].x - focus.point.x,
+                     other->points[k].z - focus.point.z) <
+               focus.reach + reach + 60.0;
+      if (!near) continue;
+    }
     bool shares_node = false;
     for (size_t i = 0; i < road->point_count && !shares_node; i++)
       for (size_t k = 0; k < other->point_count && !shares_node; k++)
-        if (road->node_ids[i] == other->node_ids[k]) shares_node = true;
+        if (road->node_ids[i] != 0 && road->node_ids[i] == other->node_ids[k])
+          shares_node = true;
     if (shares_node) continue;
     for (size_t i = 1; i < road->point_count; i++) {
       local_point_t p = road->points[i - 1], q = road->points[i];
@@ -322,6 +353,7 @@ static double corridor_to_roads(const city_model_t* model,
       for (int k = 0; k <= samples; k++) {
         double t = (double)k / (double)samples;
         local_point_t sample = {p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t};
+        if (!in_focus(focus, sample)) continue;
         for (size_t m = 1; m < other->point_count; m++) {
           local_point_t a = other->points[m - 1], b = other->points[m];
           vec2_t other_direction = v2_normalize(v2_sub(b, a));
@@ -345,8 +377,8 @@ static double corridor_to_roads(const city_model_t* model,
   return nearest * 0.5;
 }
 
-static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
-                           const city_generator_options_t* o) {
+static road_fit_t fit_at(const city_model_t* model, const city_road_t* road,
+                         const city_generator_options_t* o, focus_t focus) {
   road_fit_t fit;
   fit.half_width = road->width * 0.5;
   bool has_pavement = o->pavements && road->class != ROAD_CLASS_SERVICE &&
@@ -360,7 +392,7 @@ static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
   /* Another road close alongside: keep this road's width and give up
    * the pavement on the gap, so two carriageways meet at a median. */
   double to_roads = corridor_to_roads(
-      model, road, 2.0 * (fit.half_width + fit.pavement + 1.0));
+      model, road, 2.0 * (fit.half_width + fit.pavement + 1.0), focus);
   if (to_roads < fit.half_width + fit.pavement + gap) {
     double available = fmax(to_roads - 0.1, narrowest);
     fit.half_width = fmin(fit.half_width, available);
@@ -368,7 +400,7 @@ static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
     if (fit.pavement < 0.4) fit.pavement = 0;
   }
   double wanted = fit.half_width + fit.pavement + gap;
-  double corridor = corridor_half_width(model, road, wanted + 1.0);
+  double corridor = corridor_half_width(model, road, wanted + 1.0, focus);
   if (corridor >= wanted) return fit;
   double available = fmax(corridor - gap, narrowest);
   fit.half_width =
@@ -376,6 +408,52 @@ static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
   fit.pavement = fmin(fmax(available - fit.half_width, 0.0), fit.pavement);
   if (fit.pavement < 0.4) fit.pavement = 0;
   return fit;
+}
+
+#define FIT_REACH \
+  12.0 /* metres of road either side of a point that set its width */
+
+/* The fit the junctions see: the tighter of the road's two ends. */
+static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
+                           const city_generator_options_t* o) {
+  focus_t start = {road->points[0], FIT_REACH};
+  focus_t end = {road->points[road->point_count - 1], FIT_REACH};
+  road_fit_t a = fit_at(model, road, o, start), b = fit_at(model, road, o, end);
+  road_fit_t fit = {fmin(a.half_width, b.half_width),
+                    fmin(a.pavement, b.pavement)};
+  return fit;
+}
+
+/* Widths along a road: each point fitted to what stands near it, never
+ * wider than the fit at the ends where the junction geometry was laid
+ * out, and never changing faster than a gentle taper. A road with no
+ * pavement at its ends has none anywhere; one with pavements keeps at
+ * least a sliver so the strips never collapse. */
+static void fit_along(const city_model_t* model, const city_road_t* road,
+                      const city_generator_options_t* o, road_fit_t ends,
+                      const local_point_t* points, size_t count, double* halves,
+                      double* pavements) {
+  for (size_t i = 0; i < count; i++) {
+    focus_t focus = {points[i], FIT_REACH};
+    road_fit_t fit = fit_at(model, road, o, focus);
+    halves[i] = fit.half_width;
+    pavements[i] = ends.pavement > 0 ? fmax(fit.pavement, 0.3) : 0;
+  }
+  halves[0] = ends.half_width, halves[count - 1] = ends.half_width;
+  pavements[0] = ends.pavement, pavements[count - 1] = ends.pavement;
+  const double taper = 0.15; /* metres of width per metre of road */
+  for (int pass = 0; pass < 2; pass++) {
+    for (size_t i = 1; i < count; i++) {
+      size_t k = pass == 0 ? i : count - 1 - i,
+             prev = pass == 0 ? k - 1 : k + 1;
+      double d =
+          hypot(points[k].x - points[prev].x, points[k].z - points[prev].z);
+      halves[k] = fmin(halves[k], halves[prev] + taper * d);
+      double outer = fmin(halves[k] + pavements[k],
+                          halves[prev] + pavements[prev] + taper * d);
+      if (pavements[k] > 0) pavements[k] = fmax(outer - halves[k], 0.3);
+    }
+  }
 }
 
 /* ---- junctions ---- */
@@ -644,7 +722,8 @@ static local_point_t along_polyline(const local_point_t* points, size_t count,
  * a collider so the car can hit them. */
 static bool generate_lamps(layout_t* layout, const city_road_t* road,
                            const local_point_t* points, const vec2_t* laterals,
-                           size_t count, road_fit_t fit,
+                           size_t count, const double* halves,
+                           const double* pavements,
                            city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
   double length = polyline_length(points, count);
@@ -661,7 +740,8 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
     size_t segment;
     local_point_t on_line = along_polyline(points, count, along, &segment);
     vec2_t lateral = v2_normalize(laterals[segment > 0 ? segment - 1 : 0]);
-    double post_offset = side * (fit.half_width + fit.pavement * 0.5);
+    size_t at_point = segment < count ? segment : count - 1;
+    double post_offset = side * (halves[at_point] + pavements[at_point] * 0.5);
     local_point_t base = offset(on_line, lateral, post_offset);
     local_point_t head = offset(on_line, lateral, post_offset - side * 0.9);
     float y0 = o->kerb_height;
@@ -692,25 +772,58 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
 
 /* ---- roads ---- */
 
-static bool generate_road(layout_t* layout, const city_road_t* road,
-                          road_fit_t fit, road_cuts_t cuts,
-                          city_generator_stats_t* stats) {
-  const city_generator_options_t* o = layout->options;
-  local_point_t* points = malloc(road->point_count * sizeof(local_point_t));
-  vec2_t* laterals = malloc(road->point_count * sizeof(vec2_t));
-  if (!points || !laterals) {
-    free(points);
-    free(laterals);
-    return false;
+/* Points every `step` metres along straight stretches, so the width fit
+ * sees what stands beside the middle of a long segment, not just its
+ * ends. */
+static size_t densify(const local_point_t* in, size_t count, double step,
+                      local_point_t* out) {
+  size_t n = 0;
+  for (size_t i = 0; i < count; i++) {
+    if (i > 0) {
+      local_point_t a = in[i - 1], b = in[i];
+      int pieces = (int)(hypot(b.x - a.x, b.z - a.z) / step);
+      for (int k = 1; k <= pieces; k++) {
+        double t = (double)k / (double)(pieces + 1);
+        local_point_t q = {a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t};
+        out[n++] = q;
+      }
+    }
+    out[n++] = in[i];
   }
-  size_t count = polyline_cut(road->points, road->point_count, cuts.start,
-                              cuts.end, points);
-  if (polyline_length(points, count) < 0.05) { /* nothing to draw */
+  return n;
+}
+
+static bool generate_road(layout_t* layout, const city_model_t* model,
+                          const city_road_t* road, road_fit_t fit,
+                          road_cuts_t cuts, city_generator_stats_t* stats) {
+  const city_generator_options_t* o = layout->options;
+  local_point_t* cut = malloc(road->point_count * sizeof(local_point_t));
+  size_t cut_count = cut ? polyline_cut(road->points, road->point_count,
+                                        cuts.start, cuts.end, cut)
+                         : 0;
+  const double step = 8.0;
+  size_t capacity = road->point_count + 2 +
+                    (size_t)(cut ? polyline_length(cut, cut_count) / step : 0);
+  local_point_t* points = malloc(capacity * sizeof(local_point_t));
+  vec2_t* laterals = malloc(capacity * sizeof(vec2_t));
+  double* halves = malloc(capacity * sizeof(double));
+  double* pavements = malloc(capacity * sizeof(double));
+  double* inner = malloc(capacity * sizeof(double));
+  double* outer = malloc(capacity * sizeof(double));
+  bool ok = cut && points && laterals && halves && pavements && inner && outer;
+  size_t count = ok ? densify(cut, cut_count, step, points) : 0;
+  free(cut);
+  if (!ok || polyline_length(points, count) < 0.05) { /* nothing to draw */
     free(points);
     free(laterals);
-    return true;
+    free(halves);
+    free(pavements);
+    free(inner);
+    free(outer);
+    return ok;
   }
   lateral_offsets(points, count, laterals);
+  fit_along(model, road, o, fit, points, count, halves, pavements);
   city_chunk_t* chunk = chunk_at(layout, centroid(points, count));
   bool for_people =
       road->class == ROAD_CLASS_PEDESTRIAN || road->class == ROAD_CLASS_PATH;
@@ -728,10 +841,10 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
                    : "road",
       water ? PART_COLLIDER_NONE : PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
       o->road_friction, (uint64_t)road->source_id);
-  double half = fit.half_width;
-  bool ok =
-      part && add_strip(&part->mesh, points, laterals, count, -half, half,
-                        height, for_people ? 3.0f : o->road_texture_length);
+  for (size_t i = 0; i < count; i++)
+    inner[i] = -halves[i], outer[i] = halves[i];
+  ok = part && add_strip(&part->mesh, points, laterals, count, inner, outer,
+                         height, for_people ? 3.0f : o->road_texture_length);
   if (ok) finish_part(chunk, part);
   stats->roads++;
 
@@ -746,12 +859,15 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
     ok = pavement && kerb;
     if (ok) pavement = &chunk->parts[chunk->part_count - 2];
     for (int side = -1; side <= 1 && ok; side += 2) {
-      double inner = side * half, outer = side * (half + fit.pavement);
-      ok = add_strip(&pavement->mesh, points, laterals, count,
-                     fmin(inner, outer), fmax(inner, outer), o->kerb_height,
-                     o->pavement_width) &&
-           add_kerb(&kerb->mesh, points, laterals, count, inner, o->road_height,
-                    o->kerb_height, side < 0);
+      for (size_t i = 0; i < count; i++) {
+        double edge = side * halves[i], far = side * (halves[i] + pavements[i]);
+        inner[i] = fmin(edge, far), outer[i] = fmax(edge, far);
+      }
+      ok = add_strip(&pavement->mesh, points, laterals, count, inner, outer,
+                     o->kerb_height, o->pavement_width);
+      for (size_t i = 0; i < count && ok; i++) inner[i] = side * halves[i];
+      ok = ok && add_kerb(&kerb->mesh, points, laterals, count, inner,
+                          o->road_height, o->kerb_height, side < 0);
     }
     if (ok) {
       finish_part(chunk, pavement);
@@ -761,9 +877,14 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
   }
   if (ok && o->lamp_spacing > 0 && road->class != ROAD_CLASS_PATH &&
       road->class != ROAD_CLASS_SERVICE && road->class != ROAD_CLASS_WATERWAY)
-    ok = generate_lamps(layout, road, points, laterals, count, fit, stats);
+    ok = generate_lamps(layout, road, points, laterals, count, halves,
+                        pavements, stats);
   free(points);
   free(laterals);
+  free(halves);
+  free(pavements);
+  free(inner);
+  free(outer);
   return ok;
 }
 
@@ -1189,7 +1310,7 @@ static bool generate_ground(layout_t* layout, city_generator_stats_t* stats) {
     for (int column = 0; column < layout->columns; column++) {
       city_chunk_t* chunk = city_package_chunk(layout->package, column, row);
       city_part_t* part =
-          city_chunk_add_part(chunk, "grass", PART_COLLIDER_MESH,
+          city_chunk_add_part(chunk, "ground", PART_COLLIDER_MESH,
                               COLLISION_LAYER_GROUND, o->ground_friction, 0);
       if (!part) return false;
       float x0 = (float)(layout->min_x + column * o->chunk_size),
@@ -1343,7 +1464,8 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     ok = generate_junction(&layout, model, &model->junctions[j], fits, cuts,
                            stats);
   for (size_t r = 0; ok && r < model->road_count; r++)
-    ok = generate_road(&layout, &model->roads[r], fits[r], cuts[r], stats);
+    ok = generate_road(&layout, model, &model->roads[r], fits[r], cuts[r],
+                       stats);
   for (size_t a = 0; ok && a < model->area_count; a++)
     ok = generate_area(&layout, &model->areas[a], stats);
   for (size_t b = 0; ok && b < model->building_count; b++)

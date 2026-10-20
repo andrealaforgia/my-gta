@@ -46,8 +46,9 @@ static const city_building_t* building(const city_model_t* model,
 static void roads_are_split_at_junctions_and_classified(void) {
   city_model_t model = import_fixture();
   /* Six grid ways of two segments each, the curved road, the stub road,
-   * the footway, the Corso and the cycleway. */
-  assert(model.road_count == 18); /* including the stream */
+   * the footway, the Corso, the cycleway and the stream make 18 segments;
+   * the pair meeting end to end at the n1 corner is joined into one. */
+  assert(model.road_count == 17 && model.stats.roads_merged == 1);
   const city_road_t* main_west = road_from(&model, 102, 0);
   assert(main_west && main_west->class == ROAD_CLASS_PRIMARY);
   assert(near(main_west->width, 9.0f) && !main_west->width_inferred);
@@ -58,7 +59,7 @@ static void roads_are_split_at_junctions_and_classified(void) {
   const city_road_t* oneway = road_from(&model, 105, 1);
   assert(oneway && oneway->oneway);
   const city_road_t* curved = road_from(&model, 107, 0);
-  assert(curved && curved->point_count == 5 &&
+  assert(curved && curved->point_count > 5 && /* its bends are rounded */
          strcmp(curved->surface, "cobblestone") == 0);
   const city_road_t* footway = road_from(&model, 108, 0);
   assert(footway && footway->class == ROAD_CLASS_PATH && footway->width < 3.0f);
@@ -74,8 +75,17 @@ static void roads_are_split_at_junctions_and_classified(void) {
 
 static void degenerate_points_and_ways_are_cleaned(void) {
   city_model_t model = import_fixture();
-  const city_road_t* stub = road_from(&model, 109, 0);
-  assert(stub && stub->point_count == 3);    /* the repeated node collapsed */
+  /* The stub ends at node 14; its repeated node collapsed, so no two
+   * consecutive points coincide on the road that now carries it. */
+  const city_road_t* stub = NULL;
+  for (size_t i = 0; i < model.road_count && !stub; i++)
+    if (model.roads[i].node_ids[model.roads[i].point_count - 1] == 14 ||
+        model.roads[i].node_ids[0] == 14)
+      stub = &model.roads[i];
+  assert(stub);
+  for (size_t i = 1; i < stub->point_count; i++)
+    assert(hypot(stub->points[i].x - stub->points[i - 1].x,
+                 stub->points[i].z - stub->points[i - 1].z) > 0.1);
   assert(road_from(&model, 110, 0) == NULL); /* zero length dropped */
   assert(model.stats.ways_ignored >= 1);
   assert(model.stats.roads_degenerate == 1);
@@ -87,16 +97,23 @@ static void junctions_carry_their_degree_and_position(void) {
   assert(junction(&model, 5) && junction(&model, 5)->degree == 4);
   assert(junction(&model, 2) && junction(&model, 2)->degree == 3);
   assert(junction(&model, 8) && junction(&model, 8)->degree == 3);
-  assert(junction(&model, 1) && junction(&model, 1)->degree == 2);
+  /* The grid corner at n1 joined two like roads end to end, so it is a
+   * bend inside one road now, not a junction. */
+  assert(junction(&model, 1) == NULL);
   assert(junction(&model, 3) &&
          junction(&model, 3)->degree == 3); /* corner plus the curved road */
-  assert(junction(&model, 13) && junction(&model, 13)->degree == 2);
+  assert(junction(&model, 13) &&
+         junction(&model, 13)->degree == 2); /* unlike roads stay apart */
   assert(junction(&model, 14) && junction(&model, 14)->degree == 1);
   const city_junction_t* centre = junction(&model, 5);
-  const city_junction_t* corner = junction(&model, 1);
+  const local_point_t* corner = NULL;
+  for (size_t r = 0; r < model.road_count && !corner; r++)
+    for (size_t i = 0; i < model.roads[r].point_count && !corner; i++)
+      if (model.roads[r].node_ids[i] == 1) corner = &model.roads[r].points[i];
+  assert(corner);
   /* n5 is north-east of n1: larger x, smaller z. */
-  assert(centre->position.x > corner->position.x + 90 &&
-         centre->position.z < corner->position.z - 90);
+  assert(centre->position.x > corner->x + 90 &&
+         centre->position.z < corner->z - 90);
   city_model_free(&model);
 }
 
@@ -110,6 +127,8 @@ static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   assert(levels && levels->levels == 4 &&
          levels->height_source == HEIGHT_FROM_LEVELS);
   assert(near_to(levels->height, 4 * 3.2f, 1e-4));
+  /* The untagged block has no tagged neighbour within reach, so it keeps
+   * the deterministic default. */
   const city_building_t* plain = building(&model, 203);
   assert(plain && plain->height_source == HEIGHT_DEFAULT &&
          plain->height >= 6 && plain->height <= 15);
@@ -208,6 +227,96 @@ static void dangling_road_ends_snap_onto_the_road_they_nearly_reach(void) {
   city_model_free(&model);
 }
 
+static void two_ways_meeting_end_to_end_become_one_road_with_a_rounded_bend(
+    void) {
+  /* A street mapped as two ways, east then north, joined at node 2 that
+   * nothing else uses. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0010\"/>"
+      "<node id=\"3\" lat=\"45.0007\" lon=\"12.0010\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"2\"/><nd ref=\"3\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  assert(model.road_count == 1 && model.stats.roads_merged == 1);
+  assert(junction(&model, 2) == NULL && model.junction_count == 2);
+  const city_road_t* road = &model.roads[0];
+  assert(road->node_ids[0] == 1 && road->node_ids[road->point_count - 1] == 3);
+  /* The right angle is now an arc: several points, no turn sharper than
+   * about twenty degrees, the ends where the nodes are. */
+  assert(road->point_count >= 6 && model.stats.bends_rounded == 1);
+  for (size_t i = 1; i + 1 < road->point_count; i++) {
+    local_point_t a = road->points[i - 1], b = road->points[i],
+                  c = road->points[i + 1];
+    double l1 = hypot(b.x - a.x, b.z - a.z), l2 = hypot(c.x - b.x, c.z - b.z);
+    double cosine =
+        ((b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z)) / (l1 * l2);
+    assert(cosine > cos(0.35));
+  }
+  city_model_free(&model);
+}
+
+static void untagged_buildings_take_heights_from_their_kind(void) {
+  /* A house and a hut with no height tags, and a plain building 30 m
+   * from a 20 m palazzo. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0002\"/>"
+      "<node id=\"3\" lat=\"45.0002\" lon=\"12.0002\"/>"
+      "<node id=\"4\" lat=\"45.0002\" lon=\"12.0000\"/>"
+      "<node id=\"5\" lat=\"45.0000\" lon=\"12.0004\"/>"
+      "<node id=\"6\" lat=\"45.0000\" lon=\"12.0006\"/>"
+      "<node id=\"7\" lat=\"45.0002\" lon=\"12.0006\"/>"
+      "<node id=\"8\" lat=\"45.0002\" lon=\"12.0004\"/>"
+      "<node id=\"9\" lat=\"45.0010\" lon=\"12.0000\"/>"
+      "<node id=\"10\" lat=\"45.0010\" lon=\"12.0002\"/>"
+      "<node id=\"11\" lat=\"45.0012\" lon=\"12.0002\"/>"
+      "<node id=\"12\" lat=\"45.0012\" lon=\"12.0000\"/>"
+      "<node id=\"13\" lat=\"45.0010\" lon=\"12.0010\"/>"
+      "<node id=\"14\" lat=\"45.0010\" lon=\"12.0012\"/>"
+      "<node id=\"15\" lat=\"45.0012\" lon=\"12.0012\"/>"
+      "<node id=\"16\" lat=\"45.0012\" lon=\"12.0010\"/>"
+      "<way id=\"20\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd "
+      "ref=\"4\"/><nd ref=\"1\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"20\"/></way>"
+      "<way id=\"21\"><nd ref=\"5\"/><nd ref=\"6\"/><nd ref=\"7\"/><nd "
+      "ref=\"8\"/><nd ref=\"5\"/><tag k=\"building\" v=\"yes\"/></way>"
+      "<way id=\"22\"><nd ref=\"9\"/><nd ref=\"10\"/><nd ref=\"11\"/><nd "
+      "ref=\"12\"/><nd ref=\"9\"/><tag k=\"building\" v=\"house\"/></way>"
+      "<way id=\"23\"><nd ref=\"13\"/><nd ref=\"14\"/><nd ref=\"15\"/><nd "
+      "ref=\"16\"/><nd ref=\"13\"/><tag k=\"building\" v=\"hut\"/></way>"
+      "<way id=\"30\"><nd ref=\"1\"/><nd ref=\"13\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  const city_building_t* plain = building(&model, 21);
+  assert(plain && plain->height_source == HEIGHT_FROM_NEIGHBOURS &&
+         near(plain->height, 20));
+  const city_building_t* house = building(&model, 22);
+  assert(house && house->height_source == HEIGHT_FROM_CATEGORY &&
+         near_to(house->height, 6.4f, 1e-4) && house->levels == 2);
+  const city_building_t* hut = building(&model, 23);
+  assert(hut && hut->height_source == HEIGHT_FROM_CATEGORY &&
+         near(hut->height, 3));
+  assert(model.stats.heights_defaulted == 0);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -223,7 +332,8 @@ static void the_model_round_trips_through_its_text_format(void) {
   assert(near_to(area(&loaded, 305)->points[1].x,
                  area(&model, 305)->points[1].x, 1e-3));
   const city_road_t* curved = road_from(&loaded, 107, 0);
-  assert(curved && curved->point_count == 5 &&
+  assert(curved &&
+         curved->point_count == road_from(&model, 107, 0)->point_count &&
          strcmp(curved->surface, "cobblestone") == 0);
   assert(near_to(curved->points[2].x, road_from(&model, 107, 0)->points[2].x,
                  1e-3));
@@ -242,5 +352,7 @@ void run_city_tests(void) {
   RUN(default_heights_are_stable_for_the_same_source);
   RUN(areas_come_from_land_use_water_parking_and_squares);
   RUN(dangling_road_ends_snap_onto_the_road_they_nearly_reach);
+  RUN(two_ways_meeting_end_to_end_become_one_road_with_a_rounded_bend);
+  RUN(untagged_buildings_take_heights_from_their_kind);
   RUN(the_model_round_trips_through_its_text_format);
 }

@@ -54,6 +54,17 @@ static const city_part_t* part_for(const city_package_t* package,
   return NULL;
 }
 
+static const city_part_t* facade_for(const city_package_t* package,
+                                     uint64_t source) {
+  for (int i = 0; i < 4; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "facade%d", i);
+    const city_part_t* walls = part_for(package, name, source);
+    if (walls) return walls;
+  }
+  return NULL;
+}
+
 static void ear_clipping_handles_convex_and_concave_rings(void) {
   local_point_t square[4] = {{0, 0}, {10, 0}, {10, -10}, {0, -10}};
   uint32_t indices[12];
@@ -135,15 +146,15 @@ static void courtyards_are_open_to_the_sky(void) {
 static void every_road_junction_and_building_becomes_geometry(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
-  assert(stats.roads == 18);
+  assert(stats.roads == 17); /* the n1 corner joined by the importer */
   assert(count_material(&package, "road") ==
-         14); /* paths and the Corso are paving */
+         13); /* paths, the Corso and the stream are not asphalt */
   assert(stats.junction_patches >=
          6); /* the five T and cross junctions plus n3 */
   assert(count_material(&package, "junction") == stats.junction_patches);
   assert(stats.buildings == 8 && count_material(&package, "roof") == 8 &&
          count_material(&package, "facade") == 8);
-  assert(stats.pavements == 13); /* every road except the service stub */
+  assert(stats.pavements == 12); /* every road except the service stub */
   assert(stats.ground_tiles == package.chunk_count);
   assert(package.chunk_count >= 4);
   city_package_free(&package);
@@ -199,14 +210,30 @@ static void roads_narrow_to_fit_between_buildings(void) {
    * first segment, so the 6 m road and its 2 m pavements cannot fit. */
   const city_part_t* squeezed = part_for(&package, "road", 101);
   assert(squeezed);
-  aabb_t bounds = mesh_data_bounds(&squeezed->mesh);
-  float width = bounds.max.z - bounds.min.z;
-  assert(width > 3.4f && width < 3.7f);
+  /* The ribbon's vertices come in left/right pairs per point, so the
+   * width varies along the road: squeezed beside the building, the full
+   * 6 m where nothing stands near (the road continues round the n1
+   * corner as one merged road). */
+  float narrowest = 1e9f, widest = 0;
+  for (size_t v = 0; v + 1 < squeezed->mesh.vertex_count; v += 2) {
+    float width = vec3_distance(squeezed->mesh.vertices[v].position,
+                                squeezed->mesh.vertices[v + 1].position);
+    narrowest = fminf(narrowest, width);
+    widest = fmaxf(widest, width);
+  }
+  for (size_t v = 0; v + 1 < squeezed->mesh.vertex_count; v += 2)
+    assert(narrowest > 3.4f && narrowest < 3.7f);
+  assert(widest > 5.9f && widest < 6.1f);
   const city_part_t* pavement = part_for(&package, "pavement", 101);
   assert(pavement);
-  aabb_t pavement_bounds = mesh_data_bounds(&pavement->mesh);
-  /* Both pavements together: road plus two narrow strips, inside the gap. */
-  assert(pavement_bounds.max.z - pavement_bounds.min.z < 6.0f);
+  /* Beside the building the pavement is a sliver: road plus strips stay
+   * inside the gap. */
+  aabb_t footprint = mesh_data_bounds(&facade_for(&package, 208)->mesh);
+  for (size_t v = 0; v < pavement->mesh.vertex_count; v++) {
+    vec3_t p = pavement->mesh.vertices[v].position;
+    if (p.x > footprint.min.x && p.x < footprint.max.x)
+      assert(p.z > footprint.max.z - 0.05f);
+  }
   /* An unconstrained road keeps its full width. */
   const city_part_t* free_road = part_for(&package, "road", 103);
   assert(free_road);
@@ -302,17 +329,6 @@ static void parallel_carriageways_share_the_gap_between_them(void) {
   }
   city_package_free(&package);
   city_model_free(&model);
-}
-
-static const city_part_t* facade_for(const city_package_t* package,
-                                     uint64_t source) {
-  for (int i = 0; i < 4; i++) {
-    char name[16];
-    snprintf(name, sizeof(name), "facade%d", i);
-    const city_part_t* walls = part_for(package, name, source);
-    if (walls) return walls;
-  }
-  return NULL;
 }
 
 static void narrow_terraces_get_gabled_roofs(void) {
