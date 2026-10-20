@@ -490,6 +490,10 @@ static bool is_a_road_surface(const char* label) {
   return false;
 }
 
+float driving_stage_wheel_angle(const driving_stage_t* stage) {
+  return stage->vehicle.steering * 3.0f * (float)M_PI * 0.5f;
+}
+
 render_camera_t driving_stage_camera(const driving_stage_t* stage) {
   if (stage->view_mode == 0) {
     /* The world rushes past: the view opens up a little with speed. */
@@ -503,7 +507,7 @@ render_camera_t driving_stage_camera(const driving_stage_t* stage) {
   /* Left-hand drive: the driver sits left of centre, eyes just above the
    * sill. The bonnet view sits forward of the windscreen, on the centre line.
    */
-  vec3_t local_eye = stage->view_mode == 2 ? vec3(-0.36f, 0.42f, -0.05f)
+  vec3_t local_eye = stage->view_mode == 2 ? vec3(-0.36f, 0.42f, 0.25f)
                                            : vec3(0.0f, 0.78f, -0.9f);
   vec3_t eye = transform_point(chassis, local_eye);
   vec3_t forward = quat_rotate(chassis.rotation, vec3(0, 0, -1));
@@ -561,6 +565,9 @@ void driving_stage_render(driving_stage_t* stage) {
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
+  if (stage->view_mode == 2)
+    car_visual_draw_cockpit(&stage->car_visual, r, chassis,
+                            driving_stage_wheel_angle(stage));
   if (stage->rain > 0.04f) {
     /* Drops: short streaks falling in a box about the eye, each at its own
      * phase, leaning a little with the wind. */

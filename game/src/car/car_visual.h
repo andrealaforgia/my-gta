@@ -27,6 +27,8 @@ typedef struct {
   float wheel_radius;
   float ride_height;   /* chassis centre above the road on its wheels */
   vec3_t half_extents; /* of the chassis box */
+  mesh_handle_t dashboard, wheel_rim, wheel_hub; /* the inside */
+  material_t dash_material;
 } car_visual_t;
 
 car_visual_t car_visual_create(renderer_t* renderer,
@@ -42,5 +44,10 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
 void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, vec3_t paint, float lights_on,
                            float brake, float wheel_turn);
+
+/* The driver's view of the inside: a dashboard across the base of the
+ * windscreen and a steering wheel turned by `wheel_angle` radians. */
+void car_visual_draw_cockpit(const car_visual_t* visual, renderer_t* renderer,
+                             transform_t chassis, float wheel_angle);
 
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

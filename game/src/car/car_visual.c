@@ -1,6 +1,11 @@
 #include "car_visual.h"
 
+#include <math.h>
 #include <stddef.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 /* The body is lofted through side-profile sections from nose to tail:
  * each section has a height range and a half width, and the quads
@@ -47,6 +52,29 @@ static mesh_handle_t upload(renderer_t* renderer, mesh_data_t* mesh) {
   mesh_handle_t handle = renderer_upload_mesh(renderer, mesh);
   mesh_data_free(mesh);
   return handle;
+}
+
+/* A flat ring in the xy plane about the origin, facing +z, between two
+ * radii and `half_z` thick each way. */
+static void add_ring(mesh_data_t* mesh, float outer, float inner, float half_z,
+                     int segments) {
+  for (int k = 0; k < segments; k++) {
+    float a0 = 2.0f * (float)M_PI * (float)k / (float)segments;
+    float a1 = 2.0f * (float)M_PI * (float)(k + 1) / (float)segments;
+    float c0 = cosf(a0), s0 = sinf(a0), c1 = cosf(a1), s1 = sinf(a1);
+    vec3_t io0 = vec3(inner * c0, inner * s0, half_z);
+    vec3_t io1 = vec3(inner * c1, inner * s1, half_z);
+    vec3_t oo0 = vec3(outer * c0, outer * s0, half_z);
+    vec3_t oo1 = vec3(outer * c1, outer * s1, half_z);
+    vec3_t ib0 = vec3(inner * c0, inner * s0, -half_z);
+    vec3_t ib1 = vec3(inner * c1, inner * s1, -half_z);
+    vec3_t ob0 = vec3(outer * c0, outer * s0, -half_z);
+    vec3_t ob1 = vec3(outer * c1, outer * s1, -half_z);
+    mesh_data_add_quad(mesh, io0, oo0, oo1, io1, 1); /* front */
+    mesh_data_add_quad(mesh, ib1, ob1, ob0, ib0, 1); /* back */
+    mesh_data_add_quad(mesh, ob0, ob1, oo1, oo0, 1); /* outer wall */
+    mesh_data_add_quad(mesh, ib0, io0, io1, ib1, 1); /* inner wall */
+  }
 }
 
 car_visual_t car_visual_create(renderer_t* renderer,
@@ -135,6 +163,34 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.wheel_radius = p->wheel_radius;
   visual.ride_height = p->wheel_radius - rest_hub_y;
   visual.half_extents = h;
+  /* The inside, from the seat: a dashboard across the base of the
+   * windscreen with a hooded instrument binnacle, and a steering wheel: a
+   * ring of twelve short bars, a hub and three spokes, centred on its own
+   * origin with its axis along +z. */
+  mesh_data_t dash_mesh = mesh_data_create();
+  float dash_z = -L * 0.3f, dash_y = sill + 0.07f;
+  /* The dash top, a hooded binnacle before the driver and a glovebox face. */
+  mesh_data_add_box(&dash_mesh, vec3(0, dash_y - 0.04f, dash_z - 0.2f),
+                    vec3(w * 0.92f, 0.05f, 0.3f));
+  mesh_data_add_box(&dash_mesh,
+                    vec3(-w * 0.42f, dash_y + 0.035f, dash_z - 0.06f),
+                    vec3(0.2f, 0.045f, 0.09f));
+  mesh_data_add_box(&dash_mesh, vec3(0, dash_y - 0.17f, dash_z + 0.1f),
+                    vec3(w * 0.92f, 0.12f, 0.04f));
+  mesh_data_t rim_mesh = mesh_data_create();
+  add_ring(&rim_mesh, 0.2f, 0.16f, 0.017f, 28);
+  mesh_data_t hub_mesh = mesh_data_create();
+  mesh_data_add_box(&hub_mesh, vec3(0, 0, 0), vec3(0.05f, 0.05f, 0.03f));
+  mesh_data_add_box(&hub_mesh, vec3(0, -0.085f, 0),
+                    vec3(0.016f, 0.085f, 0.016f));
+  mesh_data_add_box(&hub_mesh, vec3(-0.085f, 0, 0),
+                    vec3(0.085f, 0.016f, 0.016f));
+  mesh_data_add_box(&hub_mesh, vec3(0.085f, 0, 0),
+                    vec3(0.085f, 0.016f, 0.016f));
+  visual.dashboard = upload(renderer, &dash_mesh);
+  visual.wheel_rim = upload(renderer, &rim_mesh);
+  visual.wheel_hub = upload(renderer, &hub_mesh);
+  visual.dash_material = material_rough(vec3(0.1f, 0.1f, 0.11f), 0.8f);
   visual.chassis = upload(renderer, &body_mesh);
   visual.cabin = upload(renderer, &cabin_mesh);
   visual.glass = upload(renderer, &glass_mesh);
@@ -162,6 +218,9 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
   renderer_release_mesh(renderer, visual->rear_lights);
   renderer_release_mesh(renderer, visual->trim);
   renderer_release_mesh(renderer, visual->wheel);
+  renderer_release_mesh(renderer, visual->dashboard);
+  renderer_release_mesh(renderer, visual->wheel_rim);
+  renderer_release_mesh(renderer, visual->wheel_hub);
 }
 
 void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
@@ -209,4 +268,22 @@ void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
     renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
                        transform_to_matrix(wheel));
   }
+}
+
+void car_visual_draw_cockpit(const car_visual_t* visual, renderer_t* renderer,
+                             transform_t chassis, float wheel_angle) {
+  mat4_t car = transform_to_matrix(chassis);
+  renderer_draw_mesh(renderer, visual->dashboard, visual->dash_material, car);
+  /* The wheel stands before the driver's seat, its top tilted away. */
+  vec3_t where = vec3(-visual->half_extents.x * 0.42f, 0.13f,
+                      -visual->half_extents.z * 0.3f + 0.3f);
+  quat_t tilt = quat_from_axis_angle(vec3(1, 0, 0), -0.55f);
+  quat_t turn = quat_from_axis_angle(vec3(0, 0, 1), wheel_angle);
+  mat4_t model = mat4_multiply(
+      car,
+      mat4_multiply(mat4_translation(where),
+                    mat4_multiply(mat4_from_quat(tilt), mat4_from_quat(turn))));
+  material_t rubber = material_rough(vec3(0.07f, 0.07f, 0.075f), 0.85f);
+  renderer_draw_mesh(renderer, visual->wheel_rim, rubber, model);
+  renderer_draw_mesh(renderer, visual->wheel_hub, visual->dash_material, model);
 }

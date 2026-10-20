@@ -94,6 +94,8 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage);
 void driving_stage_next_vehicle(driving_stage_t* stage);
 /* Rain from 0 to 1 now: eased towards its target a little each frame. */
 void driving_stage_set_rain(driving_stage_t* stage, float rain);
+/* The steering wheel's angle: one and a half turns each way at full lock. */
+float driving_stage_wheel_angle(const driving_stage_t* stage);
 /* The camera for the current view: behind the car, over the bonnet or
  * from the driver's seat. */
 render_camera_t driving_stage_camera(const driving_stage_t* stage);

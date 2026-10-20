@@ -303,6 +303,26 @@ static void rain_comes_on_gradually_wets_the_roads_and_is_heard(void) {
   stop(&run);
 }
 
+static void the_cockpit_has_a_dashboard_and_a_wheel_that_turns(void) {
+  city_run_t run;
+  start(&run);
+  run.stage.view_mode = 0;
+  driving_stage_render(&run.stage);
+  int outside = renderer_stats(run.renderer).draw_calls;
+  run.stage.view_mode = 2;
+  driving_stage_render(&run.stage);
+  int inside = renderer_stats(run.renderer).draw_calls;
+  assert(inside >= outside + 3); /* dashboard, wheel rim, hub and spokes */
+  /* The wheel's angle follows the steering, a lock and a half each way at
+   * full input, and is level when the car goes straight. */
+  assert(near_to(driving_stage_wheel_angle(&run.stage), 0.0f, 1e-3f));
+  driving_input_t left = {0.2f, 0, -1.0f, false};
+  drive(&run, left, 2.0f);
+  float angle = driving_stage_wheel_angle(&run.stage);
+  assert(angle < -1.0f && angle > -4.8f);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -330,5 +350,6 @@ void run_citydrive_tests(void) {
   RUN(a_busy_city_runs_for_a_minute_without_trouble);
   RUN(the_chase_view_widens_with_speed);
   RUN(rain_comes_on_gradually_wets_the_roads_and_is_heard);
+  RUN(the_cockpit_has_a_dashboard_and_a_wheel_that_turns);
   RUN(the_map_and_the_pause_silence_the_engine);
 }
