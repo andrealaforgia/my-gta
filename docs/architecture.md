@@ -44,6 +44,24 @@ Ownership is explicit: the stage owns the physics world, the world, the
 scene's meshes and the vehicle; `main` owns the window, renderer and
 audio device and passes pointers down. No globals.
 
+## Game systems (2026-10-21)
+
+- **Time of day**: `game/src/stage/daylight.c` turns an hour into the sun and
+  moon's direction, light colour, ambient, horizon and zenith colours, star
+  level and lamp glow, continuously. The stage advances the hour, lights
+  `lamp_light` parts and, through `window_glow`, the panes that textures mark
+  with alpha 0, and the player's headlight cone (one spot in the shader).
+- **Cars about town**: the generator writes `route` and `park` records; the
+  scene keeps them. `parked_cars` stands cars at the kerb, `traffic` drives
+  kinematic cars (box colliders moved each step) on `route_path` lanes with
+  right-hand lanes, junction right of way and stopping for the player,
+  `pedestrians` walks the pavements. A fleet of four bodies is built from
+  vehicle cfg files.
+- **Audio** adds the town (rumble, birds, crickets, cars close by) and a
+  church bell on the hour; paused and map screens are silent.
+- **Camera views** and a car swap live in the stage; the map is a picture
+  rasterised once at load.
+
 ## Rendering
 
 `renderer_draw_mesh` only records a draw. `renderer_end_frame` renders the

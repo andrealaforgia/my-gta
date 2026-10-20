@@ -13,6 +13,9 @@ needs a window or a GPU.
 | math | vector, quaternion, matrix, transform, box, ray, plane, frustum and damping behaviour under the ADR-007 conventions |
 | core | fixed-step frame clock and catch-up cap, configuration parsing and defaults, keyboard mapping, dead zones, steering filter |
 | citymap | the pause-screen map: roads and roofs painted north up, points off the map |
+| daylight | the sun's arc, sky, stars, lamp glow, no jumps over a day, the bell strikes |
+| traffic | fleet, parked cars, lanes, junction right of way, stopping, people on pavements, skid marks |
+| textures | road wear and markings |
 | mesh | box and cylinder builders, winding, appending, subdividing, the 5x7 font |
 | physics | a dropped box lands and rests, contact impulses, a wall stops a slide, friction, ray casts with layers and friction, torque from point forces, interpolation state |
 | vehicle | parameter loading, settling, 0 to 50 km/h, braking distance, turning direction, reverse, wet grip, reset, wheel transforms, handbrake skid |

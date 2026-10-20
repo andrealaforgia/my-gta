@@ -51,11 +51,26 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 
 ## Controls
 
-Arrows or WASD drive and steer, space handbrake, R reset to the spawn,
-P pause, C change view (chase, bonnet, cockpit), F1 debug overlay, M city map (pauses), N mute, F11 fullscreen,
-Esc quit. A game controller steers with the left stick, accelerates and
-brakes with the triggers, A handbrake, Y reset, Start pause. Holding the
-brake at a standstill engages reverse; the throttle brings you back.
+| Key | Does |
+|---|---|
+| arrows or WASD | drive and steer (holding the brake at a standstill reverses) |
+| space | handbrake |
+| R | reset to the spawn |
+| C | change view: chase, bonnet, cockpit |
+| V | swap to the next car: hatchback, saloon, van, city car |
+| M | the city map over a paused game, with street names and your position |
+| P | pause |
+| N | mute |
+| F1 | debug overlay |
+| F11 | fullscreen |
+| Esc | quit |
+
+A game controller steers with the left stick, accelerates and brakes with
+the triggers, A handbrake, Y reset, Start pause.
+
+Command line: `--time=H` starts the clock at hour H (default 10), `--hour-seconds=S`
+sets real seconds per game hour (default 30, 0 freezes it), `--traffic=N` and
+`--pedestrians=N` set how many cars and people there are (36 and 70).
 
 ## Layout
 
@@ -72,14 +87,18 @@ docs/     architecture, decisions, pipeline, physics, testing
 ## Status
 
 What works: the engine (fixed 120 Hz physics with render interpolation,
-forward renderer with shadows, fog and debug drawing, synthesised audio), a car
-that accelerates, brakes, steers, reverses, skids and collides, a chase
-camera, the offline pipeline from OSM XML to a validated cooked package,
-and driving through the generated city: roads with stop lines and zebra crossings, pedestrian streets and
-paths, squares, parks with trees, car parks, water, lamp posts, and
-hills from a real elevation model, porticoes along the Corso, and buildings with courtyards, twelve
-facade styles and hipped, gabled or ridge roofs in terracotta, slate or flat.
+forward renderer with shadows, fog, a sky with sun, moon and stars, emissive
+lamps and windows, a headlight cone, synthesised audio), a car that
+accelerates, brakes, steers, reverses, skids and leaves marks, collides and
+leans like a real one, four cars to drive, three views, the offline pipeline from OpenStreetMap
+XML to a validated cooked package, and driving through the generated city:
+real streets with stop lines, zebra crossings, stop signs and manhole covers,
+hills from an elevation model, a day that runs from dawn to night with lit
+windows and street lamps, parked and moving cars that follow the roads and
+give way, people walking the pavements, shop fronts, porticoes with arches and
+painted facades along the Corso, a brick town hall with a clock tower,
+campanili, parks, water and trees, and the church bell on the hour.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
-glTF import, bridges, chunk streaming. See the end of
+glTF import, bridges, chunk streaming, weather. See the end of
 `docs/architecture.md` for the measured performance baseline.

@@ -12,3 +12,9 @@ Geographic data processed by the tools is OpenStreetMap data under the
 Open Database License 1.0, © OpenStreetMap contributors
 (https://www.openstreetmap.org/copyright). Raw extracts are not committed;
 see `docs/geographic-data.md`.
+
+Ground heights come from the EU-DEM v1.1 25 m digital elevation model,
+produced by the Copernicus Land Monitoring Service (European Union), read
+through the public Open Topo Data API (https://www.opentopodata.org). Free to
+use with attribution. The lattice is not committed; see
+`docs/geographic-data.md`.
