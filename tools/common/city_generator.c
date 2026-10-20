@@ -715,11 +715,12 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
   bool for_people =
       road->class == ROAD_CLASS_PEDESTRIAN || road->class == ROAD_CLASS_PATH;
   bool water = road->class == ROAD_CLASS_WATERWAY;
-  /* Paths sit a little above the roads they cross; streams just above the
-   * grass and below everything else, with nothing to collide with. */
-  float height = road->class == ROAD_CLASS_PATH ? o->road_height + 0.012f
-                 : water                        ? 0.02f
-                                                : o->road_height;
+  /* Streets for people and paths sit above the roads and the squares
+   * they cross; streams just above the grass and below everything else,
+   * with nothing to collide with. */
+  float height = for_people ? o->road_height + 0.02f
+                 : water    ? 0.02f
+                            : o->road_height;
   city_part_t* part = city_chunk_add_part(
       chunk,
       water        ? "water"

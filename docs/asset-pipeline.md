@@ -96,7 +96,7 @@ the physics world with the layer and friction given.
   kerbs never trap wheels.
 - Pedestrian streets are paving ribbons with no pavements; a junction
   where only pedestrian streets meet is paved too. Paths are 2 m paving
-  ribbons laid 12 mm above the roads they cross and take no part in
+  ribbons laid 20 mm above the roads and squares they cross and take no part in
   junction layouts. Streams are water ribbons 2 cm above the ground with
   no collider.
 - Areas are flat polygons: water (2 cm, no collider), parks (2.5 cm,

@@ -234,7 +234,13 @@ static void people_streets_paths_and_areas_get_their_own_surfaces(void) {
   assert(part_for(&package, "lamp", 309) == NULL);
   const city_part_t* parking = part_for(&package, "parking", 306);
   assert(parking && parking->collider == PART_COLLIDER_MESH);
-  assert(part_for(&package, "paving", 304));
+  const city_part_t* square = part_for(&package, "paving", 304);
+  assert(square);
+  /* Streets for people and paths cross squares, so they sit above them
+   * rather than fighting for the same height. */
+  float square_top = mesh_data_bounds(&square->mesh).max.y;
+  assert(mesh_data_bounds(&corso->mesh).min.y > square_top + 0.003f);
+  assert(footway_bounds.min.y > square_top + 0.003f);
   assert(part_for(&package, "park", 403));
   assert(stats.areas == 5);
   /* Multipolygon buildings are built like any other. */
