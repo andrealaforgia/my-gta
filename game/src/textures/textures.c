@@ -211,6 +211,33 @@ uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns) {
   return pixels;
 }
 
+/* A painted house front in the manner of the Pordenone Corso: a ground of
+ * ochre or rose washed with a lozenge pattern in a darker and a lighter
+ * tone, framed windows with sills on top of it, one bay per repeat. */
+uint8_t* texture_facade_fresco(unsigned seed) {
+  uint8_t* pixels = texture_facade(seed, 1, 1);
+  if (!pixels) return NULL;
+  static const float tints[][3] = {
+      {0.78f, 0.42f, 0.30f}, {0.86f, 0.66f, 0.40f}, {0.70f, 0.52f, 0.40f}};
+  const float* tint = tints[seed % 3];
+  for (int y = 0; y < TEXTURE_SIZE; y++)
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      uint8_t* q = pixels + (y * TEXTURE_SIZE + x) * 4;
+      /* Leave the window openings, shutters and string course alone: only
+       * repaint the plaster, recognised by its warm, light colour. */
+      bool plaster = q[0] > 150 && q[0] >= q[2] + 15 && q[1] > 110;
+      if (!plaster) continue;
+      int dx = (x % 32) - 16, dy = (y % 32) - 16;
+      int manhattan = abs(dx) + abs(dy);
+      float band = manhattan < 4
+                       ? 1.12f
+                       : (manhattan >= 15 && manhattan <= 17 ? 0.7f : 1.0f);
+      float r = tint[0] * band, g = tint[1] * band, b = tint[2] * band;
+      put(pixels, x, y, r, g, b);
+    }
+  return pixels;
+}
+
 uint8_t* texture_roof_slate(unsigned seed) {
   uint8_t* pixels = grainy(seed, 0.34f, 0.35f, 0.38f, 0.2f, 0.1f);
   if (!pixels) return NULL;
@@ -278,6 +305,7 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
         renderer, texture_facade(facade_seeds[i], 1, (i % 3) == 2 ? 2 : 1));
   set.facade = set.facades[0];
   set.roof = upload(renderer, texture_roof(6));
+  set.facade_fresco = upload(renderer, texture_facade_fresco(5));
   set.roof_slate = upload(renderer, texture_roof_slate(8));
   set.roof_flat = upload(renderer, texture_roof_flat(9));
   set.checker = upload(renderer, texture_checker());

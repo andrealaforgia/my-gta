@@ -62,7 +62,7 @@ static const city_part_t* facade_for(const city_package_t* package,
     const city_part_t* walls = part_for(package, name, source);
     if (walls) return walls;
   }
-  return NULL;
+  return part_for(package, "facade_fresco", source);
 }
 
 static const city_part_t* roof_for(const city_package_t* package,
@@ -570,6 +570,9 @@ static void buildings_on_a_named_street_get_a_portico(void) {
   const city_part_t* plain_walls = facade_for(&plain, 20);
   const city_part_t* walls = facade_for(&arcaded, 20);
   assert(plain_walls && walls);
+  /* Houses on the arcaded street are painted, as along the real Corso. */
+  assert(strcmp(walls->material, "facade_fresco") == 0);
+  assert(strcmp(plain_walls->material, "facade_fresco") != 0);
   assert(mesh_data_triangle_count(&walls->mesh) >
          mesh_data_triangle_count(&plain_walls->mesh) + 20);
   /* The street-facing edge is the building's southernmost: find its z. */

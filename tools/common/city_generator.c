@@ -1690,6 +1690,11 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   unsigned variant = (unsigned)((uint64_t)building->source_id * 2654435761u %
                                 (unsigned)o->facade_variants);
   snprintf(facade, sizeof(facade), "facade%u", variant);
+  bool on_the_arcade = false;
+  for (size_t i = 0; i < count && !on_the_arcade; i++)
+    on_the_arcade = edge_faces_arcade(layout->model, o, building, i,
+                                      building_depth(building));
+  if (on_the_arcade) snprintf(facade, sizeof(facade), "facade_fresco");
   city_part_t* walls = city_chunk_add_part(
       chunk, facade, PART_COLLIDER_MESH, COLLISION_LAYER_BUILDING,
       o->building_friction, (uint64_t)building->source_id);
