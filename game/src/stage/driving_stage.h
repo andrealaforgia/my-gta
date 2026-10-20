@@ -12,11 +12,14 @@
 #include "audio_mixer.h"
 #include "car_visual.h"
 #include "chase_camera.h"
+#include "fleet.h"
 #include "frame_clock.h"
+#include "parked_cars.h"
 #include "physics_world.h"
 #include "renderer.h"
 #include "scene.h"
 #include "textures.h"
+#include "traffic.h"
 #include "vehicle.h"
 #include "window.h"
 #include "world.h"
@@ -31,6 +34,7 @@ typedef struct {
   bool muted;
   float start_hour;   /* time of day at the start, 0..24 */
   float hour_seconds; /* real seconds per game hour; 0 freezes the clock */
+  int traffic_cars;   /* moving cars about the city; parked cars always stand */
 } stage_options_t;
 
 typedef struct {
@@ -48,6 +52,10 @@ typedef struct {
   bool paused;
   float hour; /* time of day, 0..24 */
   float hour_seconds;
+  fleet_t fleet;
+  bool has_fleet;
+  parked_cars_t parked;
+  traffic_t* traffic;
   bool map_open; /* M: the city map over a paused game */
   texture_handle_t map_texture;
   bool show_debug;

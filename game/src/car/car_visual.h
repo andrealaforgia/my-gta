@@ -23,6 +23,10 @@ typedef struct {
   material_t rear_light_material;
   material_t trim_material;
   material_t rubber;
+  vec3_t wheel_centres[4]; /* hubs at rest, chassis frame: FL FR RL RR */
+  float wheel_radius;
+  float ride_height;   /* chassis centre above the road on its wheels */
+  vec3_t half_extents; /* of the chassis box */
 } car_visual_t;
 
 car_visual_t car_visual_create(renderer_t* renderer,
@@ -31,5 +35,12 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer);
 void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
                      const vehicle_t* vehicle, transform_t chassis,
                      float lights_on /* 0 by day .. 1 at night */);
+
+/* Draws a car standing or rolling with no suspension state: the body in the
+ * given paint, wheels at rest, lights as asked (brake lights light up
+ * brightly). Used for parked and passing cars. */
+void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
+                           transform_t chassis, vec3_t paint, float lights_on,
+                           float brake, float wheel_turn);
 
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

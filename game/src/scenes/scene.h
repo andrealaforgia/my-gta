@@ -26,6 +26,10 @@ typedef struct {
   char name[64];
   city_label_t labels[CITY_PACKAGE_MAX_LABELS]; /* street names for the map */
   size_t label_count;
+  city_route_t* routes; /* owned: the roads as cars and people use them */
+  size_t route_count;
+  city_parking_t* parked; /* owned: places where cars stand at the kerb */
+  size_t parked_count;
   city_map_t map; /* the pause-screen map; size 0 on the test track */
 } scene_t;
 

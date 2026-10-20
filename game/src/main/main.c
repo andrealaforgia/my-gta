@@ -28,6 +28,8 @@ static void print_help(void) {
       "  --no-audio               do not open an audio device\n"
       "  --mute                   open audio but start muted\n"
       "  --time=H                 start at hour H (0-24), default 10\n"
+      "  --traffic=N              moving cars in the city (default 36, 0 for "
+      "none)\n"
       "  --hour-seconds=S         real seconds per game hour, 0 freezes time\n"
       "  --debug                  start with the debug overlay on\n"
       "  --help\n\n"
@@ -46,6 +48,7 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
   options->stage.scene = SCENE_TEST_TRACK;
   options->stage.start_hour = 10.0f;
   options->stage.hour_seconds = 30.0f;
+  options->stage.traffic_cars = 36;
   for (int i = 1; i < argc; i++) {
     const char* argument = argv[i];
     if (strcmp(argument, "--help") == 0) {
@@ -64,6 +67,8 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
       options->stage.start_hour = (float)atof(argument + 7);
     } else if (strncmp(argument, "--hour-seconds=", 15) == 0) {
       options->stage.hour_seconds = (float)atof(argument + 15);
+    } else if (strncmp(argument, "--traffic=", 10) == 0) {
+      options->stage.traffic_cars = atoi(argument + 10);
     } else if (strncmp(argument, "--width=", 8) == 0) {
       options->window.width = atoi(argument + 8);
     } else if (strncmp(argument, "--height=", 9) == 0) {

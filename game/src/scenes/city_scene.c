@@ -158,6 +158,13 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
            package.name, package.chunk_count,
            city_package_triangle_count(&package), draws, colliders,
            package.source, package.source_date, package.licence);
+  /* The runtime keeps the roads and the parking places. */
+  scene->routes = package.routes;
+  scene->route_count = package.route_count;
+  scene->parked = package.parked;
+  scene->parked_count = package.parked_count;
+  package.routes = NULL, package.route_count = 0;
+  package.parked = NULL, package.parked_count = 0;
   city_package_free(&package);
   if (!ok) LOG_ERROR("scene", "could not build the city scene");
   return ok;

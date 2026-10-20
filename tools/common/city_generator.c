@@ -2013,6 +2013,79 @@ static void choose_labels(city_package_t* package, const city_model_t* model) {
   free(entries);
 }
 
+/* The road as the runtime sees it: its centre line, and the places along
+ * it where cars stand at the kerb. */
+static bool add_route_and_parking(city_package_t* package,
+                                  const city_model_t* model,
+                                  const city_road_t* road, road_fit_t fit,
+                                  road_cuts_t cuts) {
+  if (road->class == ROAD_CLASS_WATERWAY) return true;
+  bool drivable =
+      road->class != ROAD_CLASS_PEDESTRIAN && road->class != ROAD_CLASS_PATH;
+  city_route_t route;
+  memset(&route, 0, sizeof(route));
+  route.drivable = drivable;
+  route.oneway = road->oneway;
+  route.width = (float)(fit.half_width * 2);
+  route.pavement = (float)fit.pavement;
+  route.start_node = road->node_ids[0];
+  route.end_node = road->node_ids[road->point_count - 1];
+  /* Junction ids of zero come from rounding arcs; ends always carry real ones,
+   * but keep the field non-zero for readers. */
+  if (route.start_node == 0) route.start_node = 1;
+  if (route.end_node == 0) route.end_node = 1;
+  route.point_count = road->point_count;
+  route.points = malloc(road->point_count * 2 * sizeof(float));
+  if (!route.points) return false;
+  for (size_t i = 0; i < road->point_count; i++) {
+    route.points[2 * i] = (float)road->points[i].x;
+    route.points[2 * i + 1] = (float)road->points[i].z;
+  }
+  if (!city_package_add_route(package, &route)) {
+    free(route.points);
+    return false;
+  }
+  (void)model;
+  if (!drivable || road->class == ROAD_CLASS_MOTORWAY ||
+      road->class == ROAD_CLASS_SERVICE || fit.half_width < 2.6 ||
+      fit.pavement <= 0)
+    return true;
+  local_point_t* points = malloc(road->point_count * sizeof(local_point_t));
+  vec2_t* laterals = malloc(road->point_count * sizeof(vec2_t));
+  if (!points || !laterals) {
+    free(points);
+    free(laterals);
+    return false;
+  }
+  size_t count = polyline_cut(road->points, road->point_count, cuts.start,
+                              cuts.end, points);
+  lateral_offsets(points, count, laterals);
+  double length = polyline_length(points, count);
+  uint64_t seed = (uint64_t)road->source_id * 0x9e3779b97f4a7c15ull + 7;
+  bool ok = true;
+  for (double along = 8.0; ok && along < length - 8.0; along += 6.2) {
+    seed ^= seed >> 12, seed ^= seed << 25, seed ^= seed >> 27;
+    if ((seed >> 20) % 100 >= 55) continue;
+    size_t segment;
+    local_point_t on_line = along_polyline(points, count, along, &segment);
+    vec2_t lateral = v2_normalize(laterals[segment > 0 ? segment - 1 : 0]);
+    int side = ((seed >> 33) & 1) ? 1 : -1;
+    local_point_t spot =
+        offset(on_line, lateral, side * (fit.half_width - 1.0));
+    vec2_t direction = v2(-lateral.z, lateral.x); /* the way the road runs */
+    direction = v2_normalize(direction);
+    if (side < 0) direction = v2(-direction.x, -direction.z);
+    double jitter = (double)((seed >> 41) % 100) / 100.0 * 0.06 - 0.03;
+    city_parking_t place = {(float)spot.x, (float)spot.z,
+                            (float)(atan2(-direction.x, -direction.z) + jitter),
+                            (int)((seed >> 50) % 64)};
+    ok = city_package_add_parking(package, place);
+  }
+  free(points);
+  free(laterals);
+  return ok;
+}
+
 bool city_generate(city_package_t* package, const city_model_t* model,
                    const city_generator_options_t* options, const char* name,
                    city_generator_stats_t* stats) {
@@ -2096,6 +2169,9 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   for (size_t r = 0; ok && r < model->road_count; r++)
     ok = generate_road(&layout, model, &model->roads[r], fits[r], cuts[r],
                        stats);
+  for (size_t r = 0; ok && r < model->road_count; r++)
+    ok = add_route_and_parking(package, model, &model->roads[r], fits[r],
+                               cuts[r]);
   for (size_t a = 0; ok && a < model->area_count; a++)
     ok = generate_area(&layout, &model->areas[a], stats);
   /* Edges that face an arcaded street, so neighbouring porticoes join. */
@@ -2129,6 +2205,15 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   }
   choose_spawn(package, model, options);
   choose_labels(package, model);
+  /* The car starts on an empty road. */
+  size_t kept = 0;
+  for (size_t i = 0; i < package->parked_count; i++) {
+    float dx = package->parked[i].x - package->spawn_position.x;
+    float dz = package->parked[i].z - package->spawn_position.z;
+    if (dx * dx + dz * dz > 100.0f)
+      package->parked[kept++] = package->parked[i];
+  }
+  package->parked_count = kept;
   package->spawn_position.y += (float)terrain_at(
       &layout, package->spawn_position.x, package->spawn_position.z);
   LOG_INFO("generate",

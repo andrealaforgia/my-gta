@@ -31,6 +31,7 @@ GROUPS = (
     "citydrive",
     "citymap",
     "daylight",
+    "traffic",
 )
 
 

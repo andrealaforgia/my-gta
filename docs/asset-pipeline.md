@@ -143,6 +143,11 @@ the physics world with the layer and friction given.
 - The manifest lists up to 48 `label x z TEXT` lines for the map: each
   distinct street name once, in capitals, plain ASCII, cut at any `(`, at
   the middle of its longest piece, longest streets first.
+- The manifest also carries `route` records (each road except streams: drivable
+  flag, one-way, carriageway width, pavement, the junction ids at both ends
+  and its centre line) and `park` records (x, z, yaw, variant): places at
+  the kerb every 6 m on 55 % of residential-type streets 5.2 m wide or more
+  with a pavement, 8 m clear of the ends and of the spawn.
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

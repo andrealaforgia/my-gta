@@ -127,6 +127,14 @@ car_visual_t car_visual_create(renderer_t* renderer,
                     vec3(p->wheel_width * 0.55f, p->wheel_radius * 0.62f,
                          p->wheel_radius * 0.12f));
 
+  float rest_hub_y = p->wheel_attach_height - p->suspension_rest_length * 0.65f;
+  for (int i = 0; i < 4; i++)
+    visual.wheel_centres[i] =
+        vec3((i % 2 == 0 ? -1.0f : 1.0f) * p->track_width * 0.5f, rest_hub_y,
+             (i < 2 ? -1.0f : 1.0f) * p->wheelbase * 0.5f);
+  visual.wheel_radius = p->wheel_radius;
+  visual.ride_height = p->wheel_radius - rest_hub_y;
+  visual.half_extents = h;
   visual.chassis = upload(renderer, &body_mesh);
   visual.cabin = upload(renderer, &cabin_mesh);
   visual.glass = upload(renderer, &glass_mesh);
@@ -172,6 +180,32 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
   renderer_draw_mesh(renderer, visual->trim, visual->trim_material, model);
   for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
     transform_t wheel = vehicle_wheel_transform(vehicle, chassis, i);
+    renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
+                       transform_to_matrix(wheel));
+  }
+}
+
+void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
+                           transform_t chassis, vec3_t paint, float lights_on,
+                           float brake, float wheel_turn) {
+  mat4_t model = transform_to_matrix(chassis);
+  material_t body = visual->paint;
+  body.base_color = paint;
+  material_t headlights = visual->light_material;
+  headlights.emissive = 0.15f + 1.6f * lights_on;
+  material_t tail_lights = visual->rear_light_material;
+  tail_lights.emissive = 0.1f + 0.9f * lights_on + 1.2f * brake;
+  renderer_draw_mesh(renderer, visual->chassis, body, model);
+  renderer_draw_mesh(renderer, visual->cabin, body, model);
+  renderer_draw_mesh(renderer, visual->glass, visual->glass_material, model);
+  renderer_draw_mesh(renderer, visual->lights, headlights, model);
+  renderer_draw_mesh(renderer, visual->rear_lights, tail_lights, model);
+  renderer_draw_mesh(renderer, visual->trim, visual->trim_material, model);
+  quat_t spin = quat_from_axis_angle(vec3(1, 0, 0), -wheel_turn);
+  for (int i = 0; i < 4; i++) {
+    transform_t wheel = transform_identity();
+    wheel.position = transform_point(chassis, visual->wheel_centres[i]);
+    wheel.rotation = quat_multiply(chassis.rotation, spin);
     renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
                        transform_to_matrix(wheel));
   }

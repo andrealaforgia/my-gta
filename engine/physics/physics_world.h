@@ -98,6 +98,11 @@ collider_handle_t physics_add_static_box(physics_world_t* world,
                                          vec3_t half_extents,
                                          collision_layer_t layer,
                                          float friction, uint64_t source_id);
+/* Moves a box collider, for things like traffic that drive about: the
+ * collider is static for contacts but can be relocated each step. */
+void physics_set_static_box_transform(physics_world_t* world,
+                                      collider_handle_t collider,
+                                      transform_t transform);
 /* Vertices are copied; indices are triangles anticlockwise from the front. */
 collider_handle_t physics_add_static_mesh(
     physics_world_t* world, const vec3_t* vertices, size_t vertex_count,

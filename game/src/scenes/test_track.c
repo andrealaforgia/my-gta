@@ -16,6 +16,11 @@ void scene_release(scene_t* scene, renderer_t* renderer) {
     renderer_release_mesh(renderer, scene->meshes[i]);
   scene->mesh_count = 0;
   city_map_free(&scene->map);
+  for (size_t r = 0; r < scene->route_count; r++) free(scene->routes[r].points);
+  free(scene->routes);
+  free(scene->parked);
+  scene->routes = NULL, scene->route_count = 0;
+  scene->parked = NULL, scene->parked_count = 0;
 }
 
 static material_t textured(texture_handle_t texture, vec3_t tint,

@@ -46,6 +46,16 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   chase_camera_reset(&stage->camera, transform_at(stage->scene.spawn_position,
                                                   stage->scene.spawn_rotation));
   stage->clock = frame_clock_create(PHYSICS_STEP, MAX_CATCH_UP);
+  if (options.scene == SCENE_CITY && fleet_create(&stage->fleet, renderer)) {
+    stage->has_fleet = true;
+    parked_cars_create(&stage->parked, stage->scene.parked,
+                       stage->scene.parked_count, stage->physics,
+                       &stage->fleet);
+    if (options.traffic_cars > 0 && stage->scene.route_count > 0)
+      stage->traffic = traffic_create(
+          stage->scene.routes, stage->scene.route_count, stage->physics,
+          &stage->fleet, options.traffic_cars, 2026);
+  }
   stage->hour = options.start_hour;
   stage->hour_seconds = options.hour_seconds;
   if (stage->scene.map.size > 0)
@@ -62,6 +72,9 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
 void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
+    traffic_destroy(stage->traffic, stage->physics);
+    parked_cars_destroy(&stage->parked, stage->physics);
+    if (stage->has_fleet) fleet_destroy(&stage->fleet, stage->renderer);
     if (stage->map_texture.id)
       renderer_release_texture(stage->renderer, stage->map_texture);
     scene_release(&stage->scene, stage->renderer);
@@ -104,6 +117,12 @@ static void send_audio_state(driving_stage_t* stage) {
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt) {
   vehicle_update(&stage->vehicle, stage->physics, input, dt);
+  if (stage->traffic) {
+    const rigid_body_t* player =
+        physics_body(stage->physics, stage->vehicle.body);
+    traffic_step(stage->traffic, stage->physics, player->position,
+                 player->velocity, dt);
+  }
   physics_world_step(stage->physics, dt);
   stage->simulated_seconds += dt;
 }
@@ -364,6 +383,12 @@ void driving_stage_render(driving_stage_t* stage) {
   renderer_begin_frame(r, chase_camera_render(&stage->camera), environment);
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
+  if (stage->has_fleet) {
+    vec3_t eye = stage->camera.position;
+    parked_cars_draw(&stage->parked, &stage->fleet, r, eye, 170.0f, night);
+    if (stage->traffic)
+      traffic_draw(stage->traffic, &stage->fleet, r, eye, 220.0f, night);
+  }
   if (stage->show_debug) draw_debug(stage, chassis);
   if (stage->map_open)
     draw_map(stage);

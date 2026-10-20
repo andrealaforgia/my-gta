@@ -1,0 +1,369 @@
+#include "traffic.h"
+
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ACCELERATION 2.4f
+#define BRAKING 6.5f
+#define LOOKAHEAD 16.0f
+
+typedef struct {
+  int route;
+  int direction; /* +1 start to end, -1 end to start */
+  float s;       /* metres travelled along the route in its direction */
+  float speed;
+  int variant;
+  int paint;
+  float wheel_turn;
+  bool braking;
+  vec3_t position;
+  float yaw;
+  collider_handle_t collider;
+} car_t;
+
+typedef struct {
+  const city_route_t* route;
+  float length;
+  float* cumulative; /* distance to each point */
+  float* ground;     /* ground height at each point */
+  float cruise;      /* metres per second */
+} lane_t;
+
+struct traffic {
+  lane_t* lanes;
+  size_t lane_count;
+  car_t* cars;
+  size_t car_count;
+  const fleet_t* fleet;
+  uint32_t random;
+  float ground_clock;
+};
+
+static uint32_t next_random(traffic_t* t) {
+  t->random = t->random * 1664525u + 1013904223u;
+  return t->random >> 8;
+}
+
+/* The point and heading at distance d along a lane, in the direction of
+ * travel, before the lane offset. */
+static void sample(const lane_t* lane, float d, int direction, float* x,
+                   float* z, float* dx, float* dz, float* ground) {
+  const city_route_t* route = lane->route;
+  float along = direction > 0 ? d : lane->length - d;
+  if (along < 0) along = 0;
+  if (along > lane->length) along = lane->length;
+  size_t k = 1;
+  while (k + 1 < route->point_count && lane->cumulative[k] < along) k++;
+  float a = lane->cumulative[k - 1], b = lane->cumulative[k];
+  float t = b > a ? (along - a) / (b - a) : 0;
+  float x0 = route->points[2 * (k - 1)], z0 = route->points[2 * (k - 1) + 1];
+  float x1 = route->points[2 * k], z1 = route->points[2 * k + 1];
+  *x = x0 + (x1 - x0) * t;
+  *z = z0 + (z1 - z0) * t;
+  float length = hypotf(x1 - x0, z1 - z0);
+  float ux = length > 1e-4f ? (x1 - x0) / length : 1,
+        uz = length > 1e-4f ? (z1 - z0) / length : 0;
+  *dx = direction > 0 ? ux : -ux;
+  *dz = direction > 0 ? uz : -uz;
+  *ground = lane->ground[k - 1] + (lane->ground[k] - lane->ground[k - 1]) * t;
+}
+
+static float lane_offset(const lane_t* lane) {
+  float offset = lane->route->width * 0.25f;
+  return offset > 1.9f ? 1.9f : offset;
+}
+
+static void pose(const traffic_t* t, car_t* car) {
+  const lane_t* lane = &t->lanes[car->route];
+  float x, z, dx, dz, ground;
+  sample(lane, car->s, car->direction, &x, &z, &dx, &dz, &ground);
+  /* Right of the direction of travel: (-dz, dx) in our x, z frame with z
+   * south: right of east is south (+z), so right = (-dz, dx). */
+  float offset = lane_offset(lane);
+  car->position.x = x - dz * offset;
+  car->position.z = z + dx * offset;
+  car->yaw = atan2f(-dx, -dz);
+  car->position.y = ground + t->fleet->visuals[car->variant].ride_height;
+}
+
+static void move_collider(traffic_t* t, physics_world_t* physics, car_t* car) {
+  const car_visual_t* visual = &t->fleet->visuals[car->variant];
+  physics_set_static_box_transform(
+      physics, car->collider,
+      transform_at(car->position, quat_from_yaw(car->yaw)));
+  (void)visual;
+}
+
+traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
+                          physics_world_t* physics, const fleet_t* fleet,
+                          int car_count, uint32_t seed) {
+  traffic_t* t = calloc(1, sizeof(traffic_t));
+  if (!t) return NULL;
+  t->fleet = fleet;
+  t->random = seed * 2654435761u + 12345u;
+  t->lane_count = route_count;
+  t->lanes = calloc(route_count ? route_count : 1, sizeof(lane_t));
+  if (!t->lanes) {
+    free(t);
+    return NULL;
+  }
+  float drivable_length = 0;
+  for (size_t r = 0; r < route_count; r++) {
+    lane_t* lane = &t->lanes[r];
+    lane->route = &routes[r];
+    lane->cumulative = calloc(routes[r].point_count, sizeof(float));
+    lane->ground = calloc(routes[r].point_count, sizeof(float));
+    if (!lane->cumulative || !lane->ground) {
+      traffic_destroy(t, physics);
+      return NULL;
+    }
+    for (size_t k = 1; k < routes[r].point_count; k++)
+      lane->cumulative[k] =
+          lane->cumulative[k - 1] +
+          hypotf(
+              routes[r].points[2 * k] - routes[r].points[2 * (k - 1)],
+              routes[r].points[2 * k + 1] - routes[r].points[2 * (k - 1) + 1]);
+    lane->length = lane->cumulative[routes[r].point_count - 1];
+    lane->cruise = routes[r].width > 7.5f ? 11.0f : 7.5f;
+    for (size_t k = 0; k < routes[r].point_count; k++) {
+      ray_t down = {
+          vec3(routes[r].points[2 * k], 300.0f, routes[r].points[2 * k + 1]),
+          vec3(0, -1, 0)};
+      ray_cast_result_t hit;
+      lane->ground[k] =
+          physics_ray_cast(physics, down, 600.0f, COLLISION_LAYER_GROUND, &hit)
+              ? hit.hit.point.y
+              : 0.0f;
+    }
+    if (routes[r].drivable && lane->length > 12.0f)
+      drivable_length += lane->length;
+  }
+  if (drivable_length <= 0 || car_count <= 0) {
+    if (car_count > 0) {
+      traffic_destroy(t, physics);
+      return NULL;
+    }
+  }
+  t->cars = calloc(car_count > 0 ? (size_t)car_count : 1, sizeof(car_t));
+  if (!t->cars) {
+    traffic_destroy(t, physics);
+    return NULL;
+  }
+  for (int i = 0; i < car_count; i++) {
+    car_t* car = &t->cars[t->car_count];
+    /* A random drivable place, weighted by the road's length. */
+    float pick = (next_random(t) % 10000) / 10000.0f * drivable_length;
+    size_t chosen = 0;
+    for (size_t r = 0; r < route_count; r++) {
+      if (!routes[r].drivable || t->lanes[r].length <= 12.0f) continue;
+      chosen = r;
+      if (pick < t->lanes[r].length) break;
+      pick -= t->lanes[r].length;
+    }
+    car->route = (int)chosen;
+    car->direction = routes[chosen].oneway || (next_random(t) & 1) ? 1 : -1;
+    car->s = 6.0f +
+             pick * (t->lanes[chosen].length - 12.0f) / t->lanes[chosen].length;
+    car->speed = 0;
+    int style = (int)(next_random(t) % 1000);
+    car->variant = fleet_variant_for(style);
+    car->paint = (int)(next_random(t) % 1000);
+    pose(t, car);
+    car->collider = physics_add_static_box(
+        physics, transform_at(car->position, quat_from_yaw(car->yaw)),
+        fleet->visuals[car->variant].half_extents, COLLISION_LAYER_PROP, 0.5f,
+        0);
+    t->car_count++;
+  }
+  return t;
+}
+
+void traffic_destroy(traffic_t* t, physics_world_t* physics) {
+  if (!t) return;
+  for (size_t i = 0; i < t->car_count; i++)
+    physics_remove_collider(physics, t->cars[i].collider);
+  for (size_t r = 0; r < t->lane_count; r++) {
+    free(t->lanes[r].cumulative);
+    free(t->lanes[r].ground);
+  }
+  free(t->lanes);
+  free(t->cars);
+  free(t);
+}
+
+size_t traffic_car_count(const traffic_t* t) { return t->car_count; }
+
+traffic_car_t traffic_car(const traffic_t* t, size_t index) {
+  const car_t* car = &t->cars[index];
+  traffic_car_t out = {car->position, car->yaw,       car->speed,
+                       car->route,    car->variant,   car->paint,
+                       car->braking,  car->wheel_turn};
+  return out;
+}
+
+void traffic_car_place(traffic_t* t, size_t index, int route, int direction,
+                       float distance) {
+  car_t* car = &t->cars[index];
+  car->route = route;
+  car->direction = direction;
+  car->s = distance;
+  car->speed = 0;
+  pose(t, car);
+}
+
+/* After a lane's end: choose where to go. Sets route, direction and s. */
+static void choose_next(traffic_t* t, car_t* car) {
+  const lane_t* here = &t->lanes[car->route];
+  int64_t node =
+      car->direction > 0 ? here->route->end_node : here->route->start_node;
+  int candidates[16][2];
+  int count = 0;
+  for (size_t r = 0; r < t->lane_count && count < 16; r++) {
+    const city_route_t* route = t->lanes[r].route;
+    if (!route->drivable || (int)r == car->route || t->lanes[r].length < 6.0f)
+      continue;
+    if (route->start_node == node) {
+      candidates[count][0] = (int)r, candidates[count][1] = 1, count++;
+    } else if (route->end_node == node && !route->oneway && count < 16) {
+      candidates[count][0] = (int)r, candidates[count][1] = -1, count++;
+    }
+  }
+  if (count == 0) {
+    /* A dead end: turn round if the road allows it, else go back to the
+     * start of the one-way. */
+    if (!here->route->oneway) {
+      car->direction = -car->direction;
+    } else {
+      car->s = 0;
+      return;
+    }
+    car->s = 0;
+    car->speed *= 0.3f;
+    return;
+  }
+  int pick = (int)(next_random(t) % (uint32_t)count);
+  car->route = candidates[pick][0];
+  car->direction = candidates[pick][1];
+  car->s = 0;
+}
+
+static float curve_speed(const lane_t* lane, float s, int direction) {
+  /* Slow for the turn ahead by comparing headings now and 14 m on. */
+  float x, z, dx, dz, g, x2, z2, dx2, dz2;
+  sample(lane, s, direction, &x, &z, &dx, &dz, &g);
+  sample(lane, fminf(s + 14.0f, lane->length), direction, &x2, &z2, &dx2, &dz2,
+         &g);
+  float cosine = dx * dx2 + dz * dz2;
+  return cosine > 0.97f ? 99.0f : (cosine > 0.85f ? 6.0f : 3.5f);
+}
+
+void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
+                  vec3_t player_velocity, float dt) {
+  (void)player_velocity;
+  for (size_t i = 0; i < t->car_count; i++) {
+    car_t* car = &t->cars[i];
+    const lane_t* lane = &t->lanes[car->route];
+    float target = lane->cruise;
+    float to_end = lane->length - car->s;
+    if (to_end < 14.0f) target = fminf(target, 4.5f + to_end * 0.2f);
+    target = fminf(target, curve_speed(lane, car->s, car->direction));
+    /* The way ahead: a point a few metres in front of the nose. */
+    float fx = -sinf(car->yaw), fz = -cosf(car->yaw);
+    float limit = target;
+    bool must_stop = false;
+    float gap_to_stop = 1e9f;
+    for (size_t j = 0; j <= t->car_count; j++) {
+      vec3_t other;
+      float other_speed = 0;
+      if (j == t->car_count) {
+        other = player;
+      } else if (j == i) {
+        continue;
+      } else {
+        other = t->cars[j].position;
+        other_speed = t->cars[j].speed;
+      }
+      float rx = other.x - car->position.x, rz = other.z - car->position.z;
+      float ahead = rx * fx + rz * fz;
+      float side = fabsf(rx * -fz + rz * fx);
+      if (ahead < 1.0f || ahead > LOOKAHEAD || side > 2.1f) continue;
+      /* Of two cars facing each other, only one yields, so they cannot
+       * deadlock; the player always has right of way. */
+      if (j < t->car_count && j < i) {
+        float ofx = -sinf(t->cars[j].yaw), ofz = -cosf(t->cars[j].yaw);
+        if (ofx * fx + ofz * fz < -0.2f && t->cars[j].speed > 0.5f) continue;
+        if (fabsf(ofx * fx + ofz * fz) < 0.5f && ahead > 7.0f) continue;
+      }
+      float gap = ahead - 5.0f;
+      if (gap < gap_to_stop) gap_to_stop = gap;
+      /* Follow at the leader's pace when there is room. */
+      if (gap > 4.0f)
+        limit = fminf(limit, fmaxf(other_speed, 1.0f) + gap * 0.25f);
+      else
+        must_stop = true;
+      if (gap < 0.5f) must_stop = true;
+    }
+    /* Junctions: wait outside while another car is in them, or is closer
+     * to them and also coming in (the lower index goes first). */
+    if (to_end < 22.0f) {
+      float px, pz, pdx, pdz, pg;
+      sample(lane, lane->length, car->direction, &px, &pz, &pdx, &pdz, &pg);
+      bool blocked = false;
+      for (size_t j = 0; j < t->car_count && !blocked; j++) {
+        if (j == i) continue;
+        const car_t* other = &t->cars[j];
+        float ox = other->position.x - px, oz = other->position.z - pz;
+        float inside = sqrtf(ox * ox + oz * oz);
+        if (inside < 7.0f) {
+          /* Cars queued behind me on my own lane are not in the junction. */
+          blocked = true;
+        } else if (inside < 18.0f && j < i) {
+          float ofx = -sinf(other->yaw), ofz = -cosf(other->yaw);
+          bool coming = (-ox * ofx - oz * ofz) > 0 && other->speed > 0.3f;
+          if (coming && inside < to_end + 2.0f) blocked = true;
+        }
+      }
+      if (blocked) {
+        float room = to_end - 7.6f;
+        limit =
+            fminf(limit, room > 0 ? sqrtf(2.0f * BRAKING * 0.6f * room) : 0.0f);
+      }
+    }
+    if (must_stop) limit = 0;
+    float before = car->speed;
+    if (car->speed < limit) {
+      car->speed = fminf(limit, car->speed + ACCELERATION * dt);
+    } else {
+      float slowdown = BRAKING * dt;
+      car->speed = fmaxf(limit, car->speed - slowdown);
+    }
+    car->braking = car->speed < before - 0.002f || must_stop;
+    car->s += car->speed * dt;
+    car->wheel_turn +=
+        car->speed * dt / t->fleet->visuals[car->variant].wheel_radius;
+    if (car->s >= lane->length) {
+      float overshoot = car->s - lane->length;
+      choose_next(t, car);
+      car->s += overshoot;
+    }
+    pose(t, car);
+    move_collider(t, physics, car);
+  }
+}
+
+int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
+                 vec3_t eye, float range, float lights_on) {
+  int drawn = 0;
+  for (size_t i = 0; i < t->car_count; i++) {
+    const car_t* car = &t->cars[i];
+    float dx = car->position.x - eye.x, dz = car->position.z - eye.z;
+    if (dx * dx + dz * dz > range * range) continue;
+    car_visual_draw_still(&fleet->visuals[car->variant], renderer,
+                          transform_at(car->position, quat_from_yaw(car->yaw)),
+                          fleet_paint(car->paint), lights_on,
+                          car->braking ? 1.0f : 0.0f, car->wheel_turn);
+    drawn++;
+  }
+  return drawn;
+}

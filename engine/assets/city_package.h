@@ -47,6 +47,24 @@ typedef struct {
   char text[32];
 } city_label_t;
 
+/* A road as people and cars use it: its centre line in local metres, its
+ * carriageway width, whether cars may use it and the pavement beside it. */
+typedef struct {
+  int drivable;   /* 1 for roads cars use, 0 for streets and paths for people */
+  int oneway;     /* 1 if cars may only go from the first point to the last */
+  float width;    /* carriageway, metres */
+  float pavement; /* each side, metres; 0 for none */
+  int64_t start_node, end_node; /* the junctions it joins, OpenStreetMap ids */
+  float* points;                /* x, z pairs */
+  size_t point_count;
+} city_route_t;
+
+/* A place at the kerb where a car stands, and which way it faces. */
+typedef struct {
+  float x, z, yaw;
+  int variant; /* picks a colour and a body */
+} city_parking_t;
+
 typedef struct {
   char name[CITY_PACKAGE_TEXT];
   char source[256];
@@ -65,10 +83,17 @@ typedef struct {
   size_t chunk_capacity;
   city_label_t labels[CITY_PACKAGE_MAX_LABELS];
   size_t label_count;
+  city_route_t* routes;
+  size_t route_count;
+  city_parking_t* parked;
+  size_t parked_count;
 } city_package_t;
 
 city_package_t city_package_create(void);
 void city_package_free(city_package_t* package);
+/* Takes ownership of the route's points. */
+bool city_package_add_route(city_package_t* package, const city_route_t* route);
+bool city_package_add_parking(city_package_t* package, city_parking_t spot);
 city_chunk_t* city_package_chunk(city_package_t* package, int column, int row);
 city_part_t* city_chunk_add_part(city_chunk_t* chunk, const char* material,
                                  part_collider_t collider, int layer,

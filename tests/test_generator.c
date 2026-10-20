@@ -657,6 +657,64 @@ static void single_trees_stand_where_they_are_mapped(void) {
   city_model_free(&model);
 }
 
+static double seg_distance(double px, double pz, double ax, double az,
+                           double bx, double bz) {
+  double dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+  double u = l2 > 1e-12 ? ((px - ax) * dx + (pz - az) * dz) / l2 : 0;
+  u = u < 0 ? 0 : (u > 1 ? 1 : u);
+  return hypot(px - (ax + u * dx), pz - (az + u * dz));
+}
+
+static void the_package_carries_routes_and_parking_places(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  /* One route per road that people or cars use: everything but the stream. */
+  assert(package.route_count == stats.roads - 1);
+  size_t drivable = 0;
+  for (size_t i = 0; i < package.route_count; i++) {
+    const city_route_t* route = &package.routes[i];
+    assert(route->point_count >= 2 && route->width > 0);
+    if (route->drivable) drivable++;
+    assert(route->start_node != 0 && route->end_node != 0);
+  }
+  assert(drivable >= 10);
+  /* Parking places lie along drivable streets at the kerb, clear of the
+   * junctions, and the package keeps them. */
+  assert(package.parked_count > 0);
+  for (size_t i = 0; i < package.parked_count; i++) {
+    const city_parking_t* spot = &package.parked[i];
+    double nearest = 1e9, nearest_end = 1e9;
+    for (size_t r = 0; r < package.route_count; r++) {
+      const city_route_t* route = &package.routes[r];
+      if (!route->drivable) continue;
+      for (size_t k = 1; k < route->point_count; k++) {
+        double d = seg_distance(spot->x, spot->z, route->points[2 * (k - 1)],
+                                route->points[2 * (k - 1) + 1],
+                                route->points[2 * k], route->points[2 * k + 1]);
+        if (d < nearest) nearest = d;
+      }
+      local_point_t first = {route->points[0], route->points[1]};
+      local_point_t last = {route->points[2 * (route->point_count - 1)],
+                            route->points[2 * (route->point_count - 1) + 1]};
+      nearest_end =
+          fmin(nearest_end, fmin(hypot(spot->x - first.x, spot->z - first.z),
+                                 hypot(spot->x - last.x, spot->z - last.z)));
+    }
+    assert(nearest > 1.0 && nearest < 4.0);
+    assert(nearest_end > 8.0);
+  }
+  const char* directory = "/tmp/gta-like-test-routes";
+  assert(city_package_write(&package, directory));
+  city_package_t loaded;
+  assert(city_package_read(&loaded, directory));
+  assert(loaded.route_count == package.route_count);
+  assert(loaded.parked_count == package.parked_count);
+  assert(near_to(loaded.parked[0].yaw, package.parked[0].yaw, 1e-3f));
+  assert(loaded.routes[0].point_count == package.routes[0].point_count);
+  city_package_free(&loaded);
+  city_package_free(&package);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -825,6 +883,7 @@ void run_generator_tests(void) {
   RUN(buildings_on_a_named_street_get_a_portico);
   RUN(a_slender_tower_gets_a_tall_spire);
   RUN(single_trees_stand_where_they_are_mapped);
+  RUN(the_package_carries_routes_and_parking_places);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

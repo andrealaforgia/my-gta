@@ -148,7 +148,32 @@ static void colliders_can_be_listed_for_debug_drawing(void) {
   physics_world_destroy(world);
 }
 
+static void a_moved_box_collider_blocks_rays_where_it_now_stands(void) {
+  physics_world_t* world = physics_world_create();
+  collider_handle_t box = physics_add_static_box(
+      world, transform_at(vec3(0, 1, 0), quat_identity()), vec3(1, 1, 2),
+      COLLISION_LAYER_PROP, 0.5f, 7);
+  ray_t ray = {vec3(10, 1, 0), vec3(-1, 0, 0)};
+  ray_cast_result_t hit;
+  assert(physics_ray_cast(world, ray, 50, COLLISION_LAYER_ALL, &hit));
+  assert(near_to(hit.hit.point.x, 1.0f, 1e-3f));
+  physics_set_static_box_transform(
+      world, box, transform_at(vec3(0, 1, 20), quat_identity()));
+  assert(!physics_ray_cast(world, ray, 50, COLLISION_LAYER_ALL, &hit));
+  ray_t moved = {vec3(10, 1, 20), vec3(-1, 0, 0)};
+  assert(physics_ray_cast(world, moved, 50, COLLISION_LAYER_ALL, &hit));
+  assert(near_to(hit.hit.point.x, 1.0f, 1e-3f) && hit.source_id == 7);
+  /* Turned a quarter, its long side now faces along x. */
+  physics_set_static_box_transform(
+      world, box,
+      transform_at(vec3(0, 1, 20), quat_from_yaw((float)M_PI * 0.5f)));
+  assert(physics_ray_cast(world, moved, 50, COLLISION_LAYER_ALL, &hit));
+  assert(near_to(hit.hit.point.x, 2.0f, 1e-2f));
+  physics_world_destroy(world);
+}
+
 void run_physics_tests(void) {
+  RUN(a_moved_box_collider_blocks_rays_where_it_now_stands);
   RUN(a_dropped_box_lands_on_the_ground_and_rests);
   RUN(landing_reports_a_contact_with_an_impulse);
   RUN(a_sliding_box_is_stopped_by_a_wall);

@@ -22,7 +22,30 @@ void city_package_free(city_package_t* package) {
     free(package->chunks[c].parts);
   }
   free(package->chunks);
+  for (size_t r = 0; r < package->route_count; r++)
+    free(package->routes[r].points);
+  free(package->routes);
+  free(package->parked);
   memset(package, 0, sizeof(*package));
+}
+
+bool city_package_add_route(city_package_t* package,
+                            const city_route_t* route) {
+  city_route_t* grown = realloc(
+      package->routes, (package->route_count + 1) * sizeof(city_route_t));
+  if (!grown) return false;
+  package->routes = grown;
+  package->routes[package->route_count++] = *route;
+  return true;
+}
+
+bool city_package_add_parking(city_package_t* package, city_parking_t spot) {
+  city_parking_t* grown = realloc(
+      package->parked, (package->parked_count + 1) * sizeof(city_parking_t));
+  if (!grown) return false;
+  package->parked = grown;
+  package->parked[package->parked_count++] = spot;
+  return true;
 }
 
 city_chunk_t* city_package_chunk(city_package_t* package, int column, int row) {
@@ -144,6 +167,20 @@ bool city_package_write(const city_package_t* package, const char* directory) {
   for (size_t i = 0; i < package->label_count; i++)
     fprintf(file, "label %.2f %.2f %s\n", package->labels[i].x,
             package->labels[i].z, package->labels[i].text);
+  for (size_t r = 0; r < package->route_count; r++) {
+    const city_route_t* route = &package->routes[r];
+    fprintf(file, "route %d %d %.2f %.2f %lld %lld %zu\n", route->drivable,
+            route->oneway, route->width, route->pavement,
+            (long long)route->start_node, (long long)route->end_node,
+            route->point_count);
+    for (size_t k = 0; k < route->point_count; k++)
+      fprintf(file, "rp %.3f %.3f\n", route->points[2 * k],
+              route->points[2 * k + 1]);
+  }
+  for (size_t i = 0; i < package->parked_count; i++)
+    fprintf(file, "park %.3f %.3f %.4f %d\n", package->parked[i].x,
+            package->parked[i].z, package->parked[i].yaw,
+            package->parked[i].variant);
   for (size_t c = 0; c < package->chunk_count; c++)
     fprintf(file, "chunk %d %d %s\n", package->chunks[c].column,
             package->chunks[c].row, package->chunks[c].file);
@@ -242,6 +279,34 @@ bool city_package_read(city_package_t* package, const char* directory) {
       ok = sscanf(line, "spawn %f %f %f %f", &package->spawn_position.x,
                   &package->spawn_position.y, &package->spawn_position.z,
                   &package->spawn_yaw) == 4;
+    } else if (strncmp(line, "route ", 6) == 0) {
+      city_route_t route;
+      memset(&route, 0, sizeof(route));
+      long long start, end;
+      unsigned long count;
+      ok = sscanf(line, "route %d %d %f %f %lld %lld %lu", &route.drivable,
+                  &route.oneway, &route.width, &route.pavement, &start, &end,
+                  &count) == 7 &&
+           count >= 2 && count < 100000;
+      if (ok) {
+        route.start_node = start, route.end_node = end;
+        route.point_count = count;
+        route.points = malloc(count * 2 * sizeof(float));
+        ok = route.points != NULL;
+        for (unsigned long k = 0; ok && k < count; k++) {
+          char point_line[128];
+          ok = fgets(point_line, sizeof(point_line), file) &&
+               sscanf(point_line, "rp %f %f", &route.points[2 * k],
+                      &route.points[2 * k + 1]) == 2;
+        }
+        if (ok) ok = city_package_add_route(package, &route);
+        if (!ok) free(route.points);
+      }
+    } else if (strncmp(line, "park ", 5) == 0) {
+      city_parking_t spot;
+      ok = sscanf(line, "park %f %f %f %d", &spot.x, &spot.z, &spot.yaw,
+                  &spot.variant) == 4 &&
+           city_package_add_parking(package, spot);
     } else if (strncmp(line, "label ", 6) == 0) {
       if (package->label_count < CITY_PACKAGE_MAX_LABELS) {
         city_label_t* label = &package->labels[package->label_count];

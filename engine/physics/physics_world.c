@@ -94,6 +94,17 @@ collider_handle_t physics_add_static_box(physics_world_t* world,
   return handle;
 }
 
+void physics_set_static_box_transform(physics_world_t* world,
+                                      collider_handle_t handle,
+                                      transform_t transform) {
+  if (handle.id == 0 || handle.id > world->collider_count) return;
+  static_collider_t* collider = &world->colliders[handle.id - 1];
+  if (!collider->used || collider->shape != COLLIDER_SHAPE_BOX) return;
+  collider->transform = transform;
+  collider->bounds = aabb_transform(
+      aabb_from_center(vec3_zero(), collider->half_extents), transform);
+}
+
 collider_handle_t physics_add_static_mesh(
     physics_world_t* world, const vec3_t* vertices, size_t vertex_count,
     const uint32_t* indices, size_t index_count, collision_layer_t layer,
