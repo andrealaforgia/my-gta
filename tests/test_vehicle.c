@@ -275,7 +275,54 @@ static void hard_braking_dips_the_nose_a_couple_of_degrees(void) {
   destroy(&track);
 }
 
+static void every_car_in_the_fleet_accelerates_corners_and_stops_sensibly(
+    void) {
+  const char* files[4] = {
+      "assets/vehicles/hatchback.cfg", "assets/vehicles/sedan.cfg",
+      "assets/vehicles/van.cfg", "assets/vehicles/mini.cfg"};
+  for (int i = 0; i < 4; i++) {
+    physics_world_t* world = physics_world_create();
+    vec3_t v[4] = {vec3(-800, 0, 800), vec3(800, 0, 800), vec3(800, 0, -800),
+                   vec3(-800, 0, -800)};
+    uint32_t idx[6] = {0, 1, 2, 0, 2, 3};
+    physics_add_static_mesh(world, v, 4, idx, 6, COLLISION_LAYER_GROUND, 1.0f,
+                            0);
+    vehicle_params_t params;
+    assert(vehicle_params_load(&params, files[i]));
+    vehicle_t car;
+    assert(vehicle_create(&car, world, &params, vec3(0, 0.9f, 0),
+                          quat_identity()));
+    track_t track = {world, car};
+    driving_input_t throttle = {1, 0, 0, false};
+    drive(&track, throttle, 10.0f);
+    float speed = vehicle_speed_kmh(&track.car);
+    assert(speed > 55.0f && speed < 200.0f);
+    /* A hard corner at pace leans it a few degrees, never a dozen. */
+    driving_input_t turn = {0.3f, 0, 1.0f, false};
+    float worst = 0;
+    for (int k = 0; k < (int)(3.0f / step); k++) {
+      vehicle_update(&track.car, track.world, turn, step);
+      physics_world_step(track.world, step);
+      worst = fmaxf(worst, fabsf(roll_angle(&track)));
+    }
+    assert(worst < 0.12f);
+    /* And it stops. */
+    driving_input_t brake = {0, 1, 0, false};
+    /* Holding the brake at a standstill reverses, so look for the stop. */
+    float slowest = 1e9f;
+    for (int k = 0; k < (int)(8.0f / step); k++) {
+      vehicle_update(&track.car, track.world, brake, step);
+      physics_world_step(track.world, step);
+      slowest = fminf(slowest, fabsf(vehicle_forward_speed(&track.car)));
+    }
+    assert(slowest < 0.6f);
+    vehicle_destroy(&track.car, world);
+    physics_world_destroy(world);
+  }
+}
+
 void run_vehicle_tests(void) {
+  RUN(every_car_in_the_fleet_accelerates_corners_and_stops_sensibly);
   RUN(hard_braking_dips_the_nose_a_couple_of_degrees);
   RUN(a_hard_corner_leans_the_body_a_few_degrees_not_a_dozen);
   RUN(the_car_does_not_tip_over_in_a_sudden_swerve);
