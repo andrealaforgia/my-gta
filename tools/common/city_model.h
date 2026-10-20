@@ -15,7 +15,7 @@
 #include "osm_reader.h"
 #include "projection.h"
 
-#define CITY_MODEL_VERSION 2
+#define CITY_MODEL_VERSION 3
 #define CITY_TEXT_LENGTH 64
 
 typedef enum {
@@ -69,6 +69,11 @@ typedef struct {
 } city_junction_t;
 
 typedef struct {
+  local_point_t* points;
+  size_t count;
+} city_ring_t;
+
+typedef struct {
   int64_t source_id;
   float height;
   height_source_t height_source;
@@ -77,6 +82,8 @@ typedef struct {
   /* Closed ring, last point not repeated, anticlockwise from above. */
   local_point_t* points;
   size_t point_count;
+  city_ring_t* holes; /* courtyards, clockwise from above */
+  size_t hole_count;
 } city_building_t;
 
 typedef struct {
@@ -130,5 +137,8 @@ city_road_t* city_model_add_road(city_model_t* model);
 city_building_t* city_model_add_building(city_model_t* model);
 city_junction_t* city_model_add_junction(city_model_t* model);
 city_area_t* city_model_add_area(city_model_t* model);
+/* Takes ownership of the points. */
+bool city_building_add_hole(city_building_t* building, local_point_t* points,
+                            size_t count);
 
 #endif  // TOOLS_COMMON_CITY_MODEL_H_

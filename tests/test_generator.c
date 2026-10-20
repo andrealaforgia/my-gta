@@ -75,6 +75,63 @@ static void ear_clipping_handles_convex_and_concave_rings(void) {
   assert(triangulate_polygon(clockwise, 4, indices, &clean) == 2 && clean);
 }
 
+static double triangle_area_sum(const local_point_t* points,
+                                const uint32_t* indices, size_t triangles) {
+  double area = 0;
+  for (size_t t = 0; t < triangles; t++) {
+    local_point_t tri[3] = {points[indices[t * 3]], points[indices[t * 3 + 1]],
+                            points[indices[t * 3 + 2]]};
+    area += fabs(polygon_signed_area(tri, 3));
+  }
+  return area;
+}
+
+static void ear_clipping_cuts_holes_out(void) {
+  local_point_t outer[4] = {{0, 0}, {10, 0}, {10, -10}, {0, -10}};
+  local_point_t hole[4] = {{3, -3}, {3, -7}, {7, -7}, {7, -3}}; /* clockwise */
+  const local_point_t* holes[1] = {hole};
+  size_t hole_counts[1] = {4};
+  local_point_t merged[16];
+  uint32_t indices[48];
+  size_t merged_count;
+  bool clean;
+  size_t triangles = triangulate_with_holes(
+      outer, 4, holes, hole_counts, 1, merged, &merged_count, indices, &clean);
+  assert(clean && merged_count == 10);
+  assert(triangles == 8);
+  assert(
+      near_to(triangle_area_sum(merged, indices, triangles), 100 - 16, 1e-6));
+}
+
+static void courtyards_are_open_to_the_sky(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  const city_part_t* roof = part_for(&package, "roof", 404);
+  assert(roof && mesh_data_triangle_count(&roof->mesh) == 8);
+  const city_part_t* walls = NULL;
+  for (int i = 0; i < 4 && !walls; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "facade%d", i);
+    walls = part_for(&package, name, 404);
+  }
+  assert(walls && mesh_data_triangle_count(&walls->mesh) == 16);
+  /* Courtyard walls face into the courtyard: their normals point towards
+   * the centre of the footprint. */
+  aabb_t bounds = mesh_data_bounds(&walls->mesh);
+  vec3_t centre = aabb_center(bounds);
+  int inward = 0, outward = 0;
+  for (size_t v = 0; v < walls->mesh.vertex_count; v++) {
+    vec3_t to_centre = vec3_sub(centre, walls->mesh.vertices[v].position);
+    to_centre.y = 0;
+    if (vec3_dot(to_centre, walls->mesh.vertices[v].normal) > 0)
+      inward++;
+    else
+      outward++;
+  }
+  assert(inward == 16 && outward == 16);
+  city_package_free(&package);
+}
+
 static void every_road_junction_and_building_becomes_geometry(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -84,8 +141,8 @@ static void every_road_junction_and_building_becomes_geometry(void) {
   assert(stats.junction_patches >=
          6); /* the five T and cross junctions plus n3 */
   assert(count_material(&package, "junction") == stats.junction_patches);
-  assert(stats.buildings == 7 && count_material(&package, "roof") == 7 &&
-         count_material(&package, "facade") == 7);
+  assert(stats.buildings == 8 && count_material(&package, "roof") == 8 &&
+         count_material(&package, "facade") == 8);
   assert(stats.pavements == 13); /* every road except the service stub */
   assert(stats.ground_tiles == package.chunk_count);
   assert(package.chunk_count >= 4);
@@ -248,7 +305,7 @@ static void the_package_round_trips_and_validates(void) {
   assert(strcmp(loaded.source, "tests/fixtures/district.osm") == 0);
   city_validation_t report;
   assert(city_validate(&loaded, &report));
-  assert(report.roads == 14 && report.buildings == 7 && report.issues == 0);
+  assert(report.roads == 14 && report.buildings == 8 && report.issues == 0);
   /* Corrupt an index and the validator must object. */
   loaded.chunks[0].parts[0].mesh.indices[0] = 999999;
   assert(!city_validate(&loaded, &report));
@@ -284,6 +341,8 @@ static void generator_settings_load_and_hash(void) {
 
 void run_generator_tests(void) {
   RUN(ear_clipping_handles_convex_and_concave_rings);
+  RUN(ear_clipping_cuts_holes_out);
+  RUN(courtyards_are_open_to_the_sky);
   RUN(every_road_junction_and_building_becomes_geometry);
   RUN(road_ribbons_have_their_width_and_roofs_their_height);
   RUN(roads_narrow_to_fit_between_buildings);

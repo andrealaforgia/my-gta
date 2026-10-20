@@ -346,7 +346,7 @@ typedef void (*ring_visitor_t)(city_model_t* model,
 static size_t assemble_rings(city_model_t* model, const osm_data_t* osm,
                              const osm_relation_t* relation,
                              const city_import_options_t* options,
-                             ring_visitor_t emit) {
+                             const char* role, ring_visitor_t emit) {
   size_t member_count = relation->member_count;
   const osm_way_t** ways =
       calloc(member_count ? member_count : 1, sizeof(*ways));
@@ -360,7 +360,11 @@ static size_t assemble_rings(city_model_t* model, const osm_data_t* osm,
   for (size_t m = 0; m < member_count; m++) {
     const osm_member_t* member = &relation->members[m];
     if (member->type != OSM_MEMBER_WAY) continue;
-    if (member->role[0] && strcmp(member->role, "outer") != 0) continue;
+    bool wanted =
+        strcmp(role, "outer") == 0
+            ? (member->role[0] == '\0' || strcmp(member->role, "outer") == 0)
+            : strcmp(member->role, role) == 0;
+    if (!wanted) continue;
     const osm_way_t* way = osm_find_way(osm, member->ref);
     if (way && way->node_count >= 2) ways[way_count++] = way;
   }
@@ -541,6 +545,46 @@ static void emit_relation_building(city_model_t* model,
                options);
 }
 
+static bool point_in_ring(local_point_t p, const local_point_t* ring,
+                          size_t count) {
+  bool inside = false;
+  for (size_t i = 0, j = count - 1; i < count; j = i++) {
+    bool crosses = (ring[i].z > p.z) != (ring[j].z > p.z);
+    if (!crosses) continue;
+    double at =
+        (ring[j].x - ring[i].x) * (p.z - ring[i].z) / (ring[j].z - ring[i].z) +
+        ring[i].x;
+    if (p.x < at) inside = !inside;
+  }
+  return inside;
+}
+
+/* An inner ring becomes a courtyard of the relation's building that
+ * contains it, stored clockwise so its walls face inwards. */
+static void emit_relation_hole(city_model_t* model,
+                               const osm_relation_t* relation, ring_t* ring,
+                               const city_import_options_t* options) {
+  (void)options;
+  for (size_t b = 0; b < model->building_count; b++) {
+    city_building_t* building = &model->buildings[b];
+    if (building->source_id != relation->id) continue;
+    if (!point_in_ring(ring->points[0], building->points,
+                       building->point_count))
+      continue;
+    local_point_t* copy = anticlockwise_copy(ring->points, ring->count);
+    if (!copy) return;
+    for (size_t i = 0; i < ring->count / 2; i++) { /* reverse to clockwise */
+      local_point_t swap = copy[i];
+      copy[i] = copy[ring->count - 1 - i];
+      copy[ring->count - 1 - i] = swap;
+    }
+    if (!city_building_add_hole(building, copy, ring->count)) free(copy);
+    return;
+  }
+  LOG_WARN("import", "relation %lld: an inner ring lies in no outer ring",
+           (long long)relation->id);
+}
+
 /* ---- areas ---- */
 
 static bool classify_area(const osm_tag_t* tags, size_t tag_count,
@@ -643,11 +687,13 @@ static void import_buildings_and_areas(city_model_t* model,
     area_kind_t kind;
     size_t unclosed = 0;
     if (osm_tag(relation->tags, relation->tag_count, "building")) {
-      unclosed =
-          assemble_rings(model, osm, relation, options, emit_relation_building);
+      unclosed = assemble_rings(model, osm, relation, options, "outer",
+                                emit_relation_building);
+      unclosed += assemble_rings(model, osm, relation, options, "inner",
+                                 emit_relation_hole);
     } else if (classify_area(relation->tags, relation->tag_count, &kind)) {
-      unclosed =
-          assemble_rings(model, osm, relation, options, emit_relation_area);
+      unclosed = assemble_rings(model, osm, relation, options, "outer",
+                                emit_relation_area);
     } else {
       continue;
     }

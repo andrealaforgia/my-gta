@@ -9,9 +9,9 @@
 static void the_fixture_loads_with_nodes_ways_tags_and_relations(void) {
   osm_data_t data;
   assert(osm_load(&data, "tests/fixtures/district.osm"));
-  assert(data.node_count == 71);
-  assert(data.way_count == 27);
-  assert(data.relation_count == 3);
+  assert(data.node_count == 79);
+  assert(data.way_count == 29);
+  assert(data.relation_count == 4);
   const osm_relation_t* church = osm_find_relation(&data, 402);
   assert(church && church->member_count == 2);
   assert(church->members[0].ref == 307 && church->members[1].ref == 308);

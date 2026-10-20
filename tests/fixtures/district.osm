@@ -74,6 +74,14 @@
  <node id="151" lat="45.0028" lon="12.0012"/>
  <node id="152" lat="45.0014" lon="12.0019"/>
  <node id="153" lat="45.0003" lon="12.0030"/>
+ <node id="161" lat="45.0032" lon="12.0003"/>
+ <node id="162" lat="45.0032" lon="12.0013"/>
+ <node id="163" lat="45.0040" lon="12.0013"/>
+ <node id="164" lat="45.0040" lon="12.0003"/>
+ <node id="165" lat="45.0034" lon="12.0006"/>
+ <node id="166" lat="45.0034" lon="12.0010"/>
+ <node id="167" lat="45.0038" lon="12.0010"/>
+ <node id="168" lat="45.0038" lon="12.0006"/>
  <node id="81" lat="45.0021" lon="12.0030"/>
  <node id="82" lat="45.0021" lon="12.0036"/>
  <node id="83" lat="45.0027" lon="12.0036"/>
@@ -152,6 +160,12 @@
   <nd ref="151"/><nd ref="152"/><nd ref="153"/>
   <tag k="waterway" v="stream"/><tag k="name" v="Roggia"/>
  </way>
+ <way id="310">
+  <nd ref="161"/><nd ref="162"/><nd ref="163"/><nd ref="164"/><nd ref="161"/>
+ </way>
+ <way id="311">
+  <nd ref="165"/><nd ref="166"/><nd ref="167"/><nd ref="168"/><nd ref="165"/>
+ </way>
  <way id="201">
   <nd ref="21"/><nd ref="22"/><nd ref="23"/><nd ref="24"/><nd ref="21"/>
   <tag k="building" v="yes"/><tag k="height" v="12"/>
@@ -190,6 +204,10 @@
  <relation id="402">
   <member type="way" ref="307" role="outer"/><member type="way" ref="308" role="outer"/>
   <tag k="type" v="multipolygon"/><tag k="building" v="church"/>
+ </relation>
+ <relation id="404">
+  <member type="way" ref="310" role="outer"/><member type="way" ref="311" role="inner"/>
+  <tag k="type" v="multipolygon"/><tag k="building" v="yes"/><tag k="height" v="10"/>
  </relation>
  <relation id="403">
   <member type="way" ref="206" role="outer"/>

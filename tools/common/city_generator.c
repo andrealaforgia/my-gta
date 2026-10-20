@@ -706,6 +706,33 @@ static bool generate_area(layout_t* layout, const city_area_t* area,
   return true;
 }
 
+/* Wall quads around a ring. The ring is anticlockwise for an outline and
+ * clockwise for a courtyard, so "outside is to the right" faces the
+ * street in one case and the courtyard in the other. */
+static bool add_walls(city_part_t* walls, const local_point_t* ring,
+                      size_t count, float h,
+                      const city_generator_options_t* o) {
+  for (size_t i = 0; i < count; i++) {
+    local_point_t a = ring[i], b = ring[(i + 1) % count];
+    vec2_t along = v2_sub(b, a);
+    double length = v2_length(along);
+    if (length < 1e-6) continue;
+    vec2_t direction = v2_normalize(along);
+    vec3_t normal = vec3((float)-direction.z, 0, (float)direction.x);
+    float u = (float)(length / o->window_width), v = h / o->storey_height;
+    uint32_t base = (uint32_t)walls->mesh.vertex_count;
+    if (!add_vertex(&walls->mesh, at(a, 0), normal, 0, 0) ||
+        !add_vertex(&walls->mesh, at(b, 0), normal, u, 0) ||
+        !add_vertex(&walls->mesh, at(b, h), normal, u, v) ||
+        !add_vertex(&walls->mesh, at(a, h), normal, 0, v))
+      return false;
+    if (!add_face(&walls->mesh, base, base + 1, base + 2, normal) ||
+        !add_face(&walls->mesh, base, base + 2, base + 3, normal))
+      return false;
+  }
+  return true;
+}
+
 static bool generate_building(layout_t* layout, const city_building_t* building,
                               city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -727,47 +754,59 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   walls = &chunk->parts[chunk->part_count -
                         2]; /* the roof's addition may have moved the array */
   float h = building->height;
-  for (size_t i = 0; i < count; i++) {
-    local_point_t a = building->points[i],
-                  b = building->points[(i + 1) % count];
-    vec2_t along = v2_sub(b, a);
-    double length = v2_length(along);
-    vec2_t direction = v2_normalize(along);
-    /* The ring is anticlockwise from above, so outside is to the right in
-     * (x, north), which is (dn, dx) in (x, z) with dn = -dz. */
-    vec3_t normal = vec3((float)-direction.z, 0, (float)direction.x);
-    float u = (float)(length / o->window_width), v = h / o->storey_height;
-    uint32_t base = (uint32_t)walls->mesh.vertex_count;
-    if (!add_vertex(&walls->mesh, at(a, 0), normal, 0, 0) ||
-        !add_vertex(&walls->mesh, at(b, 0), normal, u, 0) ||
-        !add_vertex(&walls->mesh, at(b, h), normal, u, v) ||
-        !add_vertex(&walls->mesh, at(a, h), normal, 0, v))
+  if (!add_walls(walls, building->points, count, h, o)) return false;
+  for (size_t hole = 0; hole < building->hole_count; hole++)
+    if (!add_walls(walls, building->holes[hole].points,
+                   building->holes[hole].count, h, o))
       return false;
-    if (!add_face(&walls->mesh, base, base + 1, base + 2, normal) ||
-        !add_face(&walls->mesh, base, base + 2, base + 3, normal))
-      return false;
+  size_t merged_capacity = count + 2 * building->hole_count;
+  for (size_t hole = 0; hole < building->hole_count; hole++)
+    merged_capacity += building->holes[hole].count;
+  local_point_t* merged = malloc(merged_capacity * sizeof(local_point_t));
+  uint32_t* indices = malloc(3 * merged_capacity * sizeof(uint32_t));
+  const local_point_t** hole_points = calloc(
+      building->hole_count ? building->hole_count : 1, sizeof(local_point_t*));
+  size_t* hole_counts =
+      calloc(building->hole_count ? building->hole_count : 1, sizeof(size_t));
+  if (!merged || !indices || !hole_points || !hole_counts) {
+    free(merged);
+    free(indices);
+    free(hole_points);
+    free(hole_counts);
+    return false;
   }
-  uint32_t* indices = malloc(3 * (count - 2) * sizeof(uint32_t));
-  if (!indices) return false;
+  for (size_t hole = 0; hole < building->hole_count; hole++) {
+    hole_points[hole] = building->holes[hole].points;
+    hole_counts[hole] = building->holes[hole].count;
+  }
+  size_t merged_count;
   bool clean;
-  size_t triangles =
-      triangulate_polygon(building->points, count, indices, &clean);
+  size_t triangles = triangulate_with_holes(
+      building->points, count, hole_points, hole_counts, building->hole_count,
+      merged, &merged_count, indices, &clean);
   if (!clean) {
     LOG_WARN("generate",
              "building %lld has an irregular footprint; roof approximated",
              (long long)building->source_id);
     stats->buildings_unclean++;
   }
-  for (size_t i = 0; i < count; i++)
-    if (!add_vertex(&roof->mesh, at(building->points[i], h), vec3(0, 1, 0),
-                    (float)(building->points[i].x * 0.1),
-                    (float)(building->points[i].z * 0.1)))
-      return false;
-  for (size_t t = 0; t < triangles; t++)
-    if (!add_face(&roof->mesh, indices[t * 3], indices[t * 3 + 1],
-                  indices[t * 3 + 2], vec3(0, 1, 0)))
-      return false;
+  bool roof_ok = true;
+  for (size_t i = 0; i < merged_count && roof_ok; i++)
+    roof_ok =
+        add_vertex(&roof->mesh, at(merged[i], h), vec3(0, 1, 0),
+                   (float)(merged[i].x * 0.1), (float)(merged[i].z * 0.1));
+  for (size_t t = 0; t < triangles && roof_ok; t++) {
+    local_point_t tri[3] = {merged[indices[t * 3]], merged[indices[t * 3 + 1]],
+                            merged[indices[t * 3 + 2]]};
+    if (fabs(polygon_signed_area(tri, 3)) < 1e-6) continue;
+    roof_ok = add_face(&roof->mesh, indices[t * 3], indices[t * 3 + 1],
+                       indices[t * 3 + 2], vec3(0, 1, 0));
+  }
+  free(merged);
   free(indices);
+  free(hole_points);
+  free(hole_counts);
+  if (!roof_ok) return false;
   finish_part(chunk, walls);
   finish_part(chunk, roof);
   stats->buildings++;

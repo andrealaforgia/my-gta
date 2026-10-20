@@ -85,13 +85,29 @@ city_area_t* city_model_add_area(city_model_t* model) {
   return area;
 }
 
+bool city_building_add_hole(city_building_t* building, local_point_t* points,
+                            size_t count) {
+  city_ring_t* grown = realloc(
+      building->holes, (building->hole_count + 1) * sizeof(city_ring_t));
+  if (!grown) return false;
+  building->holes = grown;
+  building->holes[building->hole_count].points = points;
+  building->holes[building->hole_count].count = count;
+  building->hole_count++;
+  return true;
+}
+
 void city_model_free(city_model_t* model) {
   for (size_t i = 0; i < model->road_count; i++) {
     free(model->roads[i].points);
     free(model->roads[i].node_ids);
   }
-  for (size_t i = 0; i < model->building_count; i++)
+  for (size_t i = 0; i < model->building_count; i++) {
     free(model->buildings[i].points);
+    for (size_t h = 0; h < model->buildings[i].hole_count; h++)
+      free(model->buildings[i].holes[h].points);
+    free(model->buildings[i].holes);
+  }
   for (size_t i = 0; i < model->area_count; i++) free(model->areas[i].points);
   free(model->roads);
   free(model->buildings);
@@ -142,11 +158,17 @@ static bool write_buildings(const city_model_t* model, const char* directory) {
   fprintf(file, "# city-intermediate %d buildings\n", CITY_MODEL_VERSION);
   for (size_t i = 0; i < model->building_count; i++) {
     const city_building_t* b = &model->buildings[i];
-    fprintf(file, "building %lld %.3f %d %d %s %zu\n", (long long)b->source_id,
-            b->height, (int)b->height_source, b->levels, or_dash(b->category),
-            b->point_count);
+    fprintf(file, "building %lld %.3f %d %d %s %zu %zu\n",
+            (long long)b->source_id, b->height, (int)b->height_source,
+            b->levels, or_dash(b->category), b->point_count, b->hole_count);
     for (size_t p = 0; p < b->point_count; p++)
       fprintf(file, "p %.4f %.4f\n", b->points[p].x, b->points[p].z);
+    for (size_t h = 0; h < b->hole_count; h++) {
+      fprintf(file, "hole %zu\n", b->holes[h].count);
+      for (size_t p = 0; p < b->holes[h].count; p++)
+        fprintf(file, "p %.4f %.4f\n", b->holes[h].points[p].x,
+                b->holes[h].points[p].z);
+    }
   }
   fclose(file);
   return true;
@@ -286,6 +308,8 @@ static bool read_buildings(city_model_t* model, const char* directory) {
   char line[512];
   city_building_t* building = NULL;
   size_t expected = 0;
+  local_point_t* hole_points = NULL;
+  size_t hole_expected = 0, hole_filled = 0;
   while (fgets(line, sizeof(line), file)) {
     if (line[0] == '#') continue;
     if (strncmp(line, "building ", 9) == 0) {
@@ -294,8 +318,9 @@ static bool read_buildings(city_model_t* model, const char* directory) {
       int source, levels;
       char category[CITY_TEXT_LENGTH];
       size_t count;
-      if (sscanf(line, "building %lld %f %d %d %63s %zu", &id, &height, &source,
-                 &levels, category, &count) != 6) {
+      size_t holes = 0;
+      if (sscanf(line, "building %lld %f %d %d %63s %zu %zu", &id, &height,
+                 &source, &levels, category, &count, &holes) < 6) {
         fclose(file);
         return false;
       }
@@ -308,6 +333,21 @@ static bool read_buildings(city_model_t* model, const char* directory) {
       copy_field(building->category, sizeof(building->category), category);
       building->points = calloc(count, sizeof(local_point_t));
       expected = count;
+      hole_points = NULL;
+      hole_expected = hole_filled = 0;
+    } else if (strncmp(line, "hole ", 5) == 0 && building) {
+      if (sscanf(line, "hole %zu", &hole_expected) != 1) break;
+      hole_points = calloc(hole_expected, sizeof(local_point_t));
+      hole_filled = 0;
+      if (hole_points)
+        city_building_add_hole(building, hole_points, hole_expected);
+    } else if (strncmp(line, "p ", 2) == 0 && hole_points &&
+               hole_filled < hole_expected) {
+      double x, z;
+      if (sscanf(line, "p %lf %lf", &x, &z) != 2) break;
+      hole_points[hole_filled].x = x;
+      hole_points[hole_filled].z = z;
+      hole_filled++;
     } else if (strncmp(line, "p ", 2) == 0 && building &&
                building->point_count < expected) {
       double x, z;

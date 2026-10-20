@@ -102,7 +102,7 @@ static void junctions_carry_their_degree_and_position(void) {
 
 static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   city_model_t model = import_fixture();
-  assert(model.building_count == 7); /* five ways and two multipolygons */
+  assert(model.building_count == 8); /* five ways and three multipolygons */
   const city_building_t* tagged = building(&model, 201);
   assert(tagged && near(tagged->height, 12) &&
          tagged->height_source == HEIGHT_TAGGED);
@@ -121,6 +121,11 @@ static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   const city_building_t* church = building(&model, 402);
   assert(church && church->point_count == 4 &&
          strcmp(church->category, "church") == 0);
+  const city_building_t* palazzo_with_courtyard = building(&model, 404);
+  assert(palazzo_with_courtyard && palazzo_with_courtyard->hole_count == 1);
+  assert(palazzo_with_courtyard->holes[0].count == 4);
+  /* The courtyard ring is clockwise, the opposite of the outline. */
+  assert(polygon_signed_area(palazzo_with_courtyard->holes[0].points, 4) < 0);
   assert(model.stats.relations_skipped == 0);
   city_model_free(&model);
 }
@@ -180,6 +185,7 @@ static void the_model_round_trips_through_its_text_format(void) {
   assert(city_model_read(&loaded, directory));
   assert(loaded.road_count == model.road_count);
   assert(loaded.building_count == model.building_count);
+  assert(building(&loaded, 404) && building(&loaded, 404)->hole_count == 1);
   assert(loaded.junction_count == model.junction_count);
   assert(loaded.area_count == model.area_count);
   assert(area(&loaded, 305) && area(&loaded, 305)->kind == AREA_WATER);

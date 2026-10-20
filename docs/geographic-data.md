@@ -61,9 +61,10 @@ have a PBF.
   `area=yes` or `place=square` (square).
 - Multipolygon relations tagged `building` or with an area tag have their
   `outer` member ways chained end to end into closed rings; each ring is
-  a building or area with the relation's tags. Inner rings (courtyards)
-  are not cut out yet. Rings that do not close are counted and skipped
-  with a warning.
+  a building or area with the relation's tags. `inner` rings of a
+  building become courtyards of the outer ring that contains them, cut
+  out of the roof with their own inward-facing walls. Rings that do not
+  close are counted and skipped with a warning.
 
 ## Cleaning and the road graph
 

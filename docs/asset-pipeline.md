@@ -23,8 +23,9 @@ records; `#` lines are comments.
 road <osm way id> <class> <width m> <width inferred 0|1> <oneway> <layer> <bridge> <tunnel> <surface|-> <name|-> <point count>
 p <x> <z> <osm node id>          one per point, local metres
 junction <osm node id> <x> <z> <degree>
-building <osm id> <height m> <height source 0 tagged|1 levels|2 default> <levels> <category> <point count>
+building <osm id> <height m> <height source 0 tagged|1 levels|2 default> <levels> <category> <point count> <hole count>
 p <x> <z>                        anticlockwise seen from above, ring not repeated
+hole <point count>               a courtyard, clockwise, followed by its p lines
 area <osm id> <water|park|parking|square> <point count>
 p <x> <z>
 ```
@@ -97,7 +98,9 @@ the physics world with the layer and friction given.
   colliders on the prop layer. `lamp_spacing = 0` turns them off.
 - Buildings are extruded footprints: wall quads with outward normals and a
   texture repeat per `window_width` and `storey_height`, an ear-clipped
-  roof. Facade variant is a stable hash of the source id. Both are
+  roof. Courtyards are bridged into the outline before ear clipping
+  (`tools/common/triangulate.c`) and get walls that face into the
+  courtyard. Facade variant is a stable hash of the source id. Both are
   colliders on the building layer.
 - Ground tiles cover every chunk cell at y = 0 with grass.
 - The spawn is the midpoint of the longest segment of the longest
