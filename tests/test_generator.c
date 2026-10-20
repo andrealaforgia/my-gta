@@ -590,6 +590,17 @@ static void buildings_on_a_named_street_get_a_portico(void) {
   assert(on_edge_high >= 2); /* the upper floors stay on the building line */
   assert(on_edge_low >= 8);  /* pillars and the soffit edge stand on it */
   assert(on_inset_low >= 4); /* the ground floor wall is set back */
+  /* Between the pillars the opening is round-headed: the front face carries
+   * spandrels whose lower edge rises to a crown above the springing. */
+  float crown = 0, springing = 1e9f;
+  for (size_t v = 0; v < walls->mesh.vertex_count; v++) {
+    vec3_t p = walls->mesh.vertices[v].position;
+    if (fabsf(p.z - (edge_z - 0.35f)) < 0.05f && p.y > 2.0f && p.y < 4.7f) {
+      crown = fmaxf(crown, p.y);
+      springing = fminf(springing, p.y);
+    }
+  }
+  assert(crown > 4.2f && springing < 2.8f);
   assert(part_for(&arcaded, "paving", 20)); /* the walkway is paved */
   assert(part_for(&plain, "paving", 20) == NULL);
   city_package_free(&plain);

@@ -1489,6 +1489,37 @@ static bool add_portico(const layout_t* layout, city_part_t* walls,
     if (!add_pillar(walls, centre, direction, -skirt, top, storey))
       return false;
   }
+  /* Round arches between the pillars: a spandrel panel on the building line
+   * from the curve up to the soffit, facing the street. */
+  float spring = fminf(top - 2.2f, 2.5f);
+  float radius = 1.9f;
+  for (int k = 0; k + 1 < pillars; k++) {
+    double t = (k + 1.0) / pillars * length;
+    double centre_along = t;
+    for (int seg = 0; seg < 8; seg++) {
+      double a0 = M_PI * seg / 8.0, a1 = M_PI * (seg + 1) / 8.0;
+      local_point_t p0 = offset(a, direction, centre_along + cos(a0) * radius);
+      local_point_t p1 = offset(a, direction, centre_along + cos(a1) * radius);
+      p0 = offset(p0, inward, ARCADE_PILLAR * 0.5);
+      p1 = offset(p1, inward, ARCADE_PILLAR * 0.5);
+      float y0 = spring + (float)sin(a0) * radius,
+            y1 = spring + (float)sin(a1) * radius;
+      if (y0 > top - 0.05f) y0 = top - 0.05f;
+      if (y1 > top - 0.05f) y1 = top - 0.05f;
+      uint32_t base = (uint32_t)walls->mesh.vertex_count;
+      float u0 = (float)((centre_along + cos(a0) * radius) / o->window_width);
+      float u1v = (float)((centre_along + cos(a1) * radius) / o->window_width);
+      if (!add_vertex(&walls->mesh, at(p0, y0), outward, u0, y0 / storey) ||
+          !add_vertex(&walls->mesh, at(p1, y1), outward, u1v, y1 / storey) ||
+          !add_vertex(&walls->mesh, at(p1, top), outward, u1v, top / storey) ||
+          !add_vertex(&walls->mesh, at(p0, top), outward, u0, top / storey))
+        return false;
+      /* Seen from the street (a to b to the left of it): wound to face out. */
+      if (!add_face(&walls->mesh, base, base + 1, base + 2, outward) ||
+          !add_face(&walls->mesh, base, base + 2, base + 3, outward))
+        return false;
+    }
+  }
   /* The paved walkway under it. */
   float y = o->road_height + 0.02f;
   uint32_t f = (uint32_t)walkway->mesh.vertex_count;
