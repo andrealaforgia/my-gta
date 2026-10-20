@@ -1872,13 +1872,10 @@ static void finish_building(layout_t* layout, const city_building_t* building,
   }
   if (walkway->mesh.vertex_count == 0) {
     mesh_data_free(&walkway->mesh);
-    if (chunk->part_count == n) {
-      chunk->parts[n - 2] = chunk->parts[n - 1]; /* the shops move down */
-      chunk->part_count--;
-    }
-    /* With no shops the walkway was the last part left. */
-    else
-      chunk->part_count--;
+    /* With shops they move down into its place; without, it was the last
+     * part left. */
+    if (chunk->part_count == n) chunk->parts[n - 2] = chunk->parts[n - 1];
+    chunk->part_count--;
   } else {
     finish_part(chunk, walkway);
   }
