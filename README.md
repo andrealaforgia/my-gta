@@ -98,7 +98,8 @@ hills from an elevation model, a day that runs from dawn to night with lit
 windows and street lamps, parked and moving cars that follow the roads and
 give way, people walking the pavements, shop fronts, porticoes with arches and
 painted facades along the Corso, a brick town hall with a clock tower,
-campanili, parks, water and trees, and the church bell on the hour.
+campanili, parks, water and trees, benches, bus stops, traffic signals that cars
+obey, a minimap in the corner, rain with wet roads, and the church bell on the hour.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
 glTF import, bridges, chunk streaming, weather. See the end of

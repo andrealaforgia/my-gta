@@ -108,6 +108,12 @@ void renderer_draw_text(renderer_t* renderer, float x, float y, float scale,
 void renderer_draw_screen_image(renderer_t* renderer, texture_handle_t texture,
                                 float x, float y, float width, float height,
                                 vec3_t tint, float alpha);
+/* The same, showing only the part of the texture from (u0, v0) to (u1, v1). */
+void renderer_draw_screen_image_uv(renderer_t* renderer,
+                                   texture_handle_t texture, float x, float y,
+                                   float width, float height, float u0,
+                                   float v0, float u1, float v1, vec3_t tint,
+                                   float alpha);
 /* A solid line of the given thickness in pixels, drawn with the text. */
 void renderer_draw_screen_line(renderer_t* renderer, float x0, float y0,
                                float x1, float y1, float thickness,

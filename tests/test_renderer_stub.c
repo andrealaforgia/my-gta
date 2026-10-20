@@ -109,6 +109,23 @@ void renderer_draw_screen_image(renderer_t* r, texture_handle_t t, float x,
   (void)c;
   (void)a;
 }
+void renderer_draw_screen_image_uv(renderer_t* r, texture_handle_t t, float x,
+                                   float y, float w, float h, float u0,
+                                   float v0, float u1, float v1, vec3_t c,
+                                   float a) {
+  (void)r;
+  (void)t;
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)u0;
+  (void)v0;
+  (void)u1;
+  (void)v1;
+  (void)c;
+  (void)a;
+}
 void renderer_draw_screen_line(renderer_t* r, float x0, float y0, float x1,
                                float y1, float t, vec3_t c) {
   (void)r;

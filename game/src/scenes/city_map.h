@@ -25,4 +25,9 @@ void city_map_free(city_map_t* map);
 bool city_map_to_pixel(const city_map_t* map, float x, float z, int* px,
                        int* py);
 
+/* The part of the picture that shows `radius` metres each way about a point:
+ * texture coordinates, slid back inside the map at its edges. */
+void city_map_window(const city_map_t* map, float x, float z, float radius,
+                     float* u0, float* v0, float* u1, float* v1);
+
 #endif  // GAME_SRC_SCENES_CITY_MAP_H_

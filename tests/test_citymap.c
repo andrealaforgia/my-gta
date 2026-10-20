@@ -69,7 +69,27 @@ static void points_outside_the_city_are_not_on_the_map(void) {
   city_map_free(&map);
 }
 
+static void the_minimap_window_follows_the_car_and_stays_on_the_map(void) {
+  city_map_t map = map_of_two_squares();
+  float u0, v0, u1, v1;
+  /* Centred on the middle of the city: a square 100 m across. */
+  city_map_window(&map, 0.0f, -27.5f, 50.0f, &u0, &v0, &u1, &v1);
+  float span = 100.0f / map.extent;
+  assert(near_to(u1 - u0, span, 1e-4f) && near_to(v1 - v0, span, 1e-4f));
+  assert(near_to(0.5f * (u0 + u1), 0.5f, 0.01f));
+  /* Beyond an edge it slides back so the window is still full size. */
+  city_map_window(&map, 5000.0f, 5000.0f, 50.0f, &u0, &v0, &u1, &v1);
+  assert(u1 <= 1.0001f && v1 <= 1.0001f && near_to(u1 - u0, span, 1e-4f));
+  city_map_window(&map, -5000.0f, -5000.0f, 50.0f, &u0, &v0, &u1, &v1);
+  assert(u0 >= -0.0001f && v0 >= -0.0001f);
+  /* A window larger than the city shows all of it. */
+  city_map_window(&map, 0.0f, 0.0f, 5000.0f, &u0, &v0, &u1, &v1);
+  assert(near_to(u0, 0.0f, 1e-4f) && near_to(u1, 1.0f, 1e-4f));
+  city_map_free(&map);
+}
+
 void run_citymap_tests(void) {
+  RUN(the_minimap_window_follows_the_car_and_stays_on_the_map);
   RUN(roads_and_roofs_are_drawn_where_they_are_north_up);
   RUN(points_outside_the_city_are_not_on_the_map);
 }

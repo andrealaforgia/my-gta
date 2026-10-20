@@ -337,6 +337,49 @@ static void draw_map(driving_stage_t* stage) {
                      "100 M");
 }
 
+/* A small north-up window on the map at the top right, with the car at its
+ * middle, so there is always a sense of where you are. */
+static void draw_minimap(driving_stage_t* stage) {
+  const city_map_t* map = &stage->scene.map;
+  if (map->size == 0 || stage->map_texture.id == 0) return;
+  renderer_t* r = stage->renderer;
+  float scale = (float)stage->window->drawable_width / 640.0f;
+  if (scale < 2) scale = 2;
+  float side = 62.0f * scale;
+  float x = (float)stage->window->drawable_width - side - 8.0f * scale;
+  float y = 8.0f * scale;
+  const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);
+  float u0, v0, u1, v1;
+  city_map_window(map, body->position.x, body->position.z, 140.0f, &u0, &v0,
+                  &u1, &v1);
+  texture_handle_t none = {0};
+  renderer_draw_screen_image(r, none, x - 2 * scale, y - 2 * scale,
+                             side + 4 * scale, side + 4 * scale,
+                             vec3(0.05f, 0.05f, 0.06f), 0.85f);
+  renderer_draw_screen_image_uv(r, stage->map_texture, x, y, side, side, u0, v0,
+                                u1, v1, vec3(1, 1, 1), 0.92f);
+  /* The car: an arrow at the window's middle, or where it falls when the
+   * window has been held at an edge. */
+  float cx = x + ((body->position.x - map->min_x) / map->extent - u0) /
+                     (u1 - u0) * side;
+  float cy = y + ((body->position.z - map->min_z) / map->extent - v0) /
+                     (v1 - v0) * side;
+  vec3_t forward = quat_rotate(body->rotation, vec3(0, 0, -1));
+  float len = sqrtf(forward.x * forward.x + forward.z * forward.z);
+  float dx = len > 1e-4f ? forward.x / len : 0,
+        dz = len > 1e-4f ? forward.z / len : -1;
+  float arm = 4.5f * scale;
+  vec3_t red = vec3(1.0f, 0.2f, 0.12f);
+  renderer_draw_screen_line(r, cx - dx * arm, cy - dz * arm,
+                            cx + dx * arm * 1.5f, cy + dz * arm * 1.5f,
+                            2.2f * scale, vec3(1, 1, 1));
+  renderer_draw_screen_line(r, cx - dx * arm, cy - dz * arm,
+                            cx + dx * arm * 1.5f, cy + dz * arm * 1.5f,
+                            1.2f * scale, red);
+  renderer_draw_text(r, x + side * 0.5f - 2 * scale, y + 1 * scale,
+                     scale * 0.9f, vec3(1, 0.9f, 0.4f), "N");
+}
+
 static void draw_hud(driving_stage_t* stage) {
   renderer_t* r = stage->renderer;
   const vehicle_t* car = &stage->vehicle;
@@ -547,8 +590,10 @@ void driving_stage_render(driving_stage_t* stage) {
   if (stage->show_debug) draw_debug(stage, chassis);
   if (stage->map_open)
     draw_map(stage);
-  else
+  else {
     draw_hud(stage);
+    draw_minimap(stage);
+  }
   renderer_end_frame(r);
 }
 

@@ -111,3 +111,19 @@ bool city_map_to_pixel(const city_map_t* map, float x, float z, int* px,
   *py = (int)fy;
   return true;
 }
+
+void city_map_window(const city_map_t* map, float x, float z, float radius,
+                     float* u0, float* v0, float* u1, float* v1) {
+  float span = 2.0f * radius / map->extent;
+  if (span >= 1.0f) {
+    *u0 = 0, *v0 = 0, *u1 = 1, *v1 = 1;
+    return;
+  }
+  float u = (x - map->min_x) / map->extent, v = (z - map->min_z) / map->extent;
+  float lo_u = u - span * 0.5f, lo_v = v - span * 0.5f;
+  if (lo_u < 0) lo_u = 0;
+  if (lo_v < 0) lo_v = 0;
+  if (lo_u > 1.0f - span) lo_u = 1.0f - span;
+  if (lo_v > 1.0f - span) lo_v = 1.0f - span;
+  *u0 = lo_u, *v0 = lo_v, *u1 = lo_u + span, *v1 = lo_v + span;
+}

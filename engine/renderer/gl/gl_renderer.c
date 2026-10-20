@@ -44,6 +44,7 @@ typedef struct {
   float x, y, width, height;
   vec3_t tint;
   float alpha;
+  float u0, v0, u1, v1;
 } screen_image_t;
 
 typedef struct {
@@ -831,7 +832,17 @@ void renderer_draw_screen_image(renderer_t* r, texture_handle_t texture,
                                 float x, float y, float width, float height,
                                 vec3_t tint, float alpha) {
   if (r->image_count >= MAX_SCREEN_IMAGES) return;
-  screen_image_t image = {texture.id, x, y, width, height, tint, alpha};
+  renderer_draw_screen_image_uv(r, texture, x, y, width, height, 0, 0, 1, 1,
+                                tint, alpha);
+}
+
+void renderer_draw_screen_image_uv(renderer_t* r, texture_handle_t texture,
+                                   float x, float y, float width, float height,
+                                   float u0, float v0, float u1, float v1,
+                                   vec3_t tint, float alpha) {
+  if (r->image_count >= MAX_SCREEN_IMAGES) return;
+  screen_image_t image = {texture.id, x,  y,  width, height, tint,
+                          alpha,      u0, v0, u1,    v1};
   r->images[r->image_count++] = image;
 }
 
@@ -868,8 +879,9 @@ static void draw_screen_images(renderer_t* r) {
     const screen_image_t* im = &r->images[i];
     float x0 = im->x, y0 = im->y, x1 = im->x + im->width,
           y1 = im->y + im->height;
-    float quad[24] = {x0, y0, 0, 0, x1, y0, 1, 0, x1, y1, 1, 1,
-                      x0, y0, 0, 0, x1, y1, 1, 1, x0, y1, 0, 1};
+    float quad[24] = {x0, y0, im->u0, im->v0, x1, y0, im->u1, im->v0,
+                      x1, y1, im->u1, im->v1, x0, y0, im->u0, im->v0,
+                      x1, y1, im->u1, im->v1, x0, y1, im->u0, im->v1};
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(quad), quad);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, im->texture && im->texture < MAX_TEXTURES &&
