@@ -141,6 +141,9 @@ bool city_package_write(const city_package_t* package, const char* directory) {
   fprintf(file, "spawn %.3f %.3f %.3f %.4f\n", package->spawn_position.x,
           package->spawn_position.y, package->spawn_position.z,
           package->spawn_yaw);
+  for (size_t i = 0; i < package->label_count; i++)
+    fprintf(file, "label %.2f %.2f %s\n", package->labels[i].x,
+            package->labels[i].z, package->labels[i].text);
   for (size_t c = 0; c < package->chunk_count; c++)
     fprintf(file, "chunk %d %d %s\n", package->chunks[c].column,
             package->chunks[c].row, package->chunks[c].file);
@@ -239,6 +242,15 @@ bool city_package_read(city_package_t* package, const char* directory) {
       ok = sscanf(line, "spawn %f %f %f %f", &package->spawn_position.x,
                   &package->spawn_position.y, &package->spawn_position.z,
                   &package->spawn_yaw) == 4;
+    } else if (strncmp(line, "label ", 6) == 0) {
+      if (package->label_count < CITY_PACKAGE_MAX_LABELS) {
+        city_label_t* label = &package->labels[package->label_count];
+        char text[32] = "";
+        ok = sscanf(line, "label %f %f %31[^\n]", &label->x, &label->z, text) ==
+             3;
+        snprintf(label->text, sizeof(label->text), "%s", text);
+        package->label_count++;
+      }
     } else if (strncmp(line, "chunk ", 6) == 0) {
       int column, row;
       char name[CITY_PACKAGE_TEXT];

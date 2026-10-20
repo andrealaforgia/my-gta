@@ -39,6 +39,14 @@ typedef struct {
   char file[CITY_PACKAGE_TEXT];
 } city_chunk_t;
 
+#define CITY_PACKAGE_MAX_LABELS 48
+
+/* A street name for the map, in capitals, anchored at its middle. */
+typedef struct {
+  float x, z;
+  char text[32];
+} city_label_t;
+
 typedef struct {
   char name[CITY_PACKAGE_TEXT];
   char source[256];
@@ -55,6 +63,8 @@ typedef struct {
   city_chunk_t* chunks;
   size_t chunk_count;
   size_t chunk_capacity;
+  city_label_t labels[CITY_PACKAGE_MAX_LABELS];
+  size_t label_count;
 } city_package_t;
 
 city_package_t city_package_create(void);

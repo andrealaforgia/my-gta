@@ -1,5 +1,6 @@
 #include "city_generator.h"
 
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1904,6 +1905,64 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
   package->spawn_yaw = (float)atan2(-direction.x, -direction.z);
 }
 
+/* The map's street names: each distinct name once, at the middle of its
+ * longest piece, longest streets first. Capitals and plain ASCII only,
+ * as the built-in font has nothing else. */
+static void choose_labels(city_package_t* package, const city_model_t* model) {
+  typedef struct {
+    char text[32];
+    double total, best;
+    local_point_t at;
+  } entry_t;
+  entry_t* entries = calloc(model->road_count + 1, sizeof(entry_t));
+  if (!entries) return;
+  size_t count = 0;
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (!road->name[0] || road->class == ROAD_CLASS_WATERWAY ||
+        road->class == ROAD_CLASS_PATH)
+      continue;
+    char text[32];
+    size_t n = 0;
+    for (const char* c = road->name; *c && n + 1 < sizeof(text); c++) {
+      unsigned char u = (unsigned char)*c;
+      if (u >= 0x80) continue;
+      if (*c == '(') break; /* "(già Riviera...)" asides do not fit */
+      text[n++] = *c == '_' ? ' ' : (char)toupper(u);
+    }
+    while (n > 0 && text[n - 1] == ' ') n--;
+    text[n] = 0;
+    if (n == 0) continue;
+    double length = polyline_length(road->points, road->point_count);
+    size_t e = 0;
+    while (e < count && strcmp(entries[e].text, text) != 0) e++;
+    if (e == count) {
+      memcpy(entries[e].text, text, sizeof(text));
+      count++;
+    }
+    entries[e].total += length;
+    if (length > entries[e].best) {
+      size_t segment;
+      entries[e].best = length;
+      entries[e].at = along_polyline(road->points, road->point_count,
+                                     length * 0.5, &segment);
+    }
+  }
+  for (size_t l = 0; l < CITY_PACKAGE_MAX_LABELS && l < count; l++) {
+    size_t top = l;
+    for (size_t e = l + 1; e < count; e++)
+      if (entries[e].total > entries[top].total) top = e;
+    entry_t chosen = entries[top];
+    entries[top] = entries[l];
+    entries[l] = chosen;
+    city_label_t* label = &package->labels[package->label_count++];
+    label->x = (float)chosen.at.x;
+    label->z = (float)chosen.at.z;
+    memcpy(label->text, chosen.text, sizeof(label->text));
+  }
+  free(entries);
+}
+
 bool city_generate(city_package_t* package, const city_model_t* model,
                    const city_generator_options_t* options, const char* name,
                    city_generator_stats_t* stats) {
@@ -2018,6 +2077,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     return false;
   }
   choose_spawn(package, model, options);
+  choose_labels(package, model);
   package->spawn_position.y += (float)terrain_at(
       &layout, package->spawn_position.x, package->spawn_position.z);
   LOG_INFO("generate",

@@ -138,6 +138,9 @@ the physics world with the layer and friction given.
   the upper floors overhang on the original line with the facade texture
   restarting at a clean storey, and the walkway is a paved part of its own.
   The ends are closed unless a neighbouring arcaded edge continues.
+- The manifest lists up to 48 `label x z TEXT` lines for the map: each
+  distinct street name once, in capitals, plain ASCII, cut at any `(`, at
+  the middle of its longest piece, longest streets first.
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

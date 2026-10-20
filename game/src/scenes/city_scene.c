@@ -130,6 +130,8 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   }
   if (!city_map_build(&scene->map, &package, 1024))
     LOG_WARN("scene", "no map for %s", package.name);
+  memcpy(scene->labels, package.labels, sizeof(scene->labels));
+  scene->label_count = package.label_count;
   scene->spawn_position = package.spawn_position;
   scene->spawn_rotation = quat_from_yaw(package.spawn_yaw);
   render_environment_t environment = {vec3(0.5f, 0.8f, 0.3f),

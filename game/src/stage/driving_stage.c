@@ -207,6 +207,30 @@ static void draw_map(driving_stage_t* stage) {
                             cx + dx * arm * 0.6f + dz * arm * 0.7f,
                             cy + dz * arm * 0.6f - dx * arm * 0.7f,
                             1.6f * scale, red);
+  /* Street names, longest streets first, skipping any that would land on
+   * one already placed. */
+  float text_scale = scale * 0.55f;
+  float placed[CITY_PACKAGE_MAX_LABELS][4];
+  size_t placed_count = 0;
+  for (size_t i = 0; i < stage->scene.label_count && i < 18; i++) {
+    const city_label_t* label = &stage->scene.labels[i];
+    float w = (float)strlen(label->text) * 6 * text_scale, h = 8 * text_scale;
+    float lx = left + (label->x - map->min_x) * pixels_per_metre - w * 0.5f;
+    float ly = top + (label->z - map->min_z) * pixels_per_metre - h * 0.5f;
+    bool clash = false;
+    for (size_t k = 0; k < placed_count; k++)
+      if (lx < placed[k][2] && lx + w > placed[k][0] && ly < placed[k][3] &&
+          ly + h > placed[k][1])
+        clash = true;
+    if (clash) continue;
+    placed[placed_count][0] = lx, placed[placed_count][1] = ly;
+    placed[placed_count][2] = lx + w, placed[placed_count][3] = ly + h;
+    placed_count++;
+    renderer_draw_text(r, lx + text_scale * 0.5f, ly + text_scale * 0.5f,
+                       text_scale, vec3(0.1f, 0.1f, 0.12f), label->text);
+    renderer_draw_text(r, lx, ly, text_scale, vec3(1.0f, 0.97f, 0.8f),
+                       label->text);
+  }
   /* Title, north marker and a 100 m scale bar. */
   vec3_t light = vec3(0.92f, 0.92f, 0.92f);
   renderer_draw_text(r, left, top - 14 * scale, scale * 1.6f, light,

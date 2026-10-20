@@ -721,6 +721,18 @@ static void the_package_round_trips_and_validates(void) {
          city_package_triangle_count(&package));
   assert(near_to(loaded.spawn_position.x, package.spawn_position.x, 1e-3));
   assert(loaded.config_hash == package.config_hash);
+  /* Named streets become map labels in capitals, longest first, and
+   * survive the manifest. The stream is not a street. */
+  assert(package.label_count == 3);
+  bool main_street = false;
+  for (size_t i = 0; i < package.label_count; i++) {
+    assert(strcmp(package.labels[i].text, "ROGGIA") != 0);
+    if (strcmp(package.labels[i].text, "MAIN STREET") == 0) main_street = true;
+  }
+  assert(main_street);
+  assert(loaded.label_count == package.label_count);
+  assert(strcmp(loaded.labels[0].text, package.labels[0].text) == 0);
+  assert(near_to(loaded.labels[0].x, package.labels[0].x, 1e-2));
   assert(strcmp(loaded.source, "tests/fixtures/district.osm") == 0);
   city_validation_t report;
   assert(city_validate(&loaded, &report));
