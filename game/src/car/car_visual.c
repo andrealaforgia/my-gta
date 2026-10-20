@@ -157,14 +157,18 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
 }
 
 void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
-                     const vehicle_t* vehicle, transform_t chassis) {
+                     const vehicle_t* vehicle, transform_t chassis,
+                     float lights_on) {
   mat4_t model = transform_to_matrix(chassis);
+  material_t headlights = visual->light_material;
+  headlights.emissive = 0.15f + 1.6f * lights_on;
+  material_t tail_lights = visual->rear_light_material;
+  tail_lights.emissive = 0.1f + 0.9f * lights_on + 1.2f * vehicle->brake;
   renderer_draw_mesh(renderer, visual->chassis, visual->paint, model);
   renderer_draw_mesh(renderer, visual->cabin, visual->paint, model);
   renderer_draw_mesh(renderer, visual->glass, visual->glass_material, model);
-  renderer_draw_mesh(renderer, visual->lights, visual->light_material, model);
-  renderer_draw_mesh(renderer, visual->rear_lights, visual->rear_light_material,
-                     model);
+  renderer_draw_mesh(renderer, visual->lights, headlights, model);
+  renderer_draw_mesh(renderer, visual->rear_lights, tail_lights, model);
   renderer_draw_mesh(renderer, visual->trim, visual->trim_material, model);
   for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
     transform_t wheel = vehicle_wheel_transform(vehicle, chassis, i);

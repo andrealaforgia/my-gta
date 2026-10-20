@@ -28,6 +28,7 @@ static material_t material_for(const char* name,
       {"roof_slate", textures->roof_slate, vec3(0.95f, 0.95f, 0.95f), 0.8f},
       {"roof_flat", textures->roof_flat, vec3(0.95f, 0.95f, 0.95f), 0.9f},
       {"lamp", {0}, vec3(0.22f, 0.23f, 0.25f), 0.45f},
+      {"lamp_light", {0}, vec3(1.0f, 0.88f, 0.6f), 0.4f},
       {"paving", textures->concrete, vec3(0.92f, 0.86f, 0.76f), 0.85f},
       {"parking", textures->asphalt, vec3(0.85f, 0.85f, 0.85f), 0.95f},
       {"park", textures->grass, vec3(0.72f, 0.86f, 0.62f), 1.0f},
@@ -116,12 +117,13 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   if (!city_package_read(&package, package_directory)) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
   static const char* materials[] = {
-      "grass",    "road",       "junction",  "pavement",      "kerb",
-      "roof",     "roof_slate", "roof_flat", "facade_fresco", "facade0",
-      "facade1",  "facade2",    "facade3",   "facade4",       "facade5",
-      "facade6",  "facade7",    "facade8",   "facade9",       "facade10",
-      "facade11", "lamp",       "paving",    "parking",       "park",
-      "water",    "trunk",      "leaves",    "marking",       "ground"};
+      "grass",    "road",       "junction",   "pavement",      "kerb",
+      "roof",     "roof_slate", "roof_flat",  "facade_fresco", "facade0",
+      "facade1",  "facade2",    "facade3",    "facade4",       "facade5",
+      "facade6",  "facade7",    "facade8",    "facade9",       "facade10",
+      "facade11", "lamp",       "lamp_light", "paving",        "parking",
+      "park",     "water",      "trunk",      "leaves",        "marking",
+      "ground"};
   int draws = 0, colliders = 0;
   bool ok = true;
   for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {
@@ -142,7 +144,13 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
                                       vec3(0.62f, 0.74f, 0.9f),
                                       150.0f,
                                       900.0f,
-                                      110.0f};
+                                      110.0f,
+                                      vec3(0.3f, 0.5f, 0.85f),
+                                      0.0f,
+                                      1.0f,
+                                      vec3(0, 0, 0),
+                                      vec3(0, 0, -1),
+                                      0.0f};
   scene->environment = environment;
   LOG_INFO("scene",
            "%s: %zu chunks, %zu triangles, %d meshes, %d colliders; source %s "

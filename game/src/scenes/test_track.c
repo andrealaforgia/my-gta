@@ -150,7 +150,13 @@ bool scene_build_test_track(scene_t* scene, scene_context_t c) {
                                       vec3(0.58f, 0.72f, 0.92f),
                                       120.0f,
                                       700.0f,
-                                      90.0f};
+                                      90.0f,
+                                      vec3(0.3f, 0.5f, 0.85f),
+                                      0.0f,
+                                      1.0f,
+                                      vec3(0, 0, 0),
+                                      vec3(0, 0, -1),
+                                      0.0f};
   scene->environment = environment;
   LOG_INFO("scene", "test track: %zu entities, %zu colliders",
            world_count(c.world), physics_collider_count(c.physics));

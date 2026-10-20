@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "city_scene.h"
+#include "daylight.h"
 #include "log.h"
 
 #define PHYSICS_STEP (1.0 / 120.0)
@@ -45,6 +46,8 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   chase_camera_reset(&stage->camera, transform_at(stage->scene.spawn_position,
                                                   stage->scene.spawn_rotation));
   stage->clock = frame_clock_create(PHYSICS_STEP, MAX_CATCH_UP);
+  stage->hour = options.start_hour;
+  stage->hour_seconds = options.hour_seconds;
   if (stage->scene.map.size > 0)
     stage->map_texture =
         renderer_upload_texture(renderer, stage->scene.map.size,
@@ -118,6 +121,10 @@ void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
   for (int i = 0; i < steps; i++)
     driving_stage_step(stage, input, (float)PHYSICS_STEP);
   stage->physics_ms = (platform_seconds() - started) * 1000.0;
+  if (!stage->paused && !stage->map_open && stage->hour_seconds > 0) {
+    stage->hour += (float)frame_seconds / stage->hour_seconds;
+    if (stage->hour >= 24.0f) stage->hour -= 24.0f;
+  }
   send_audio_state(stage);
   const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);
   if (body && !stage->paused && !stage->map_open)
@@ -335,10 +342,28 @@ static void draw_hud(driving_stage_t* stage) {
 void driving_stage_render(driving_stage_t* stage) {
   renderer_t* r = stage->renderer;
   transform_t chassis = car_transform(stage, (float)stage->clock.alpha);
-  renderer_begin_frame(r, chase_camera_render(&stage->camera),
-                       stage->scene.environment);
+  float night = daylight_lamp_glow(stage->hour);
+  render_environment_t environment = daylight_environment(stage->hour);
+  environment.fog_start = stage->scene.environment.fog_start;
+  environment.fog_end = stage->scene.environment.fog_end;
+  environment.shadow_radius = stage->scene.environment.shadow_radius;
+  /* The sun's shadows fade with it; the moon casts none. */
+  if (night > 0.7f) environment.shadow_radius = 0;
+  /* Headlights: a cone from the nose along the car's heading. */
+  vec3_t forward = quat_rotate(chassis.rotation, vec3(0, 0, -1));
+  environment.spot_position = vec3_add(
+      chassis.position, vec3_add(vec3_scale(forward, 2.0f), vec3(0, 0.1f, 0)));
+  environment.spot_direction =
+      vec3_normalize(vec3_add(forward, vec3(0, -0.12f, 0)));
+  environment.spot_intensity = 2.2f * night;
+  for (size_t i = 0; i < stage->world.capacity; i++) {
+    entity_t* entity = &stage->world.entities[i];
+    if (entity->used && strncmp(entity->label, "lamp_light", 10) == 0)
+      entity->material.emissive = 2.4f * night;
+  }
+  renderer_begin_frame(r, chase_camera_render(&stage->camera), environment);
   stage->last_drawn = world_render(&stage->world, r);
-  car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis);
+  car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
   if (stage->show_debug) draw_debug(stage, chassis);
   if (stage->map_open)
     draw_map(stage);

@@ -29,6 +29,8 @@ typedef struct {
   const char* vehicle_file;
   bool show_debug;
   bool muted;
+  float start_hour;   /* time of day at the start, 0..24 */
+  float hour_seconds; /* real seconds per game hour; 0 freezes the clock */
 } stage_options_t;
 
 typedef struct {
@@ -44,6 +46,8 @@ typedef struct {
   chase_camera_t camera;
   frame_clock_t clock;
   bool paused;
+  float hour; /* time of day, 0..24 */
+  float hour_seconds;
   bool map_open; /* M: the city map over a paused game */
   texture_handle_t map_texture;
   bool show_debug;

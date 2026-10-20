@@ -30,6 +30,7 @@ GROUPS = (
     "generator",
     "citydrive",
     "citymap",
+    "daylight",
 )
 
 

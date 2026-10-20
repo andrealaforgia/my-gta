@@ -27,6 +27,8 @@ static void print_help(void) {
       "  --no-vsync               do not wait for the display\n"
       "  --no-audio               do not open an audio device\n"
       "  --mute                   open audio but start muted\n"
+      "  --time=H                 start at hour H (0-24), default 10\n"
+      "  --hour-seconds=S         real seconds per game hour, 0 freezes time\n"
       "  --debug                  start with the debug overlay on\n"
       "  --help\n\n"
       "Controls: arrows or WASD drive, space handbrake, R reset, P pause, C "
@@ -42,6 +44,8 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
   memset(options, 0, sizeof(*options));
   options->window = window_default_options("gta-like");
   options->stage.scene = SCENE_TEST_TRACK;
+  options->stage.start_hour = 10.0f;
+  options->stage.hour_seconds = 30.0f;
   for (int i = 1; i < argc; i++) {
     const char* argument = argv[i];
     if (strcmp(argument, "--help") == 0) {
@@ -56,6 +60,10 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
       options->stage.muted = true;
     } else if (strcmp(argument, "--debug") == 0) {
       options->stage.show_debug = true;
+    } else if (strncmp(argument, "--time=", 7) == 0) {
+      options->stage.start_hour = (float)atof(argument + 7);
+    } else if (strncmp(argument, "--hour-seconds=", 15) == 0) {
+      options->stage.hour_seconds = (float)atof(argument + 15);
     } else if (strncmp(argument, "--width=", 8) == 0) {
       options->window.width = atoi(argument + 8);
     } else if (strncmp(argument, "--height=", 9) == 0) {

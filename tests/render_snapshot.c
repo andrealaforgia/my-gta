@@ -41,9 +41,14 @@ int main(int argc, char* argv[]) {
   renderer_t* renderer =
       renderer_create(window.drawable_width, window.drawable_height);
   if (!renderer) return EXIT_FAILURE;
-  stage_options_t stage_options = {city ? SCENE_CITY : SCENE_TEST_TRACK, city,
-                                   NULL, getenv("SNAPSHOT_NO_DEBUG") == NULL,
-                                   true};
+  stage_options_t stage_options = {
+      city ? SCENE_CITY : SCENE_TEST_TRACK,
+      city,
+      NULL,
+      getenv("SNAPSHOT_NO_DEBUG") == NULL,
+      true,
+      getenv("SNAPSHOT_HOUR") ? (float)atof(getenv("SNAPSHOT_HOUR")) : 10.0f,
+      0.0f};
   driving_stage_t stage;
   if (!driving_stage_init(&stage, &window, renderer, NULL, stage_options))
     return EXIT_FAILURE;

@@ -738,7 +738,12 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
   city_part_t* part = city_chunk_add_part(chunk, "lamp", PART_COLLIDER_MESH,
                                           COLLISION_LAYER_PROP, 0.5f,
                                           (uint64_t)road->source_id);
-  if (!part) return false;
+  city_part_t* lights =
+      part ? city_chunk_add_part(chunk, "lamp_light", PART_COLLIDER_NONE, 0, 0,
+                                 (uint64_t)road->source_id)
+           : NULL;
+  if (!part || !lights) return false;
+  part = &chunk->parts[chunk->part_count - 2];
   const float height = 4.5f;
   int side = 1;
   for (double along = o->lamp_spacing * 0.5; along < length;
@@ -761,7 +766,7 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
                            (float)fabs(head.z - base.z) * 0.5f + 0.06f);
     if (!mesh_data_add_box(&part->mesh, arm_centre, arm_half)) return false;
     if (!mesh_data_add_box(
-            &part->mesh,
+            &lights->mesh,
             vec3((float)head.x, y0 + height - 0.12f, (float)head.z),
             vec3(0.22f, 0.1f, 0.22f)))
       return false;
@@ -769,10 +774,12 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
   }
   if (part->mesh.vertex_count == 0) {
     mesh_data_free(&part->mesh);
-    chunk->part_count--;
+    mesh_data_free(&lights->mesh);
+    chunk->part_count -= 2;
     return true;
   }
   finish_part(chunk, part);
+  finish_part(chunk, lights);
   return true;
 }
 

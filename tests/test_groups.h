@@ -14,4 +14,5 @@ void run_junction_tests(void);
 void run_generator_tests(void);
 void run_citydrive_tests(void);
 void run_citymap_tests(void);
+void run_daylight_tests(void);
 #endif  // TESTS_TEST_GROUPS_H_

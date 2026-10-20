@@ -686,7 +686,12 @@ static void lamp_posts_stand_on_the_pavements(void) {
   city_package_t package = generate_fixture(&stats);
   assert(stats.lamps > 10);
   size_t lamp_parts = count_material(&package, "lamp");
-  assert(lamp_parts > 0 && lamp_parts <= stats.roads);
+  /* Posts and arms, and the lamp heads apart so they can glow at night. */
+  assert(lamp_parts > 0 && lamp_parts <= 2 * stats.roads);
+  const city_part_t* heads = part_for(&package, "lamp_light", 103);
+  assert(heads && heads->collider == PART_COLLIDER_NONE);
+  assert(mesh_data_triangle_count(&heads->mesh) > 0 &&
+         mesh_data_triangle_count(&heads->mesh) % 12 == 0); /* one box each */
   const city_part_t* lamps = part_for(&package, "lamp", 103);
   assert(lamps && lamps->collider == PART_COLLIDER_MESH && lamps->layer == 8);
   aabb_t bounds = mesh_data_bounds(&lamps->mesh);
@@ -708,6 +713,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
       if (strcmp(part->material, "kerb") == 0 ||
           strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "lamp") == 0 ||
+          strcmp(part->material, "lamp_light") == 0 ||
           strcmp(part->material, "trunk") == 0 ||
           strcmp(part->material, "leaves") == 0)
         continue;

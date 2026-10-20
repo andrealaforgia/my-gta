@@ -31,6 +31,7 @@ typedef struct {
   float metallic;
   float roughness;
   texture_handle_t texture;
+  float emissive; /* 0..: the colour added unlit, for lamps and lit windows */
 } material_t;
 
 typedef struct {
@@ -50,6 +51,17 @@ typedef struct {
   float fog_start;
   float fog_end;
   float shadow_radius; /* metres around the camera target; 0 for no shadows */
+  /* The sky behind everything: sky_color is the horizon (and the fog), this
+   * is straight up; star_level 0..1 fades stars in; sun_disc 0..1 draws
+   * the sun in the direction of the light. */
+  vec3_t zenith_color;
+  float star_level;
+  float sun_disc;
+  /* One headlight cone for the player's car: position, the way it points,
+   * and how strong; 0 is off. */
+  vec3_t spot_position;
+  vec3_t spot_direction;
+  float spot_intensity;
 } render_environment_t;
 
 typedef struct {

@@ -29,6 +29,7 @@ car_visual_t car_visual_create(renderer_t* renderer,
                                const vehicle_params_t* params);
 void car_visual_destroy(car_visual_t* visual, renderer_t* renderer);
 void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
-                     const vehicle_t* vehicle, transform_t chassis);
+                     const vehicle_t* vehicle, transform_t chassis,
+                     float lights_on /* 0 by day .. 1 at night */);
 
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

@@ -54,7 +54,7 @@ typedef struct {
 
 struct renderer {
   int width, height;
-  GLuint mesh_program, line_program, text_program;
+  GLuint mesh_program, line_program, text_program, sky_program, sky_vao;
   gl_mesh_t meshes[MAX_MESHES];
   GLuint textures[MAX_TEXTURES];
   GLuint white_texture;
@@ -115,6 +115,7 @@ static const char* mesh_fragment_source =
     "uniform vec3 u_base_color;\n"
     "uniform float u_metallic;\n"
     "uniform float u_roughness;\n"
+    "uniform float u_emissive;\n"
     "uniform int u_has_texture;\n"
     "uniform sampler2D u_texture;\n"
     "uniform vec3 u_light_direction;\n"
@@ -122,6 +123,9 @@ static const char* mesh_fragment_source =
     "uniform float u_ambient;\n"
     "uniform vec3 u_eye;\n"
     "uniform vec3 u_sky_color;\n"
+    "uniform vec3 u_spot_position;\n"
+    "uniform vec3 u_spot_direction;\n"
+    "uniform float u_spot_intensity;\n"
     "uniform float u_fog_start;\n"
     "uniform float u_fog_end;\n"
     "out vec4 out_color;\n"
@@ -157,6 +161,18 @@ static const char* mesh_fragment_source =
     "  vec3 color = hemisphere * u_ambient\n"
     "             + (diffuse * n_dot_l + specular_tint * spec * n_dot_l) * "
     "u_light_color * shadow;\n"
+    "  color += albedo * u_emissive;\n"
+    "  if (u_spot_intensity > 0.0) {\n"
+    "    vec3 to_point = v_world_position - u_spot_position;\n"
+    "    float d = length(to_point);\n"
+    "    vec3 ray = to_point / max(d, 0.001);\n"
+    "    float cone = smoothstep(0.55, 0.93, dot(ray, "
+    "normalize(u_spot_direction)));\n"
+    "    float facing = max(dot(n, -ray), 0.0);\n"
+    "    float falloff = 1.0 / (1.0 + 0.012 * d * d);\n"
+    "    color += albedo * vec3(1.0, 0.94, 0.78) * u_spot_intensity * cone * "
+    "facing * falloff;\n"
+    "  }\n"
     "  float distance = length(u_eye - v_world_position);\n"
     "  float fog = clamp((distance - u_fog_start) / (u_fog_end - u_fog_start), "
     "0.0, 1.0);\n"
@@ -215,6 +231,54 @@ static const char* image_fragment_source =
     "out vec4 out_color;\n"
     "void main() { out_color = vec4(texture(u_texture, v_uv).rgb * u_tint, "
     "u_alpha); }\n";
+
+static const char* sky_vertex_source =
+    "#version 410 core\n"
+    "out vec2 v_ndc;\n"
+    "void main() {\n"
+    "  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);\n"
+    "  v_ndc = p * 2.0 - 1.0;\n"
+    "  gl_Position = vec4(v_ndc, 1.0, 1.0);\n"
+    "}\n";
+
+static const char* sky_fragment_source =
+    "#version 410 core\n"
+    "in vec2 v_ndc;\n"
+    "uniform mat4 u_inverse_view_projection;\n"
+    "uniform vec3 u_eye;\n"
+    "uniform vec3 u_horizon;\n"
+    "uniform vec3 u_zenith;\n"
+    "uniform vec3 u_sun_direction;\n"
+    "uniform vec3 u_sun_color;\n"
+    "uniform float u_stars;\n"
+    "uniform float u_sun_disc;\n"
+    "out vec4 out_color;\n"
+    "float hash(vec3 p) {\n"
+    "  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));\n"
+    "  p *= 17.0;\n"
+    "  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));\n"
+    "}\n"
+    "void main() {\n"
+    "  vec4 far_point = u_inverse_view_projection * vec4(v_ndc, 1.0, 1.0);\n"
+    "  vec3 dir = normalize(far_point.xyz / far_point.w - u_eye);\n"
+    "  float up = max(dir.y, 0.0);\n"
+    "  vec3 color = mix(u_horizon, u_zenith, pow(up, 0.55));\n"
+    "  vec3 sun = normalize(u_sun_direction);\n"
+    "  float along = max(dot(dir, sun), 0.0);\n"
+    "  color += u_sun_color * (pow(along, 6.0) * 0.12 + pow(along, 64.0) * "
+    "0.25) * u_sun_disc;\n"
+    "  color += u_sun_color * smoothstep(0.9995, 0.9999, along) * 6.0 * "
+    "u_sun_disc;\n"
+    "  if (dir.y > 0.0 && u_stars > 0.0) {\n"
+    "    vec3 cell = floor(dir * 140.0);\n"
+    "    float h = hash(cell);\n"
+    "    float star = step(0.9965, h) * smoothstep(0.0, 0.35, dir.y);\n"
+    "    color += vec3(0.9, 0.92, 1.0) * star * u_stars * (0.5 + h);\n"
+    "  }\n"
+    "  if (dir.y < 0.0) color = mix(u_horizon, u_horizon * 0.8, "
+    "min(-dir.y * 4.0, 1.0));\n"
+    "  out_color = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);\n"
+    "}\n";
 
 static const char* shadow_vertex_source =
     "#version 410 core\n"
@@ -286,13 +350,15 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   r->shadow_program =
       link_program(shadow_vertex_source, shadow_fragment_source, "shadow");
   r->line_vertices = malloc(MAX_LINE_VERTICES * sizeof(line_vertex_t));
+  r->sky_program = link_program(sky_vertex_source, sky_fragment_source, "sky");
+  glGenVertexArrays(1, &r->sky_vao);
   r->image_program =
       link_program(image_vertex_source, image_fragment_source, "image");
   r->text_vertices = malloc(MAX_TEXT_VERTICES * sizeof(text_vertex_t));
   r->draws = malloc(MAX_DRAWS * sizeof(draw_t));
   if (!r->mesh_program || !r->line_program || !r->text_program ||
-      !r->image_program || !r->shadow_program || !r->line_vertices ||
-      !r->text_vertices || !r->draws) {
+      !r->image_program || !r->sky_program || !r->shadow_program ||
+      !r->line_vertices || !r->text_vertices || !r->draws) {
     renderer_destroy(r);
     return NULL;
   }
@@ -562,6 +628,8 @@ static void draw_list(renderer_t* r, GLuint program, bool bind_materials) {
                   material->metallic);
       glUniform1f(glGetUniformLocation(program, "u_roughness"),
                   material->roughness);
+      glUniform1f(glGetUniformLocation(program, "u_emissive"),
+                  material->emissive);
       bool textured = material->texture.id != 0 &&
                       material->texture.id < MAX_TEXTURES &&
                       r->textures[material->texture.id] != 0;
@@ -596,12 +664,35 @@ static void shadow_pass(renderer_t* r) {
   glViewport(0, 0, r->width, r->height);
 }
 
+static void draw_sky(renderer_t* r) {
+  const render_environment_t* env = &r->environment;
+  glUseProgram(r->sky_program);
+  mat4_t inverse = mat4_inverse(r->view_projection);
+  glUniformMatrix4fv(
+      glGetUniformLocation(r->sky_program, "u_inverse_view_projection"), 1,
+      GL_FALSE, inverse.m);
+  set_vec3(r->sky_program, "u_eye", r->eye);
+  set_vec3(r->sky_program, "u_horizon", env->sky_color);
+  set_vec3(r->sky_program, "u_zenith", env->zenith_color);
+  set_vec3(r->sky_program, "u_sun_direction", env->direction);
+  set_vec3(r->sky_program, "u_sun_color", env->color);
+  glUniform1f(glGetUniformLocation(r->sky_program, "u_stars"), env->star_level);
+  glUniform1f(glGetUniformLocation(r->sky_program, "u_sun_disc"),
+              env->sun_disc);
+  glDisable(GL_DEPTH_TEST);
+  glDisable(GL_CULL_FACE);
+  glBindVertexArray(r->sky_vao);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
+  glBindVertexArray(0);
+}
+
 static void main_pass(renderer_t* r) {
   const render_environment_t* env = &r->environment;
   vec3_t sky = env->sky_color;
   glClearColor(powf(sky.x, 1.0f / 2.2f), powf(sky.y, 1.0f / 2.2f),
                powf(sky.z, 1.0f / 2.2f), 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  draw_sky(r);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_CULL_FACE);
   GLuint program = r->mesh_program;
@@ -615,6 +706,10 @@ static void main_pass(renderer_t* r) {
   glUniform1f(glGetUniformLocation(program, "u_ambient"), env->ambient);
   set_vec3(program, "u_eye", r->eye);
   set_vec3(program, "u_sky_color", env->sky_color);
+  set_vec3(program, "u_spot_position", env->spot_position);
+  set_vec3(program, "u_spot_direction", env->spot_direction);
+  glUniform1f(glGetUniformLocation(program, "u_spot_intensity"),
+              env->spot_intensity);
   glUniform1f(glGetUniformLocation(program, "u_fog_start"), env->fog_start);
   glUniform1f(glGetUniformLocation(program, "u_fog_end"), env->fog_end);
   glUniform1i(glGetUniformLocation(program, "u_texture"), 0);
