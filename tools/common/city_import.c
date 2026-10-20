@@ -24,6 +24,7 @@ city_import_options_t city_import_default_options(void) {
   o.default_height_min = 6.0f;
   o.default_height_max = 15.0f;
   o.min_road_length = 0.5f;
+  o.snap_distance = 2.0f;
   o.include_service_roads = true;
   return o;
 }
@@ -184,6 +185,111 @@ static bool emit_segment(city_model_t* model, const cleaned_way_t* cleaned,
   return true;
 }
 
+/* Where a way ends within snap_distance of another way's segment without
+ * sharing a node, insert a point on that segment and give both the same
+ * fresh node id, so they become a junction. Mappers leave such gaps. */
+static void snap_dangling_ends(city_model_t* model, cleaned_way_t* ways,
+                               size_t way_count,
+                               const city_import_options_t* options) {
+  const double reach = options->snap_distance;
+  int64_t next_id = -1;
+  for (size_t i = 0; i < way_count; i++) {
+    for (int end = 0; end < 2; end++) {
+      cleaned_way_t* way = &ways[i];
+      if (way->point_count < 2) continue;
+      size_t index = end ? way->point_count - 1 : 0;
+      int64_t node = way->node_ids[index];
+      bool shared = false;
+      for (size_t k = 0; k < way_count && !shared; k++) {
+        if (k == i) continue;
+        for (size_t q = 0; q < ways[k].point_count && !shared; q++)
+          if (ways[k].node_ids[q] == node) shared = true;
+      }
+      if (shared) continue;
+      local_point_t p = way->points[index];
+      /* A vertex of another way within reach: snap to that vertex and
+       * share its node, no split needed. */
+      {
+        size_t vertex_way = way_count, vertex_index = 0;
+        double vertex_distance = reach;
+        for (size_t k = 0; k < way_count; k++) {
+          if (k == i || ways[k].class == ROAD_CLASS_WATERWAY ||
+              way->class == ROAD_CLASS_WATERWAY)
+            continue;
+          for (size_t q = 0; q < ways[k].point_count; q++) {
+            double distance =
+                hypot(p.x - ways[k].points[q].x, p.z - ways[k].points[q].z);
+            if (distance < vertex_distance) {
+              vertex_distance = distance;
+              vertex_way = k;
+              vertex_index = q;
+            }
+          }
+        }
+        if (vertex_way != way_count) {
+          way->points[index] = ways[vertex_way].points[vertex_index];
+          way->node_ids[index] = ways[vertex_way].node_ids[vertex_index];
+          model->stats.ends_snapped++;
+          continue;
+        }
+      }
+      size_t best_way = way_count, best_segment = 0;
+      double best_distance = reach, best_t = 0;
+      for (size_t k = 0; k < way_count; k++) {
+        if (k == i || ways[k].class == ROAD_CLASS_WATERWAY ||
+            way->class == ROAD_CLASS_WATERWAY)
+          continue;
+        for (size_t q = 1; q < ways[k].point_count; q++) {
+          local_point_t a = ways[k].points[q - 1], b = ways[k].points[q];
+          double abx = b.x - a.x, abz = b.z - a.z;
+          double length2 = abx * abx + abz * abz;
+          if (length2 < 1e-9) continue;
+          double t = ((p.x - a.x) * abx + (p.z - a.z) * abz) / length2;
+          if (t <= 0.02 || t >= 0.98)
+            continue; /* near a vertex: let that vertex be it */
+          double cx = a.x + abx * t, cz = a.z + abz * t;
+          double distance = hypot(p.x - cx, p.z - cz);
+          if (distance < best_distance) {
+            best_distance = distance;
+            best_way = k;
+            best_segment = q;
+            best_t = t;
+          }
+        }
+      }
+      if (best_way == way_count) continue;
+      cleaned_way_t* other = &ways[best_way];
+      local_point_t a = other->points[best_segment - 1],
+                    b = other->points[best_segment];
+      local_point_t on = {a.x + (b.x - a.x) * best_t,
+                          a.z + (b.z - a.z) * best_t};
+      local_point_t* grown_points = realloc(
+          other->points, (other->point_count + 1) * sizeof(local_point_t));
+      int64_t* grown_ids =
+          realloc(other->node_ids, (other->point_count + 1) * sizeof(int64_t));
+      if (!grown_points || !grown_ids) {
+        if (grown_points) other->points = grown_points;
+        if (grown_ids) other->node_ids = grown_ids;
+        continue;
+      }
+      other->points = grown_points;
+      other->node_ids = grown_ids;
+      memmove(other->points + best_segment + 1, other->points + best_segment,
+              (other->point_count - best_segment) * sizeof(local_point_t));
+      memmove(other->node_ids + best_segment + 1,
+              other->node_ids + best_segment,
+              (other->point_count - best_segment) * sizeof(int64_t));
+      other->points[best_segment] = on;
+      other->node_ids[best_segment] = next_id;
+      other->point_count++;
+      way->points[index] = on;
+      way->node_ids[index] = next_id;
+      next_id--;
+      model->stats.ends_snapped++;
+    }
+  }
+}
+
 static void import_roads(city_model_t* model, const osm_data_t* osm,
                          const city_import_options_t* options) {
   cleaned_way_t* cleaned = calloc(osm->way_count, sizeof(cleaned_way_t));
@@ -238,6 +344,8 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
     }
     cleaned_count++;
   }
+
+  snap_dangling_ends(model, cleaned, cleaned_count, options);
 
   /* Count how each node is used across the accepted ways. */
   size_t use_capacity = 0;
@@ -738,10 +846,11 @@ bool city_import(city_model_t* model, const osm_data_t* osm,
   LOG_INFO("import",
            "%zu road segments, %zu junctions, %zu buildings, %zu areas; %zu "
            "ways ignored, "
-           "%zu degenerate, %zu malformed buildings, %zu relations skipped",
+           "%zu degenerate, %zu malformed buildings, %zu relations skipped, "
+           "%zu ends snapped",
            model->road_count, model->junction_count, model->building_count,
            model->area_count, model->stats.ways_ignored,
            model->stats.roads_degenerate, model->stats.buildings_malformed,
-           model->stats.relations_skipped);
+           model->stats.relations_skipped, model->stats.ends_snapped);
   return model->road_count > 0;
 }

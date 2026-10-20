@@ -42,9 +42,9 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   mixer.target = mixer.state;
   mixer.noise = 0x9e3779b9u;
   mixer.rpm_smoothed = 900;
-  bandpass_set(&mixer.pipe_low, 160, 1.2f, sample_rate);
-  bandpass_set(&mixer.pipe_high, 520, 2.0f, sample_rate);
-  bandpass_set(&mixer.skid_filter, 1800, 1.2f, sample_rate);
+  bandpass_set(&mixer.pipe_low, 150, 1.4f, sample_rate);
+  bandpass_set(&mixer.pipe_high, 420, 2.5f, sample_rate);
+  bandpass_set(&mixer.skid_filter, 1100, 1.6f, sample_rate);
   return mixer;
 }
 
@@ -105,21 +105,29 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       float decay = expf(-dt * (900.0f + mixer->rpm_smoothed * 0.25f));
       mixer->pulse *= decay;
       float load = 0.35f + 0.65f * mixer->throttle_smoothed;
-      float burst = mixer->pulse * noise(mixer) * load;
+      mixer->burst_lowpass = smooth(mixer->burst_lowpass, noise(mixer), 0.12f);
+      float burst = mixer->pulse * mixer->burst_lowpass * load * 1.6f;
       /* A drone at the firing rate with its octave carries the pitch; the
        * piped bursts give the engine its texture. */
       float angle = 2.0f * (float)M_PI * mixer->phase;
-      float drone = sinf(angle) * 0.5f + sinf(2.0f * angle) * 0.22f +
-                    sinf(3.0f * angle) * 0.08f;
-      float piped = bandpass_run(&mixer->pipe_low, burst) * 2.2f +
-                    bandpass_run(&mixer->pipe_high, burst) * 1.4f;
+      float drone = sinf(angle) * 0.7f + sinf(2.0f * angle) * 0.32f +
+                    sinf(3.0f * angle) * 0.14f + sinf(4.0f * angle) * 0.06f;
+      float piped = bandpass_run(&mixer->pipe_low, burst) * 1.4f +
+                    bandpass_run(&mixer->pipe_high, burst) * 0.5f;
       float intake_target = noise(mixer) *
-                            (0.02f + 0.12f * mixer->throttle_smoothed) *
+                            (0.005f + 0.03f * mixer->throttle_smoothed) *
                             (mixer->rpm_smoothed / 6000.0f);
       mixer->intake_lowpass =
-          smooth(mixer->intake_lowpass, intake_target, 0.25f);
+          smooth(mixer->intake_lowpass, intake_target, 0.06f);
       engine = (piped + drone * (0.5f + 0.5f * load) + mixer->intake_lowpass) *
                (0.5f + 0.5f * load) * 2.5f;
+      /* Two gentle poles around 1.2 kHz: the note keeps its edge, the hiss
+       * does not come through. */
+      float cut = 1.0f - expf(-2.0f * (float)M_PI * 1200.0f * dt);
+      mixer->engine_lowpass = smooth(mixer->engine_lowpass, engine, cut);
+      mixer->engine_lowpass2 =
+          smooth(mixer->engine_lowpass2, mixer->engine_lowpass, cut);
+      engine = mixer->engine_lowpass2 * 1.3f;
     }
 
     float skid = bandpass_run(&mixer->skid_filter, noise(mixer)) *
@@ -138,8 +146,8 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
 
     float wind_level = mixer->wind_smoothed / 40.0f;
     if (wind_level > 1) wind_level = 1;
-    mixer->wind_lowpass = smooth(mixer->wind_lowpass, noise(mixer), 0.05f);
-    float wind = mixer->wind_lowpass * wind_level * wind_level * 0.35f;
+    mixer->wind_lowpass = smooth(mixer->wind_lowpass, noise(mixer), 0.015f);
+    float wind = mixer->wind_lowpass * wind_level * wind_level * 0.9f;
 
     out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind) * gain);
   }

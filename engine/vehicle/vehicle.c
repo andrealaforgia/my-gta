@@ -437,7 +437,7 @@ static void update_wheel(vehicle_t* vehicle, physics_world_t* world,
     f_side *= scale;
   }
   wheel->skidding =
-      (wheel->grip_use > 1.0f && fabsf(v_forward) + fabsf(v_side) > 1.0f) ||
+      (wheel->grip_use > 1.15f && fabsf(v_forward) + fabsf(v_side) > 1.0f) ||
       (fabsf(slip) > SKID_SLIP_ANGLE && fabsf(v_forward) > 2.0f);
   vec3_t force =
       vec3_add(vec3_scale(forward, f_long), vec3_scale(side, f_side));

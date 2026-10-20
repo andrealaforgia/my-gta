@@ -16,13 +16,19 @@ needs a window or a GPU.
 | physics | a dropped box lands and rests, contact impulses, a wall stops a slide, friction, ray casts with layers and friction, torque from point forces, interpolation state |
 | vehicle | parameter loading, settling, 0 to 50 km/h, braking distance, turning direction, reverse, wet grip, reset, wheel transforms, handbrake skid |
 | camera | settles behind and above, follows at speed, a wall pulls it in, reversing |
-| audio | audible at idle, pitch follows revs, throttle raises level, silence when off, skid and impact voices, distance attenuation |
+| audio | audible at idle, pitch follows revs, throttle raises level, tonality at the firing period, silence when off, skid and impact voices, distance attenuation |
 | world | stable ids and bounds, frustum visiting, drawing only what is visible |
 | osm | the fixture loads, bad files are refused, entities unescape, projection to metres |
 | city | road classification and splitting, cleaning, junction degrees, building heights and winding, deterministic defaults, text round trip |
-| junction | corner intersections, cuts, exact patches, bevels, pavement corners, polyline cutting |
+| junction | corner intersections, cuts, exact patches, bevels, forks, pavement corners, polyline cutting |
 | generator | ear clipping, every feature becomes geometry, widths and heights, corridor fitting, lamp posts, winding, spawn on a road, package round trip and validation, determinism, settings hash |
 | citydrive | the fixture city loads from a cooked package, the car drives its spawn road and through a junction, a building stops it |
+
+`make sound` renders ten seconds of a standing start (idle, a skid at
+launch, full throttle through the gears with wind rising, an impact,
+lift-off) to `engine.wav` with no audio device, so the engine can be
+judged by ear. The audio tests bound the engine's tonality at the firing
+period, so the note stays a note and not a hiss.
 
 GPU checks are separate: `make snapshot` renders the track through a
 hidden window and fails if the frame is blank; `./render_snapshot out.bmp

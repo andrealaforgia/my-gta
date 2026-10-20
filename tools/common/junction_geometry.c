@@ -66,9 +66,13 @@ static corner_t corner_between(local_point_t centre, junction_arm_t i,
       fabs(i.direction.x * (-j.direction.z) - (-i.direction.z) * j.direction.x);
   double t, s;
   double limit = MITRE_LIMIT * fmax(offset_i, offset_j) + 1.0;
-  if (sine > PARALLEL_SINE &&
-      intersect(a, i.direction, b, j.direction, &t, &s) && fabs(t) < limit &&
-      fabs(s) < limit) {
+  bool crosses =
+      sine > PARALLEL_SINE && intersect(a, i.direction, b, j.direction, &t, &s);
+  /* Ahead of both arms (a fork) the corner is wherever the edges really
+   * clear each other, however far; behind them (the outside of a bend)
+   * a distant corner would be a spike, so it is bevelled. */
+  bool fork = crosses && t > 0 && s > 0;
+  if (crosses && (fork || (fabs(t) < limit && fabs(s) < limit))) {
     corner.points[0] = point_at(a, i.direction, t);
     corner.count = 1;
     corner.t_along_first = t;

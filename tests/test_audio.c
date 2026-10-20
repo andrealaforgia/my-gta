@@ -75,6 +75,55 @@ static void throttle_makes_the_engine_louder(void) {
   assert(peak(loud, RATE) > peak(quiet, RATE) * 1.2f);
 }
 
+/* Energy above about 2 kHz as a share of the whole: hiss and rustle live
+ * up there, an engine note does not. */
+static float treble_share(const float* samples, int count) {
+  /* Four cascaded poles at 2 kHz: the residual is what lies above, with
+   * the engine note's low harmonics leaking through 24 dB per octave down. */
+  float low[4] = {0, 0, 0, 0};
+  float total = 0, treble = 0;
+  float coefficient = 1.0f - expf(-2.0f * (float)M_PI * 2000.0f / RATE);
+  for (int i = 0; i < count; i++) {
+    float x = samples[i];
+    low[0] += (x - low[0]) * coefficient;
+    low[1] += (low[0] - low[1]) * coefficient;
+    low[2] += (low[1] - low[2]) * coefficient;
+    low[3] += (low[2] - low[3]) * coefficient;
+    float high = x - low[3];
+    total += x * x;
+    treble += high * high;
+  }
+  return total > 0 ? treble / total : 0;
+}
+
+static float tonality_at(const float* samples, int count, int lag) {
+  double num = 0, den = 0;
+  for (int i = lag; i < count; i++) {
+    num += samples[i] * samples[i - lag];
+    den += samples[i] * samples[i];
+  }
+  return den > 0 ? (float)(num / den) : 0;
+}
+
+/* The signal one firing period later should look like the signal now:
+ * that is a note. Noise does not repeat. */
+static void the_engine_is_not_mostly_hiss(void) {
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  state.engine_running = true;
+  float out[RATE];
+  float rpms[3] = {900, 3000, 5500};
+  for (int r = 0; r < 3; r++) {
+    state.rpm = rpms[r];
+    state.throttle = r == 0 ? 0.0f : 1.0f;
+    render(&mixer, state, out, RATE);
+    render(&mixer, state, out, RATE);
+    int lag = (int)(RATE / (rpms[r] / 60.0f * 2.0f));
+    assert(tonality_at(out, RATE, lag) > 0.55f);
+    assert(treble_share(out, RATE) < 0.2f);
+  }
+}
+
 static void silence_when_the_engine_is_off(void) {
   audio_mixer_t mixer = audio_mixer_create(RATE);
   audio_state_t state = audio_state_default();
@@ -123,6 +172,7 @@ void run_audio_tests(void) {
   RUN(the_engine_is_audible_at_idle_and_never_clips);
   RUN(higher_revs_raise_the_pitch);
   RUN(throttle_makes_the_engine_louder);
+  RUN(the_engine_is_not_mostly_hiss);
   RUN(silence_when_the_engine_is_off);
   RUN(skid_and_impact_voices_start_from_state_and_fade);
   RUN(distance_attenuates_the_engine);

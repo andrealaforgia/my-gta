@@ -97,6 +97,26 @@ static void a_shallow_bend_is_bevelled_not_spiked(void) {
   assert(layout.cut[0] < 2.0 && layout.cut[1] < 2.0);
 }
 
+static void a_fork_is_cut_back_until_the_ribbons_separate(void) {
+  /* Two 6 m roads leaving 15 degrees apart, as the carriageways of a
+   * dual road do: their edges only clear each other 23 m out, so that is
+   * where both must be cut, and the patch fills the wedge between. */
+  double a = 15.0 * M_PI / 180.0;
+  junction_arm_t arms[3] = {arm(1, 0, 3, 2), arm(cos(a), -sin(a), 3, 2),
+                            arm(-1, 0, 3, 2)};
+  junction_layout_t layout;
+  assert(junction_layout(origin(), arms, 3, 0.2, &layout));
+  /* The left edge of one arm meets the right edge of the other where
+   * s sin(a) - w cos(a) = w, so s = w (1 + cos a) / sin a. */
+  double expected = 3.0 * (1.0 + cos(a)) / sin(a) + 0.2;
+  assert(near_to(layout.cut[0], expected, 1e-3) &&
+         near_to(layout.cut[1], expected, 1e-3));
+  assert(inside(layout.polygon, layout.polygon_count, 10.0,
+                -1.3)); /* between the arms */
+  assert(inside(layout.polygon, layout.polygon_count, 20.0, -2.6));
+  assert(!inside(layout.polygon, layout.polygon_count, 10.0, -8.0));
+}
+
 static void different_widths_meet_cleanly(void) {
   junction_arm_t arms[3] = {arm(1, 0, 5, 2), arm(0, -1, 2, 1),
                             arm(-1, 0, 5, 2)};
@@ -132,6 +152,7 @@ void run_junction_tests(void) {
   RUN(a_right_angle_bend_fills_the_outside_corner);
   RUN(a_straight_continuation_needs_no_patch);
   RUN(a_shallow_bend_is_bevelled_not_spiked);
+  RUN(a_fork_is_cut_back_until_the_ribbons_separate);
   RUN(different_widths_meet_cleanly);
   RUN(polylines_cut_from_both_ends_across_vertices);
 }

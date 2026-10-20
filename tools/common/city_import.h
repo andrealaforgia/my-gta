@@ -17,6 +17,7 @@ typedef struct {
   float default_height_min; /* untagged buildings vary between these */
   float default_height_max;
   float min_road_length; /* shorter segments are degenerate */
+  float snap_distance;   /* join road ends this close to another road */
   bool include_service_roads;
 } city_import_options_t;
 

@@ -50,8 +50,9 @@ CITY_IMPORT = city-import
 CITY_GENERATE = city-generate
 CITY_VALIDATE = city-validate
 SNAPSHOT = render_snapshot
+SOUND = render_sound
 
-.PHONY: all tools install dev_install clean lint format test sanitize snapshot city fixture-city run run-city
+.PHONY: all tools install dev_install clean lint format test sanitize snapshot sound city fixture-city run run-city
 
 all: $(TARGET) tools
 
@@ -77,6 +78,12 @@ $(SNAPSHOT): $(filter-out game/src/main/main.o,$(GAME_OBJ)) tests/render_snapsho
 
 snapshot: $(SNAPSHOT)
 	./$(SNAPSHOT) snapshot.bmp
+
+$(SOUND): tests/render_sound.c $(ENGINE_LIB)
+	$(CC) $(CFLAGS) -o $@ $^ $(LFLAGS)
+
+sound: $(SOUND)
+	./$(SOUND) engine.wav
 
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
@@ -120,4 +127,4 @@ run-city: $(TARGET)
 
 clean:
 	rm -f $(ENGINE_OBJ) $(GAME_OBJ) $(TOOL_OBJ) $(DEP) $(ENGINE_LIB) $(TARGET) \
-	      $(CITY_IMPORT) $(CITY_GENERATE) $(CITY_VALIDATE) $(SNAPSHOT) snapshot.bmp
+	      $(CITY_IMPORT) $(CITY_GENERATE) $(CITY_VALIDATE) $(SNAPSHOT) $(SOUND) snapshot.bmp engine.wav

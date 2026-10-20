@@ -103,6 +103,7 @@ typedef struct {
   size_t relations_skipped;
   size_t areas_accepted;
   size_t rings_unclosed;
+  size_t ends_snapped;
   size_t widths_inferred;
   size_t heights_defaulted;
 } city_stats_t;

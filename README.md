@@ -26,6 +26,7 @@ make test           # every test group, no window needed
 make sanitize       # the same under AddressSanitizer and UBSan
 make lint
 make snapshot       # render a frame of the track to snapshot.bmp (needs a GPU)
+make sound          # render an engine run to engine.wav to judge by ear
 ./gta-like --help
 ```
 

@@ -70,8 +70,13 @@ have a PBF.
 
 Consecutive repeated nodes and coincident points are removed; ways with
 fewer than two distinct points or shorter than 0.5 m are dropped as
-degenerate. Ways are split at every node shared with another accepted
-way, so each road segment runs junction to junction. A junction records
+degenerate. A way whose end stops within two metres of
+another way without sharing a node is snapped onto it: to that way's
+vertex if one is in reach, otherwise onto the segment, which is split
+there with a fresh node. Mappers leave such gaps and they would otherwise
+become roads crossing without a junction. Ways are then split at every
+node shared with another accepted way, so each road segment runs
+junction to junction. A junction records
 its degree, the number of segment ends meeting there. Ways on different
 layers only connect where they share a node, which is how OSM models it.
 

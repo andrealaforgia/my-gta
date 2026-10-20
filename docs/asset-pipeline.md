@@ -73,13 +73,19 @@ the physics world with the layer and friction given.
 - Each road's width is fitted to its surroundings first: the nearest
   building edge to the centre line sets the corridor, and the road and
   its pavements shrink to fit (road half width never below 1.75 m,
-  pavements dropped below 0.4 m). Unconstrained roads keep the imported
-  width.
+  pavements dropped below 0.4 m). A road running alongside, nearly
+  parallel and sharing no node, splits the gap between the two centre
+  lines instead: the road keeps its width and gives up the pavement on
+  that side, so a dual carriageway meets at a bare median. Unconstrained
+  roads keep the imported width.
 - At every junction (`tools/common/junction_geometry.c`) the adjacent
   road edges are intersected to find the corner points; each road is cut
   back to where both its edges clear the corners plus a 0.2 m margin,
   and the gap is filled with the exact polygon through the corners and
-  road ends. Sharp corners are bevelled instead of mitred. A straight
+  road ends. Where two arms leave at a shallow angle, as the two
+  carriageways of a dual road do, the cut goes as far as the edges really
+  need to clear each other, so the ribbons never overlap; on the outside
+  of a sharp bend the corner is bevelled instead of mitred. A straight
   continuation needs no patch; a bend of any angle gets one.
 - Roads become ribbons of their fitted width on the cut polyline,
   mitred at interior points, at `road_height` above the ground.

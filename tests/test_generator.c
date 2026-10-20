@@ -256,6 +256,48 @@ static void trees_grow_in_parks_and_nowhere_else(void) {
   city_package_free(&package);
 }
 
+static void parallel_carriageways_share_the_gap_between_them(void) {
+  /* Two one-way residential streets 7 m apart with no shared node, as a
+   * dual carriageway is mapped: 6 m roads with 2 m pavements would
+   * overlap, so the pavements between them give way and the roads stay
+   * their width. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.004\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/><node id=\"2\" "
+      "lat=\"45.0000\" lon=\"12.0030\"/>"
+      "<node id=\"3\" lat=\"45.000063\" lon=\"12.0000\"/><node id=\"4\" "
+      "lat=\"45.000063\" lon=\"12.0030\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/><tag k=\"oneway\" v=\"yes\"/></way>"
+      "<way id=\"11\"><nd ref=\"4\"/><nd ref=\"3\"/><tag k=\"highway\" "
+      "v=\"residential\"/><tag k=\"oneway\" v=\"yes\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  city_generator_options_t options = city_generator_default_options();
+  options.lamp_spacing = 0;
+  city_package_t package;
+  city_generator_stats_t stats;
+  assert(city_generate(&package, &model, &options, "dual", &stats));
+  const city_part_t* road = part_for(&package, "road", 10);
+  assert(road);
+  aabb_t bounds = mesh_data_bounds(&road->mesh);
+  assert(
+      near_to(bounds.max.z - bounds.min.z, 6.0f, 0.05f)); /* full width kept */
+  const city_part_t* pavement = part_for(&package, "pavement", 10);
+  /* Either no pavement at all, or one that stays clear of the other road. */
+  if (pavement) {
+    aabb_t p = mesh_data_bounds(&pavement->mesh);
+    assert(p.max.z - p.min.z < 6.0f + 2.0f * 0.5f + 0.1f);
+  }
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void lamp_posts_stand_on_the_pavements(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -373,6 +415,7 @@ void run_generator_tests(void) {
   RUN(roads_narrow_to_fit_between_buildings);
   RUN(people_streets_paths_and_areas_get_their_own_surfaces);
   RUN(trees_grow_in_parks_and_nowhere_else);
+  RUN(parallel_carriageways_share_the_gap_between_them);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
   RUN(the_package_round_trips_and_validates);

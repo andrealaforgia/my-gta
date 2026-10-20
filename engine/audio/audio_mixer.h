@@ -44,6 +44,9 @@ typedef struct {
   bandpass_t pipe_low;
   bandpass_t pipe_high;
   bandpass_t skid_filter;
+  float engine_lowpass; /* two poles that take the hiss off the engine */
+  float engine_lowpass2;
+  float burst_lowpass; /* the exhaust burst is coloured noise, not white */
   float wind_lowpass;
   float intake_lowpass;
   float impact_lowpass;

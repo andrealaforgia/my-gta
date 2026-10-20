@@ -299,6 +299,52 @@ static double corridor_half_width(const city_model_t* model,
   return nearest;
 }
 
+/* Half the gap to the nearest other road's centre line that shares no
+ * node with this one (paths and streams excepted), or a large number. */
+static double corridor_to_roads(const city_model_t* model,
+                                const city_road_t* road, double reach) {
+  double nearest = 1e30;
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* other = &model->roads[r];
+    if (other == road || other->class == ROAD_CLASS_PATH ||
+        other->class == ROAD_CLASS_WATERWAY)
+      continue;
+    bool shares_node = false;
+    for (size_t i = 0; i < road->point_count && !shares_node; i++)
+      for (size_t k = 0; k < other->point_count && !shares_node; k++)
+        if (road->node_ids[i] == other->node_ids[k]) shares_node = true;
+    if (shares_node) continue;
+    for (size_t i = 1; i < road->point_count; i++) {
+      local_point_t p = road->points[i - 1], q = road->points[i];
+      vec2_t direction = v2_normalize(v2_sub(q, p));
+      double length = hypot(q.x - p.x, q.z - p.z);
+      int samples = (int)(length / 3.0) + 1;
+      for (int k = 0; k <= samples; k++) {
+        double t = (double)k / (double)samples;
+        local_point_t sample = {p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t};
+        for (size_t m = 1; m < other->point_count; m++) {
+          local_point_t a = other->points[m - 1], b = other->points[m];
+          vec2_t other_direction = v2_normalize(v2_sub(b, a));
+          /* Only a road running alongside counts: nearly parallel, and
+           * the sample lies beside the segment rather than past its end. */
+          double cosine =
+              direction.x * other_direction.x + direction.z * other_direction.z;
+          if (fabs(cosine) < 0.9) continue;
+          double abx = b.x - a.x, abz = b.z - a.z;
+          double length2 = abx * abx + abz * abz;
+          if (length2 < 1e-9) continue;
+          double u =
+              ((sample.x - a.x) * abx + (sample.z - a.z) * abz) / length2;
+          if (u < 0 || u > 1) continue;
+          double d = point_segment_distance(sample, a, b);
+          if (d < reach && d < nearest) nearest = d;
+        }
+      }
+    }
+  }
+  return nearest * 0.5;
+}
+
 static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
                            const city_generator_options_t* o) {
   road_fit_t fit;
@@ -311,6 +357,16 @@ static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
   if (road->class == ROAD_CLASS_PATH || road->class == ROAD_CLASS_WATERWAY)
     return fit;
   const double gap = 0.3, narrowest = 1.75;
+  /* Another road close alongside: keep this road's width and give up
+   * the pavement on the gap, so two carriageways meet at a median. */
+  double to_roads = corridor_to_roads(
+      model, road, 2.0 * (fit.half_width + fit.pavement + 1.0));
+  if (to_roads < fit.half_width + fit.pavement + gap) {
+    double available = fmax(to_roads - 0.1, narrowest);
+    fit.half_width = fmin(fit.half_width, available);
+    fit.pavement = fmin(fmax(available - fit.half_width, 0.0), fit.pavement);
+    if (fit.pavement < 0.4) fit.pavement = 0;
+  }
   double wanted = fit.half_width + fit.pavement + gap;
   double corridor = corridor_half_width(model, road, wanted + 1.0);
   if (corridor >= wanted) return fit;

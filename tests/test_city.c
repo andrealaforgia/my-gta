@@ -177,6 +177,37 @@ static void areas_come_from_land_use_water_parking_and_squares(void) {
   city_model_free(&model);
 }
 
+static void dangling_road_ends_snap_onto_the_road_they_nearly_reach(void) {
+  /* A north-south street whose last node stops about a metre short of
+   * an east-west street, as happens when a mapper forgot to join them. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0015\" lon=\"12.0010\"/>"
+      "<node id=\"4\" lat=\"45.0000100\" lon=\"12.0010\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  /* The east-west street is split where the other one arrives, so there
+   * are three segments and a T-junction of degree three. */
+  assert(model.road_count == 3);
+  int degree_three = 0;
+  for (size_t j = 0; j < model.junction_count; j++)
+    if (model.junctions[j].degree == 3) degree_three++;
+  assert(degree_three == 1);
+  assert(model.stats.ends_snapped == 1);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -210,5 +241,6 @@ void run_city_tests(void) {
   RUN(building_rings_are_anticlockwise_seen_from_above);
   RUN(default_heights_are_stable_for_the_same_source);
   RUN(areas_come_from_land_use_water_parking_and_squares);
+  RUN(dangling_road_ends_snap_onto_the_road_they_nearly_reach);
   RUN(the_model_round_trips_through_its_text_format);
 }
