@@ -25,6 +25,7 @@ static material_t material_for(const char* name,
       {"ground", textures->earth, vec3(0.95f, 0.95f, 0.95f), 1.0f},
       {"roof", textures->roof, vec3(0.9f, 0.9f, 0.9f), 0.9f},
       {"facade_fresco", textures->facade_fresco, vec3(1, 1, 1), 0.8f},
+      {"facade_brick", textures->facade_brick, vec3(1, 1, 1), 0.85f},
       {"roof_slate", textures->roof_slate, vec3(0.95f, 0.95f, 0.95f), 0.8f},
       {"roof_flat", textures->roof_flat, vec3(0.95f, 0.95f, 0.95f), 0.9f},
       {"lamp", {0}, vec3(0.22f, 0.23f, 0.25f), 0.45f},
@@ -117,13 +118,13 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   if (!city_package_read(&package, package_directory)) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
   static const char* materials[] = {
-      "grass",    "road",       "junction",   "pavement",      "kerb",
-      "roof",     "roof_slate", "roof_flat",  "facade_fresco", "facade0",
-      "facade1",  "facade2",    "facade3",    "facade4",       "facade5",
-      "facade6",  "facade7",    "facade8",    "facade9",       "facade10",
-      "facade11", "lamp",       "lamp_light", "paving",        "parking",
-      "park",     "water",      "trunk",      "leaves",        "marking",
-      "ground"};
+      "grass",    "road",       "junction",  "pavement",      "kerb",
+      "roof",     "roof_slate", "roof_flat", "facade_fresco", "facade_brick",
+      "facade0",  "facade1",    "facade2",   "facade3",       "facade4",
+      "facade5",  "facade6",    "facade7",   "facade8",       "facade9",
+      "facade10", "facade11",   "lamp",      "lamp_light",    "paving",
+      "parking",  "park",       "water",     "trunk",         "leaves",
+      "marking",  "ground"};
   int draws = 0, colliders = 0;
   bool ok = true;
   for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {

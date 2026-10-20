@@ -358,9 +358,10 @@ static bool write_buildings(const city_model_t* model, const char* directory) {
   fprintf(file, "# city-intermediate %d buildings\n", CITY_MODEL_VERSION);
   for (size_t i = 0; i < model->building_count; i++) {
     const city_building_t* b = &model->buildings[i];
-    fprintf(file, "building %lld %.3f %d %d %s %zu %zu\n",
+    fprintf(file, "building %lld %.3f %d %d %s %zu %zu %s\n",
             (long long)b->source_id, b->height, (int)b->height_source,
-            b->levels, or_dash(b->category), b->point_count, b->hole_count);
+            b->levels, or_dash(b->category), b->point_count, b->hole_count,
+            or_dash(b->name));
     for (size_t p = 0; p < b->point_count; p++)
       fprintf(file, "p %.4f %.4f\n", b->points[p].x, b->points[p].z);
     for (size_t h = 0; h < b->hole_count; h++) {
@@ -519,10 +520,11 @@ static bool read_buildings(city_model_t* model, const char* directory) {
       float height;
       int source, levels;
       char category[CITY_TEXT_LENGTH];
+      char name[CITY_TEXT_LENGTH] = "-";
       size_t count;
       size_t holes = 0;
-      if (sscanf(line, "building %lld %f %d %d %63s %zu %zu", &id, &height,
-                 &source, &levels, category, &count, &holes) < 6) {
+      if (sscanf(line, "building %lld %f %d %d %63s %zu %zu %63s", &id, &height,
+                 &source, &levels, category, &count, &holes, name) < 6) {
         fclose(file);
         return false;
       }
@@ -533,6 +535,7 @@ static bool read_buildings(city_model_t* model, const char* directory) {
       building->height_source = (height_source_t)source;
       building->levels = levels;
       copy_field(building->category, sizeof(building->category), category);
+      copy_field(building->name, sizeof(building->name), name);
       building->points = calloc(count, sizeof(local_point_t));
       expected = count;
       hole_points = NULL;

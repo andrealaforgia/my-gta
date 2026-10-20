@@ -852,6 +852,12 @@ static void add_building(city_model_t* model, int64_t source_id,
   const char* category = osm_tag(tags, tag_count, "building");
   snprintf(building->category, sizeof(building->category), "%s",
            category && category[0] ? category : "yes");
+  const char* name = osm_tag(tags, tag_count, "name");
+  if (name) {
+    snprintf(building->name, sizeof(building->name), "%s", name);
+    for (char* c = building->name; *c; c++)
+      if (*c == ' ') *c = '_';
+  }
   const char* height = osm_tag(tags, tag_count, "height");
   const char* levels = osm_tag(tags, tag_count, "building:levels");
   bool ok = false;

@@ -1688,6 +1688,175 @@ static void finish_building(layout_t* layout, const city_building_t* building,
   }
 }
 
+/* ---- landmarks ---- */
+
+typedef enum { LANDMARK_NONE, LANDMARK_TOWN_HALL, LANDMARK_CHURCH } landmark_t;
+
+static bool name_has(const char* name, const char* word) {
+  size_t n = strlen(word);
+  for (const char* c = name; *c; c++) {
+    size_t k = 0;
+    while (k < n && c[k] && tolower((unsigned char)c[k]) == word[k]) k++;
+    if (k == n) return true;
+  }
+  return false;
+}
+
+static landmark_t landmark_for(const city_building_t* building) {
+  if (name_has(building->name, "municipio")) return LANDMARK_TOWN_HALL;
+  if (name_has(building->name, "chiesa") || name_has(building->name, "duomo"))
+    return LANDMARK_CHURCH;
+  return LANDMARK_NONE;
+}
+
+/* A square tower from the ground to `height`, ending in a four-sided spire
+ * that rises `spire` further. Walls go into `walls`, the spire into `roof`. */
+static bool add_tower(city_part_t* walls, city_part_t* roof,
+                      local_point_t centre, vec2_t axis, double half,
+                      float height, float spire, float skirt,
+                      const city_generator_options_t* o) {
+  vec2_t across = v2(-axis.z, axis.x);
+  local_point_t corner[4];
+  double signs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+  for (int k = 0; k < 4; k++) {
+    corner[k].x =
+        centre.x + axis.x * half * signs[k][0] + across.x * half * signs[k][1];
+    corner[k].z =
+        centre.z + axis.z * half * signs[k][0] + across.z * half * signs[k][1];
+  }
+  for (int k = 0; k < 4; k++) {
+    local_point_t p = corner[k], q = corner[(k + 1) % 4];
+    vec2_t d = v2_normalize(v2_sub(q, p));
+    vec3_t normal = vec3((float)-d.z, 0, (float)d.x);
+    float u = (float)(2 * half / o->window_width);
+    if (!add_wall_quad(walls, p, q, -skirt, height, normal, 0, u,
+                       -skirt / o->storey_height, height / o->storey_height))
+      return false;
+  }
+  /* The spire: a pyramid from slightly overhanging eaves to the apex. */
+  vec3_t apex = vec3((float)centre.x, height + spire, (float)centre.z);
+  for (int k = 0; k < 4; k++) {
+    local_point_t p = corner[k], q = corner[(k + 1) % 4];
+    local_point_t mid = {(p.x + q.x) * 0.5, (p.z + q.z) * 0.5};
+    vec3_t normal = vec3_normalize(vec3((float)(mid.x - centre.x),
+                                        spire / (float)half * 0.5f,
+                                        (float)(mid.z - centre.z)));
+    uint32_t base = (uint32_t)roof->mesh.vertex_count;
+    if (!add_vertex(&roof->mesh, at(p, height), normal, 0, 0) ||
+        !add_vertex(&roof->mesh, at(q, height), normal, 1, 0) ||
+        !add_vertex(&roof->mesh, apex, normal, 0.5f, 1))
+      return false;
+    if (!add_face(&roof->mesh, base, base + 1, base + 2, normal)) return false;
+  }
+  return true;
+}
+
+/* The nearest road distance from a point, or a large number. */
+static double distance_to_roads(const city_model_t* model, local_point_t p) {
+  double nearest = 1e30;
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (road->class == ROAD_CLASS_WATERWAY) continue;
+    for (size_t k = 1; k < road->point_count; k++)
+      nearest = fmin(nearest, point_segment_distance(p, road->points[k - 1],
+                                                     road->points[k]));
+  }
+  return nearest;
+}
+
+/* Adds the landmark's tower to the building's parts, returning the centre
+ * and the top height of its clock (or 0 for none) through the outputs. */
+static bool add_landmark(layout_t* layout, const city_building_t* building,
+                         city_part_t* walls, city_part_t* roof, float skirt,
+                         landmark_t kind, local_point_t* tower_centre,
+                         vec2_t* tower_axis, float* clock_height) {
+  const city_generator_options_t* o = layout->options;
+  bounding_rectangle_t r =
+      bounding_rectangle(building->points, building->point_count);
+  double mid_along = 0.5 * (r.along_min + r.along_max);
+  double mid_across = 0.5 * (r.across_min + r.across_max);
+  double half = kind == LANDMARK_TOWN_HALL ? 3.2 : 2.7;
+  /* The side or end that faces the nearer street. */
+  local_point_t a, b;
+  double inset = half + 0.3;
+  if (kind == LANDMARK_TOWN_HALL) {
+    a = (local_point_t){
+        r.axis.x * mid_along + r.across.x * (r.across_min + inset),
+        r.axis.z * mid_along + r.across.z * (r.across_min + inset)};
+    b = (local_point_t){
+        r.axis.x * mid_along + r.across.x * (r.across_max - inset),
+        r.axis.z * mid_along + r.across.z * (r.across_max - inset)};
+  } else {
+    a = (local_point_t){
+        r.axis.x * (r.along_min + inset) + r.across.x * mid_across,
+        r.axis.z * (r.along_min + inset) + r.across.z * mid_across};
+    b = (local_point_t){
+        r.axis.x * (r.along_max - inset) + r.across.x * mid_across,
+        r.axis.z * (r.along_max - inset) + r.across.z * mid_across};
+  }
+  local_point_t centre =
+      distance_to_roads(layout->model, a) <= distance_to_roads(layout->model, b)
+          ? a
+          : b;
+  float top = kind == LANDMARK_TOWN_HALL ? 26.0f : 30.0f;
+  float spire = kind == LANDMARK_TOWN_HALL ? 7.0f : 9.0f;
+  *tower_centre = centre;
+  *tower_axis = r.axis;
+  *clock_height = kind == LANDMARK_TOWN_HALL ? top - 4.5f : 0.0f;
+  return add_tower(walls, roof, centre, r.axis, half, top, spire, skirt, o);
+}
+
+/* Four clock faces, one a side, drawn glowing like the lamps at night. */
+static bool add_clock_faces(layout_t* layout, const city_building_t* building,
+                            city_chunk_t* chunk, local_point_t centre,
+                            vec2_t axis, float height) {
+  city_part_t* clock =
+      city_chunk_add_part(chunk, "lamp_light", PART_COLLIDER_NONE, 0, 0,
+                          (uint64_t)building->source_id);
+  if (!clock) return false;
+  double half = 3.2 + 0.03;
+  vec2_t across = v2(-axis.z, axis.x);
+  for (int k = 0; k < 4; k++) {
+    double angle = k * M_PI * 0.5;
+    vec2_t out = v2(axis.x * cos(angle) + across.x * sin(angle),
+                    axis.z * cos(angle) + across.z * sin(angle));
+    vec2_t side = v2(-out.z, out.x);
+    local_point_t face = {centre.x + out.x * half, centre.z + out.z * half};
+    local_point_t p = offset(face, side, -1.2), q = offset(face, side, 1.2);
+    vec3_t normal = vec3((float)out.x, 0, (float)out.z);
+    if (!add_wall_quad(clock, p, q, height - 1.2f, height + 1.2f, normal, 0, 1,
+                       0, 1))
+      return false;
+  }
+  float base = layout->terrain ? (float)city_terrain_height(layout->terrain,
+                                                            centre.x, centre.z)
+                               : 0.0f;
+  for (size_t v = 0; v < clock->mesh.vertex_count; v++)
+    clock->mesh.vertices[v].position.y += base;
+  finish_part(chunk, clock);
+  return true;
+}
+
+/* Finishes the building's parts, with its landmark tower and clock. */
+static bool finish_landmark_building(layout_t* layout,
+                                     const city_building_t* building,
+                                     city_chunk_t* chunk, city_part_t* walls,
+                                     city_part_t* roof, city_part_t* walkway,
+                                     landmark_t landmark, float skirt) {
+  local_point_t centre = {0, 0};
+  vec2_t axis = v2(1, 0);
+  float clock_height = 0;
+  if (landmark != LANDMARK_NONE &&
+      !add_landmark(layout, building, walls, roof, skirt, landmark, &centre,
+                    &axis, &clock_height))
+    return false;
+  finish_building(layout, building, chunk, walls, roof, walkway);
+  if (clock_height > 0 &&
+      !add_clock_faces(layout, building, chunk, centre, axis, clock_height))
+    return false;
+  return true;
+}
+
 static bool generate_building(layout_t* layout, const city_building_t* building,
                               city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -1702,6 +1871,9 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
     on_the_arcade = edge_faces_arcade(layout->model, o, building, i,
                                       building_depth(building));
   if (on_the_arcade) snprintf(facade, sizeof(facade), "facade_fresco");
+  landmark_t landmark = landmark_for(building);
+  if (landmark == LANDMARK_TOWN_HALL)
+    snprintf(facade, sizeof(facade), "facade_brick");
   city_part_t* walls = city_chunk_add_part(
       chunk, facade, PART_COLLIDER_MESH, COLLISION_LAYER_BUILDING,
       o->building_friction, (uint64_t)building->source_id);
@@ -1757,7 +1929,9 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   bool pitched = false;
   if (!add_pitched_roof(roof, walls, building, h, o, &pitched)) return false;
   if (pitched) {
-    finish_building(layout, building, chunk, walls, roof, walkway);
+    if (!finish_landmark_building(layout, building, chunk, walls, roof, walkway,
+                                  landmark, skirt))
+      return false;
     stats->buildings++;
     return true;
   }
@@ -1820,7 +1994,9 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   free(hole_points);
   free(hole_counts);
   if (!roof_ok) return false;
-  finish_building(layout, building, chunk, walls, roof, walkway);
+  if (!finish_landmark_building(layout, building, chunk, walls, roof, walkway,
+                                landmark, skirt))
+    return false;
   stats->buildings++;
   return true;
 }

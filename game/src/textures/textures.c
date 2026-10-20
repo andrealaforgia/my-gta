@@ -240,6 +240,27 @@ uint8_t* texture_facade_fresco(unsigned seed) {
   return pixels;
 }
 
+/* Red brick in stretcher bond for the Municipio, windows kept. */
+uint8_t* texture_facade_brick(unsigned seed) {
+  uint8_t* pixels = texture_facade(seed, 1, 1);
+  if (!pixels) return NULL;
+  for (int y = 0; y < TEXTURE_SIZE; y++)
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      uint8_t* q = pixels + (y * TEXTURE_SIZE + x) * 4;
+      bool plaster = q[0] > 150 && q[0] >= q[2] + 15 && q[1] > 110;
+      if (!plaster) continue;
+      int row = y / 6, shifted = x + (row % 2) * 8;
+      bool mortar = (y % 6) < 1 || (shifted % 16) < 1;
+      float n =
+          0.88f + 0.24f * noise((unsigned)(shifted / 16), (unsigned)row, seed);
+      if (mortar)
+        put(pixels, x, y, 0.72f, 0.68f, 0.62f);
+      else
+        put(pixels, x, y, 0.62f * n, 0.30f * n, 0.22f * n);
+    }
+  return pixels;
+}
+
 uint8_t* texture_roof_slate(unsigned seed) {
   uint8_t* pixels = grainy(seed, 0.34f, 0.35f, 0.38f, 0.2f, 0.1f);
   if (!pixels) return NULL;
@@ -308,6 +329,7 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.facade = set.facades[0];
   set.roof = upload(renderer, texture_roof(6));
   set.facade_fresco = upload(renderer, texture_facade_fresco(5));
+  set.facade_brick = upload(renderer, texture_facade_brick(23));
   set.roof_slate = upload(renderer, texture_roof_slate(8));
   set.roof_flat = upload(renderer, texture_roof_flat(9));
   set.checker = upload(renderer, texture_checker());

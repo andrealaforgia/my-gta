@@ -62,7 +62,8 @@ static const city_part_t* facade_for(const city_package_t* package,
     const city_part_t* walls = part_for(package, name, source);
     if (walls) return walls;
   }
-  return part_for(package, "facade_fresco", source);
+  const city_part_t* brick = part_for(package, "facade_brick", source);
+  return brick ? brick : part_for(package, "facade_fresco", source);
 }
 
 static const city_part_t* roof_for(const city_package_t* package,
@@ -715,6 +716,60 @@ static void the_package_carries_routes_and_parking_places(void) {
   city_package_free(&package);
 }
 
+static void the_town_hall_and_churches_get_towers_and_the_hall_is_brick(void) {
+  /* A 40 x 20 m "Municipio" and a 12 x 30 m "Chiesa", each 14 m high, and a
+   * plain house of the same size as the hall. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.00051\"/>"
+      "<node id=\"3\" lat=\"45.00018\" lon=\"12.00051\"/>"
+      "<node id=\"4\" lat=\"45.00018\" lon=\"12.0000\"/>"
+      "<node id=\"11\" lat=\"45.0006\" lon=\"12.0000\"/>"
+      "<node id=\"12\" lat=\"45.0006\" lon=\"12.00015\"/>"
+      "<node id=\"13\" lat=\"45.00087\" lon=\"12.00015\"/>"
+      "<node id=\"14\" lat=\"45.00087\" lon=\"12.0000\"/>"
+      "<node id=\"21\" lat=\"45.0012\" lon=\"12.0000\"/>"
+      "<node id=\"22\" lat=\"45.0012\" lon=\"12.00051\"/>"
+      "<node id=\"23\" lat=\"45.00138\" lon=\"12.00051\"/>"
+      "<node id=\"24\" lat=\"45.00138\" lon=\"12.0000\"/>"
+      "<way id=\"1\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd "
+      "ref=\"4\"/><nd ref=\"1\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"14\"/><tag k=\"name\" v=\"Municipio di Test\"/></way>"
+      "<way id=\"2\"><nd ref=\"11\"/><nd ref=\"12\"/><nd ref=\"13\"/><nd "
+      "ref=\"14\"/><nd ref=\"11\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"14\"/><tag k=\"name\" v=\"Chiesa di Test\"/></way>"
+      "<way id=\"3\"><nd ref=\"21\"/><nd ref=\"22\"/><nd ref=\"23\"/><nd "
+      "ref=\"24\"/><nd ref=\"21\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"14\"/></way>"
+      "<way id=\"9\"><nd ref=\"1\"/><nd ref=\"21\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* hall = facade_for(&package, 1);
+  assert(hall && strcmp(hall->material, "facade_brick") == 0);
+  const city_part_t* hall_roof = roof_for(&package, 1);
+  float hall_top = fmaxf(mesh_data_bounds(&hall->mesh).max.y,
+                         mesh_data_bounds(&hall_roof->mesh).max.y);
+  assert(hall_top > 14.0f + 14.0f); /* a clock tower and its spire */
+  const city_part_t* clock = part_for(&package, "lamp_light", 1);
+  assert(clock && mesh_data_triangle_count(&clock->mesh) == 8); /* 4 faces */
+  const city_part_t* church = facade_for(&package, 2);
+  const city_part_t* church_roof = roof_for(&package, 2);
+  assert(strcmp(church->material, "facade_brick") != 0);
+  float church_top = fmaxf(mesh_data_bounds(&church->mesh).max.y,
+                           mesh_data_bounds(&church_roof->mesh).max.y);
+  assert(church_top > 28.0f); /* a campanile */
+  const city_part_t* house = facade_for(&package, 3);
+  const city_part_t* house_roof = roof_for(&package, 3);
+  assert(strcmp(house->material, "facade_brick") != 0);
+  assert(mesh_data_bounds(&house_roof->mesh).max.y < 14.0f + 6.0f);
+  assert(part_for(&package, "lamp_light", 3) == NULL);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -884,6 +939,7 @@ void run_generator_tests(void) {
   RUN(a_slender_tower_gets_a_tall_spire);
   RUN(single_trees_stand_where_they_are_mapped);
   RUN(the_package_carries_routes_and_parking_places);
+  RUN(the_town_hall_and_churches_get_towers_and_the_hall_is_brick);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

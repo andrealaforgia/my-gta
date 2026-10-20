@@ -81,6 +81,7 @@ typedef struct {
   height_source_t height_source;
   int levels;
   char category[CITY_TEXT_LENGTH];
+  char name[CITY_TEXT_LENGTH]; /* from the name tag, spaces as underscores */
   /* Closed ring, last point not repeated, anticlockwise from above. */
   local_point_t* points;
   size_t point_count;

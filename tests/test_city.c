@@ -440,6 +440,42 @@ static void single_trees_are_imported_and_survive_the_model(void) {
   city_model_free(&model);
 }
 
+static void building_names_are_kept_and_written(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0003\"/>"
+      "<node id=\"3\" lat=\"45.0002\" lon=\"12.0003\"/>"
+      "<node id=\"4\" lat=\"45.0002\" lon=\"12.0000\"/>"
+      "<way id=\"20\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd "
+      "ref=\"4\"/><nd ref=\"1\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"name\" v=\"Municipio di Test\"/></way>"
+      "<way id=\"21\"><nd ref=\"1\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  const city_building_t* named = building(&model, 20);
+  assert(named && strcmp(named->name, "Municipio_di_Test") == 0);
+  const char* directory = "/tmp/gta-like-test-names-model";
+  assert(city_model_write(&model, directory));
+  city_model_t loaded;
+  assert(city_model_read(&loaded, directory));
+  assert(strcmp(building(&loaded, 20)->name, "Municipio_di_Test") == 0);
+  city_model_free(&loaded);
+  city_model_free(&model);
+  /* Unnamed buildings stay unnamed through the file. */
+  city_model_t fixture = import_fixture();
+  assert(city_model_write(&fixture, directory));
+  assert(city_model_read(&loaded, directory));
+  assert(building(&loaded, 201)->name[0] == 0);
+  city_model_free(&loaded);
+  city_model_free(&fixture);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -480,5 +516,6 @@ void run_city_tests(void) {
   RUN(tunnels_and_driveways_are_not_drawn_but_alleys_are);
   RUN(an_elevation_lattice_becomes_a_terrain_that_survives_the_model);
   RUN(single_trees_are_imported_and_survive_the_model);
+  RUN(building_names_are_kept_and_written);
   RUN(the_model_round_trips_through_its_text_format);
 }
