@@ -39,6 +39,9 @@ struct traffic {
   const fleet_t* fleet;
   uint32_t random;
   float ground_clock;
+  const float* signals;
+  size_t signal_count;
+  bool signals_go;
 };
 
 static uint32_t next_random(traffic_t* t) {
@@ -85,6 +88,7 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
   traffic_t* t = calloc(1, sizeof(traffic_t));
   if (!t) return NULL;
   t->fleet = fleet;
+  t->signals_go = true;
   t->random = seed * 2654435761u + 12345u;
   t->lane_count = route_count;
   t->lanes = calloc(route_count ? route_count : 1, sizeof(lane_t));
@@ -153,6 +157,18 @@ void traffic_destroy(traffic_t* t, physics_world_t* physics) {
   free(t->lanes);
   free(t->cars);
   free(t);
+}
+
+void traffic_set_signals(traffic_t* t, const float* xz, size_t count) {
+  t->signals = xz;
+  t->signal_count = count;
+}
+
+void traffic_set_signals_go(traffic_t* t, bool go) { t->signals_go = go; }
+
+bool traffic_signals_open(float seconds) {
+  float phase = fmodf(seconds, 48.0f);
+  return phase >= 24.0f && phase < 45.0f;
 }
 
 size_t traffic_car_count(const traffic_t* t) { return t->car_count; }
@@ -289,6 +305,19 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       }
       if (blocked) {
         float room = to_end - 7.6f;
+        limit =
+            fminf(limit, room > 0 ? sqrtf(2.0f * BRAKING * 0.6f * room) : 0.0f);
+      }
+    }
+    /* A red signal ahead: stop six metres short of it. */
+    if (!t->signals_go) {
+      for (size_t k = 0; k < t->signal_count; k++) {
+        float rx = t->signals[2 * k] - car->position.x;
+        float rz = t->signals[2 * k + 1] - car->position.z;
+        float ahead = rx * fx + rz * fz;
+        float side = fabsf(rx * -fz + rz * fx);
+        if (ahead < 1.0f || ahead > 30.0f || side > 8.0f) continue;
+        float room = ahead - 6.0f;
         limit =
             fminf(limit, room > 0 ? sqrtf(2.0f * BRAKING * 0.6f * room) : 0.0f);
       }

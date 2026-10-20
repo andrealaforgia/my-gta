@@ -87,7 +87,30 @@ static void tagged_nodes_are_noticed_when_they_are_trees(void) {
   osm_free(&data);
 }
 
+static void street_furniture_nodes_are_told_apart(void) {
+  const char* xml =
+      "<osm><node id=\"1\" lat=\"45.0\" lon=\"12.0\"><tag k=\"amenity\" "
+      "v=\"bench\"/></node>"
+      "<node id=\"2\" lat=\"45.0\" lon=\"12.001\"><tag k=\"highway\" "
+      "v=\"bus_stop\"/><tag k=\"name\" v=\"Piazza\"/></node>"
+      "<node id=\"3\" lat=\"45.0\" lon=\"12.002\"><tag k=\"barrier\" "
+      "v=\"bollard\"/></node>"
+      "<node id=\"4\" lat=\"45.0\" lon=\"12.003\"><tag k=\"highway\" "
+      "v=\"traffic_signals\"/></node>"
+      "<node id=\"5\" lat=\"45.0\" lon=\"12.004\"><tag k=\"shop\" "
+      "v=\"bakery\"/></node></osm>";
+  osm_data_t data;
+  assert(osm_parse(&data, xml));
+  assert(osm_find_node(&data, 1)->furniture == OSM_FURNITURE_BENCH);
+  assert(osm_find_node(&data, 2)->furniture == OSM_FURNITURE_BUS_STOP);
+  assert(osm_find_node(&data, 3)->furniture == OSM_FURNITURE_BOLLARD);
+  assert(osm_find_node(&data, 4)->furniture == OSM_FURNITURE_SIGNALS);
+  assert(osm_find_node(&data, 5)->furniture == OSM_FURNITURE_NONE);
+  osm_free(&data);
+}
+
 void run_osm_tests(void) {
+  RUN(street_furniture_nodes_are_told_apart);
   RUN(tagged_nodes_are_noticed_when_they_are_trees);
   RUN(the_fixture_loads_with_nodes_ways_tags_and_relations);
   RUN(a_missing_or_broken_file_is_reported);

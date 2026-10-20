@@ -19,11 +19,21 @@ typedef struct {
   char value[OSM_VALUE_LENGTH];
 } osm_tag_t;
 
+typedef enum {
+  OSM_FURNITURE_NONE,
+  OSM_FURNITURE_BENCH,
+  OSM_FURNITURE_BUS_STOP,
+  OSM_FURNITURE_BOLLARD,
+  OSM_FURNITURE_SIGNALS
+} osm_furniture_t;
+
 typedef struct {
   int64_t id;
   double lat;
   double lon;
-  bool tree; /* tagged natural=tree; no other node tags are kept */
+  bool tree; /* tagged natural=tree */
+  /* Bench, bus stop, bollard or signals: the only other node tags kept. */
+  osm_furniture_t furniture;
 } osm_node_t;
 
 typedef struct {

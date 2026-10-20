@@ -896,6 +896,54 @@ static void roads_have_manhole_covers_here_and_there(void) {
   city_package_free(&package);
 }
 
+static void benches_bus_stops_bollards_and_signals_stand_where_mapped(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0030\"/>"
+      "<node id=\"3\" lat=\"45.0001\" lon=\"12.0005\"><tag k=\"amenity\" "
+      "v=\"bench\"/></node>"
+      "<node id=\"4\" lat=\"45.0001\" lon=\"12.0010\"><tag k=\"highway\" "
+      "v=\"bus_stop\"/></node>"
+      "<node id=\"5\" lat=\"45.0001\" lon=\"12.0015\"><tag k=\"barrier\" "
+      "v=\"bollard\"/></node>"
+      "<node id=\"6\" lat=\"45.0001\" lon=\"12.0020\"><tag k=\"highway\" "
+      "v=\"traffic_signals\"/></node>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  /* Every item is a small solid thing standing near where it was mapped. */
+  size_t found = 0;
+  for (size_t f = 0; f < model.furniture_count; f++) {
+    float x = (float)model.furniture[f].x, z = (float)model.furniture[f].z;
+    bool near = false;
+    for (size_t c = 0; c < package.chunk_count; c++)
+      for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+        const city_part_t* part = &package.chunks[c].parts[p];
+        if (strcmp(part->material, "furniture") != 0) continue;
+        assert(part->collider == PART_COLLIDER_MESH);
+        aabb_t bounds = mesh_data_bounds(&part->mesh);
+        assert(bounds.max.y < 4.5f && bounds.min.y >= -0.01f);
+        for (size_t v = 0; v < part->mesh.vertex_count && !near; v++) {
+          vec3_t q = part->mesh.vertices[v].position;
+          near = fabsf(q.x - x) < 2.0f && fabsf(q.z - z) < 2.0f;
+        }
+      }
+    if (near) found++;
+  }
+  assert(found >= 3); /* bench, bus stop, bollard (the signal is a pole too) */
+  /* A signal head shows its three lamps, and the model also keeps where it is.
+   */
+  assert(part_for(&package, "signal_red", 0) != NULL);
+  assert(part_for(&package, "signal_amber", 0) != NULL);
+  assert(part_for(&package, "signal_green", 0) != NULL);
+  assert(package.signal_count == 1);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -952,6 +1000,10 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
       if (strcmp(part->material, "kerb") == 0 ||
           strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "manhole") == 0 ||
+          strcmp(part->material, "furniture") == 0 ||
+          strcmp(part->material, "signal_red") == 0 ||
+          strcmp(part->material, "signal_amber") == 0 ||
+          strcmp(part->material, "signal_green") == 0 ||
           strcmp(part->material, "sign_red") == 0 ||
           strcmp(part->material, "sign_pole") == 0 ||
           strcmp(part->material, "lamp") == 0 ||
@@ -1072,6 +1124,7 @@ void run_generator_tests(void) {
   RUN(buildings_on_main_streets_get_shopfronts_at_street_level);
   RUN(side_streets_get_a_stop_sign_at_the_main_road);
   RUN(roads_have_manhole_covers_here_and_there);
+  RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

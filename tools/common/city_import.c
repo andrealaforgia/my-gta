@@ -1097,6 +1097,16 @@ bool city_import(city_model_t* model, const osm_data_t* osm,
   import_roads(model, osm, &options);
   import_buildings_and_areas(model, osm, &options);
   for (size_t n = 0; n < osm->node_count; n++) {
+    if (osm->nodes[n].furniture != OSM_FURNITURE_NONE) {
+      city_furniture_t* grown = realloc(
+          model->furniture, (model->furniture_count + 1) * sizeof(*grown));
+      if (!grown) break;
+      model->furniture = grown;
+      local_point_t p = projection_project(
+          &model->projection, osm->nodes[n].lat, osm->nodes[n].lon);
+      city_furniture_t item = {(int)osm->nodes[n].furniture, p.x, p.z};
+      model->furniture[model->furniture_count++] = item;
+    }
     if (!osm->nodes[n].tree) continue;
     local_point_t* grown =
         realloc(model->trees, (model->tree_count + 1) * sizeof(*grown));

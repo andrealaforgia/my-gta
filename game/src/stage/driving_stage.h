@@ -56,8 +56,9 @@ typedef struct {
   bool paused;
   float rain; /* 0..1, eased towards rain_target */
   float rain_target;
-  float rain_clock; /* animates the falling drops */
-  float hour;       /* time of day, 0..24 */
+  float rain_clock;   /* animates the falling drops */
+  float signal_clock; /* seconds on the traffic signals' cycle */
+  float hour;         /* time of day, 0..24 */
   float hour_seconds;
   skid_marks_t skid_marks;
   mesh_handle_t skid_strip;

@@ -64,6 +64,9 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     if (stage->people)
       stage->people_meshes = pedestrian_meshes_create(renderer);
   }
+  if (stage->traffic)
+    traffic_set_signals(stage->traffic, stage->scene.signals,
+                        stage->scene.signal_count);
   skid_marks_reset(&stage->skid_marks);
   stage->skid_strip = skid_mark_mesh_create(renderer);
   stage->rain = options.rain;
@@ -181,6 +184,10 @@ void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
     else
       stage->rain = fmaxf(stage->rain_target, stage->rain - step);
     stage->rain_clock += (float)frame_seconds;
+    stage->signal_clock += (float)frame_seconds;
+    if (stage->traffic)
+      traffic_set_signals_go(stage->traffic,
+                             traffic_signals_open(stage->signal_clock));
   }
   if (!stage->paused && !stage->map_open && stage->hour_seconds > 0) {
     float before = stage->hour;
@@ -489,6 +496,15 @@ void driving_stage_render(driving_stage_t* stage) {
     if (!entity->used) continue;
     if (strncmp(entity->label, "lamp_light", 10) == 0) {
       entity->material.emissive = 2.4f * night;
+    } else if (strncmp(entity->label, "signal_", 7) == 0) {
+      float phase = fmodf(stage->signal_clock, 48.0f);
+      bool red = phase < 24.0f,
+           amber = (phase >= 21.0f && phase < 24.0f) || phase >= 45.0f,
+           green = phase >= 24.0f && phase < 45.0f;
+      bool lit = entity->label[7] == 'r'
+                     ? red
+                     : (entity->label[7] == 'a' ? amber : green);
+      entity->material.emissive = lit ? 2.6f : 0.12f;
     } else if (is_a_road_surface(entity->label)) {
       /* Wet tarmac: smoother, a little shine, reflecting the sky. */
       entity->material.roughness = 0.95f - 0.72f * stage->rain;

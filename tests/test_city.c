@@ -476,6 +476,37 @@ static void building_names_are_kept_and_written(void) {
   city_model_free(&fixture);
 }
 
+static void street_furniture_is_imported_and_survives_the_model(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0001\" lon=\"12.0005\"><tag k=\"amenity\" "
+      "v=\"bench\"/></node>"
+      "<node id=\"4\" lat=\"45.0001\" lon=\"12.0010\"><tag k=\"highway\" "
+      "v=\"traffic_signals\"/></node>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  assert(model.furniture_count == 2);
+  assert(model.furniture[0].kind == OSM_FURNITURE_BENCH);
+  assert(model.furniture[1].kind == OSM_FURNITURE_SIGNALS);
+  const char* directory = "/tmp/gta-like-test-furniture-model";
+  assert(city_model_write(&model, directory));
+  city_model_t loaded;
+  assert(city_model_read(&loaded, directory));
+  assert(loaded.furniture_count == 2 &&
+         loaded.furniture[1].kind == OSM_FURNITURE_SIGNALS);
+  assert(near_to(loaded.furniture[0].x, model.furniture[0].x, 1e-3));
+  city_model_free(&loaded);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -517,5 +548,6 @@ void run_city_tests(void) {
   RUN(an_elevation_lattice_becomes_a_terrain_that_survives_the_model);
   RUN(single_trees_are_imported_and_survive_the_model);
   RUN(building_names_are_kept_and_written);
+  RUN(street_furniture_is_imported_and_survives_the_model);
   RUN(the_model_round_trips_through_its_text_format);
 }

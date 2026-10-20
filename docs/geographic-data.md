@@ -63,7 +63,11 @@ have a PBF.
   varied by a storey up or down by the way id, else two to four storeys.
   Rings are made anticlockwise.
 - Single nodes tagged `natural=tree` become street trees (a trunk with a
-  collider and a crown); no other node tags are read. Pordenone has 37.
+  collider and a crown). Benches (`amenity=bench`), bus stops, bollards and
+  traffic signals are kept as street furniture too; other node tags are not
+  read. Pordenone has 37 trees, 16 benches, 6 bus stops, 5 bollards and 7
+  signals. Signals show red, amber and green on a 48 s cycle and cars stop at
+  them.
 - Interior corners of roads are replaced by arcs (quadratic, up to 8 m
   back from the corner) and two segments meeting end to end at a node
   nothing else uses, with the same class, width and direction rules, are

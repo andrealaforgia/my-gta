@@ -27,6 +27,10 @@ static material_t material_for(const char* name,
       {"facade_fresco", textures->facade_fresco, vec3(1, 1, 1), 0.8f},
       {"facade_brick", textures->facade_brick, vec3(1, 1, 1), 0.85f},
       {"shopfront", textures->shopfront, vec3(1, 1, 1), 0.7f},
+      {"furniture", {0}, vec3(0.3f, 0.32f, 0.34f), 0.6f},
+      {"signal_red", {0}, vec3(1.0f, 0.12f, 0.1f), 0.4f},
+      {"signal_amber", {0}, vec3(1.0f, 0.62f, 0.08f), 0.4f},
+      {"signal_green", {0}, vec3(0.15f, 1.0f, 0.3f), 0.4f},
       {"manhole", {0}, vec3(0.16f, 0.16f, 0.17f), 0.5f},
       {"sign_pole", {0}, vec3(0.45f, 0.46f, 0.48f), 0.5f},
       {"sign_red", {0}, vec3(0.78f, 0.08f, 0.07f), 0.5f},
@@ -166,6 +170,9 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   /* The runtime keeps the roads and the parking places. */
   scene->routes = package.routes;
   scene->route_count = package.route_count;
+  scene->signals = package.signals;
+  scene->signal_count = package.signal_count;
+  package.signals = NULL, package.signal_count = 0;
   scene->parked = package.parked;
   scene->parked_count = package.parked_count;
   package.routes = NULL, package.route_count = 0;

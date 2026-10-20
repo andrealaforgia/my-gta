@@ -1207,6 +1207,123 @@ static bool generate_trees(layout_t* layout, const city_area_t* area,
   return true;
 }
 
+/* ---- street furniture ---- */
+
+/* The direction of the nearest road to a point, a unit vector, and how far
+ * it is. */
+static vec2_t nearest_road_direction(const city_model_t* model, local_point_t p,
+                                     double* distance) {
+  double best = 1e30;
+  vec2_t direction = v2(1, 0);
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (road->class == ROAD_CLASS_WATERWAY) continue;
+    for (size_t k = 1; k < road->point_count; k++) {
+      double d =
+          point_segment_distance(p, road->points[k - 1], road->points[k]);
+      if (d < best) {
+        best = d;
+        direction = v2_normalize(v2_sub(road->points[k], road->points[k - 1]));
+      }
+    }
+  }
+  *distance = best;
+  return direction;
+}
+
+/* A box turned by `along` (its x axis along it): corners as a rotated box
+ * built from a few quads would be heavy; a box mesh with its half-extents
+ * swapped for near-axis alignment is plenty for furniture at this size. */
+static bool add_oriented_box(mesh_data_t* mesh, vec3_t centre, vec3_t half,
+                             vec2_t along) {
+  bool x_aligned = fabs(along.x) >= fabs(along.z);
+  vec3_t h = x_aligned ? half : vec3(half.z, half.y, half.x);
+  return mesh_data_add_box(mesh, centre, h);
+}
+
+static bool generate_furniture(layout_t* layout, const city_model_t* model,
+                               city_generator_stats_t* stats) {
+  (void)stats;
+  for (size_t f = 0; f < model->furniture_count; f++) {
+    local_point_t p = {model->furniture[f].x, model->furniture[f].z};
+    int kind = model->furniture[f].kind;
+    double road_distance;
+    vec2_t along = nearest_road_direction(model, p, &road_distance);
+    city_chunk_t* chunk = chunk_at(layout, p);
+    city_part_t* part = city_chunk_add_part(
+        chunk, "furniture", PART_COLLIDER_MESH, COLLISION_LAYER_PROP, 0.5f, 0);
+    if (!part) return false;
+    float y0 = layout->options->kerb_height;
+    vec3_t c = vec3((float)p.x, y0, (float)p.z);
+    bool ok = true;
+    if (kind == OSM_FURNITURE_BENCH) {
+      ok = add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 0.45f, 0)),
+                            vec3(0.85f, 0.04f, 0.22f), along) &&
+           add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 0.78f, 0)),
+                            vec3(0.85f, 0.18f, 0.025f), along) &&
+           add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 0.22f, 0)),
+                            vec3(0.78f, 0.22f, 0.18f), along);
+    } else if (kind == OSM_FURNITURE_BUS_STOP) {
+      ok = mesh_data_add_cylinder_y(&part->mesh, c, 0.04f, 2.6f, 6) &&
+           add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 2.5f, 0)),
+                            vec3(0.02f, 0.2f, 0.28f), along) &&
+           add_oriented_box(&part->mesh,
+                            vec3_add(c, vec3(1.3f * (float)along.x, 2.5f,
+                                             1.3f * (float)along.z)),
+                            vec3(1.5f, 0.04f, 0.8f), along) &&
+           mesh_data_add_cylinder_y(&part->mesh,
+                                    vec3_add(c, vec3(2.6f * (float)along.x, 0,
+                                                     2.6f * (float)along.z)),
+                                    0.04f, 2.5f, 6);
+    } else if (kind == OSM_FURNITURE_BOLLARD) {
+      ok = mesh_data_add_cylinder_y(&part->mesh, c, 0.1f, 0.85f, 8);
+    } else if (kind == OSM_FURNITURE_SIGNALS) {
+      ok = mesh_data_add_cylinder_y(&part->mesh, c, 0.06f, 3.4f, 6) &&
+           add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 3.1f, 0)),
+                            vec3(0.17f, 0.45f, 0.17f), along);
+      city_part_t* red = ok ? city_chunk_add_part(chunk, "signal_red",
+                                                  PART_COLLIDER_NONE, 0, 0, 0)
+                            : NULL;
+      city_part_t* amber =
+          red ? city_chunk_add_part(chunk, "signal_amber", PART_COLLIDER_NONE,
+                                    0, 0, 0)
+              : NULL;
+      city_part_t* green =
+          amber ? city_chunk_add_part(chunk, "signal_green", PART_COLLIDER_NONE,
+                                      0, 0, 0)
+                : NULL;
+      if (!green) return false;
+      red = &chunk->parts[chunk->part_count - 3];
+      amber = &chunk->parts[chunk->part_count - 2];
+      green = &chunk->parts[chunk->part_count - 1];
+      part = &chunk->parts[chunk->part_count - 4];
+      /* Three lenses on each of the two faces looking along the road. */
+      for (int face = -1; face <= 1; face += 2) {
+        vec3_t out = vec3(face * (float)along.x * 0.19f, 0,
+                          face * (float)along.z * 0.19f);
+        vec3_t lens = vec3(0.11f * (float)(fabs(along.z) + 0.2), 0.11f,
+                           0.11f * (float)(fabs(along.x) + 0.2));
+        if (!mesh_data_add_box(&red->mesh,
+                               vec3_add(vec3_add(c, vec3(0, 3.35f, 0)), out),
+                               lens) ||
+            !mesh_data_add_box(&amber->mesh,
+                               vec3_add(vec3_add(c, vec3(0, 3.1f, 0)), out),
+                               lens) ||
+            !mesh_data_add_box(&green->mesh,
+                               vec3_add(vec3_add(c, vec3(0, 2.85f, 0)), out),
+                               lens))
+          return false;
+      }
+      finish_part(chunk, red);
+      finish_part(chunk, amber);
+      finish_part(chunk, green);
+    }
+    if (!ok) return false;
+    finish_part(chunk, part);
+  }
+  return true;
+}
+
 /* The mapped single trees, each a trunk and a crown like a park's, with a
  * collider on the trunk. They sit on the ground where they were mapped. */
 static bool generate_street_trees(layout_t* layout, const city_model_t* model,
@@ -2609,6 +2726,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   for (size_t b = 0; ok && b < model->building_count; b++)
     ok = generate_building(&layout, &model->buildings[b], stats);
   if (ok) ok = generate_street_trees(&layout, model, stats);
+  if (ok) ok = generate_furniture(&layout, model, stats);
   free(layout.arcade_edges);
   free(fits);
   free(cuts);
@@ -2619,6 +2737,10 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   }
   choose_spawn(package, model, options);
   choose_labels(package, model);
+  for (size_t f = 0; f < model->furniture_count; f++)
+    if (model->furniture[f].kind == OSM_FURNITURE_SIGNALS)
+      city_package_add_signal(package, (float)model->furniture[f].x,
+                              (float)model->furniture[f].z);
   /* The car starts on an empty road. */
   size_t kept = 0;
   for (size_t i = 0; i < package->parked_count; i++) {

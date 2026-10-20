@@ -45,6 +45,13 @@ traffic_car_t traffic_car(const traffic_t* traffic, size_t index);
  * `distance` metres in. For setting up scenes and tests. */
 void traffic_car_place(traffic_t* traffic, size_t index, int route,
                        int direction, float distance);
+/* Traffic signals at x, z pairs: while they are not go, cars stop six metres
+ * short of one they are heading for. */
+void traffic_set_signals(traffic_t* traffic, const float* xz, size_t count);
+void traffic_set_signals_go(traffic_t* traffic, bool go);
+/* Whether the signals show green at a time in seconds: 21 s of red, 3 of red
+ * and amber, 21 of green, 3 of amber, repeating. */
+bool traffic_signals_open(float seconds);
 /* Distance from a point to the nearest moving car, 1e9 with none. */
 float traffic_nearest_distance(const traffic_t* traffic, vec3_t point);
 /* Draws the cars within `range` of the eye; returns how many. */

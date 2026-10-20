@@ -105,9 +105,20 @@ static void add_tag(parser_t* p, const char* start, const char* end) {
   if (p->open_node != SIZE_MAX) {
     char key[64], value[64];
     if (attribute(start, end, "k", key, sizeof(key)) &&
-        attribute(start, end, "v", value, sizeof(value)) &&
-        strcmp(key, "natural") == 0 && strcmp(value, "tree") == 0)
-      p->data->nodes[p->open_node].tree = true;
+        attribute(start, end, "v", value, sizeof(value))) {
+      osm_node_t* node = &p->data->nodes[p->open_node];
+      if (strcmp(key, "natural") == 0 && strcmp(value, "tree") == 0)
+        node->tree = true;
+      else if (strcmp(key, "amenity") == 0 && strcmp(value, "bench") == 0)
+        node->furniture = OSM_FURNITURE_BENCH;
+      else if (strcmp(key, "highway") == 0 && strcmp(value, "bus_stop") == 0)
+        node->furniture = OSM_FURNITURE_BUS_STOP;
+      else if (strcmp(key, "barrier") == 0 && strcmp(value, "bollard") == 0)
+        node->furniture = OSM_FURNITURE_BOLLARD;
+      else if (strcmp(key, "highway") == 0 &&
+               strcmp(value, "traffic_signals") == 0)
+        node->furniture = OSM_FURNITURE_SIGNALS;
+    }
     return;
   }
   if (!p->tags) return;
@@ -142,6 +153,7 @@ static void start_node(parser_t* p, const char* start, const char* end) {
   node->lat = strtod(lat, NULL);
   node->lon = strtod(lon, NULL);
   node->tree = false;
+  node->furniture = OSM_FURNITURE_NONE;
   p->tags = NULL; /* node tags are not kept */
   p->open_node = d->node_count - 1;
 }
@@ -369,7 +381,8 @@ static int compare_node_ids(const void* a, const void* b) {
 }
 
 const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id) {
-  /* Files are usually id-ordered; binary search when they are, scan otherwise.
+  /* Files are usually id-ordered; binary search when they are, scan
+   * otherwise.
    */
   static const osm_node_t* sorted_for = NULL;
   static size_t sorted_count = 0;
@@ -384,7 +397,7 @@ const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id) {
     sorted_count = data->node_count;
   }
   if (sorted) {
-    osm_node_t key = {id, 0, 0, false};
+    osm_node_t key = {id, 0, 0, false, OSM_FURNITURE_NONE};
     return bsearch(&key, data->nodes, data->node_count, sizeof(osm_node_t),
                    compare_node_ids);
   }

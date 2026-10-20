@@ -87,12 +87,15 @@ typedef struct {
   size_t route_count;
   city_parking_t* parked;
   size_t parked_count;
+  float* signals; /* x, z pairs of traffic signals */
+  size_t signal_count;
 } city_package_t;
 
 city_package_t city_package_create(void);
 void city_package_free(city_package_t* package);
 /* Takes ownership of the route's points. */
 bool city_package_add_route(city_package_t* package, const city_route_t* route);
+bool city_package_add_signal(city_package_t* package, float x, float z);
 bool city_package_add_parking(city_package_t* package, city_parking_t spot);
 city_chunk_t* city_package_chunk(city_package_t* package, int column, int row);
 city_part_t* city_chunk_add_part(city_chunk_t* chunk, const char* material,

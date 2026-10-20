@@ -376,7 +376,45 @@ static void sliding_wheels_leave_marks_that_overwrite_the_oldest(void) {
   renderer_destroy(renderer);
 }
 
+static void cars_wait_at_a_red_signal_and_go_on_green(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[1] = {route(west, 1, 2, 1)}; /* one way, east */
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 3);
+  float signal[2] = {-40.0f, 0.0f};
+  traffic_set_signals(traffic, signal, 1);
+  traffic_car_place(traffic, 0, 0, 1, 10.0f);
+  traffic_set_signals_go(traffic, false);
+  for (int step = 0; step < 120 * 25; step++)
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+  traffic_car_t waiting = traffic_car(traffic, 0);
+  assert(waiting.speed < 0.2f);
+  assert(waiting.position.x > -52.0f && waiting.position.x < -44.0f);
+  traffic_set_signals_go(traffic, true);
+  float furthest = -1e9f;
+  for (int step = 0; step < 120 * 12; step++) {
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    furthest = fmaxf(furthest, traffic_car(traffic, 0).position.x);
+  }
+  assert(furthest > -20.0f);
+  /* The cycle: red, then red and amber, green, amber, in forty-eight seconds.
+   */
+  assert(!traffic_signals_open(5.0f) && !traffic_signals_open(22.0f));
+  assert(traffic_signals_open(30.0f) && !traffic_signals_open(46.0f));
+  assert(!traffic_signals_open(48.0f + 5.0f) &&
+         traffic_signals_open(48.0f + 30.0f));
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 void run_traffic_tests(void) {
+  RUN(cars_wait_at_a_red_signal_and_go_on_green);
   RUN(sliding_wheels_leave_marks_that_overwrite_the_oldest);
   RUN(people_walk_on_the_pavements_at_a_walking_pace);
   RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);

@@ -115,6 +115,7 @@ void city_model_free(city_model_t* model) {
   free(model->areas);
   free(model->junctions);
   free(model->trees);
+  free(model->furniture);
   free(model->terrain.heights);
   memset(model, 0, sizeof(*model));
 }
@@ -256,6 +257,47 @@ static bool read_trees(city_model_t* model, const char* directory) {
     model->trees[model->tree_count].x = x;
     model->trees[model->tree_count].z = z;
     model->tree_count++;
+  }
+  fclose(file);
+  return ok;
+}
+
+static bool write_furniture(const city_model_t* model, const char* directory) {
+  if (model->furniture_count == 0) return true;
+  FILE* file = open_in(directory, "furniture.txt", "w");
+  if (!file) return false;
+  fprintf(file, "# city-furniture 1\n");
+  for (size_t i = 0; i < model->furniture_count; i++)
+    fprintf(file, "item %d %.4f %.4f\n", model->furniture[i].kind,
+            model->furniture[i].x, model->furniture[i].z);
+  fclose(file);
+  return true;
+}
+
+static bool read_furniture(city_model_t* model, const char* directory) {
+  char path[1024];
+  snprintf(path, sizeof(path), "%s/furniture.txt", directory);
+  FILE* file = fopen(path, "r");
+  if (!file) return true;
+  char line[256];
+  size_t capacity = 0;
+  bool ok = true;
+  while (ok && fgets(line, sizeof(line), file)) {
+    int kind;
+    double x, z;
+    if (sscanf(line, "item %d %lf %lf", &kind, &x, &z) != 3) continue;
+    if (model->furniture_count == capacity) {
+      capacity = capacity ? capacity * 2 : 32;
+      city_furniture_t* grown =
+          realloc(model->furniture, capacity * sizeof(*grown));
+      if (!grown) {
+        ok = false;
+        break;
+      }
+      model->furniture = grown;
+    }
+    city_furniture_t item = {kind, x, z};
+    model->furniture[model->furniture_count++] = item;
   }
   fclose(file);
   return ok;
@@ -431,7 +473,8 @@ bool city_model_write(const city_model_t* model, const char* directory) {
   }
   return write_roads(model, directory) && write_buildings(model, directory) &&
          write_areas(model, directory) && write_manifest(model, directory) &&
-         write_terrain(model, directory) && write_trees(model, directory);
+         write_terrain(model, directory) && write_trees(model, directory) &&
+         write_furniture(model, directory);
 }
 
 /* ---- reading ---- */
@@ -630,5 +673,6 @@ bool city_model_read(city_model_t* model, const char* directory) {
   memset(model, 0, sizeof(*model));
   return read_manifest(model, directory) && read_roads(model, directory) &&
          read_buildings(model, directory) && read_areas(model, directory) &&
-         read_terrain(model, directory) && read_trees(model, directory);
+         read_terrain(model, directory) && read_trees(model, directory) &&
+         read_furniture(model, directory);
 }

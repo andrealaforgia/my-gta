@@ -26,6 +26,7 @@ void city_package_free(city_package_t* package) {
     free(package->routes[r].points);
   free(package->routes);
   free(package->parked);
+  free(package->signals);
   memset(package, 0, sizeof(*package));
 }
 
@@ -36,6 +37,17 @@ bool city_package_add_route(city_package_t* package,
   if (!grown) return false;
   package->routes = grown;
   package->routes[package->route_count++] = *route;
+  return true;
+}
+
+bool city_package_add_signal(city_package_t* package, float x, float z) {
+  float* grown = realloc(package->signals,
+                         (package->signal_count + 1) * 2 * sizeof(float));
+  if (!grown) return false;
+  package->signals = grown;
+  package->signals[2 * package->signal_count] = x;
+  package->signals[2 * package->signal_count + 1] = z;
+  package->signal_count++;
   return true;
 }
 
@@ -177,6 +189,9 @@ bool city_package_write(const city_package_t* package, const char* directory) {
       fprintf(file, "rp %.3f %.3f\n", route->points[2 * k],
               route->points[2 * k + 1]);
   }
+  for (size_t i = 0; i < package->signal_count; i++)
+    fprintf(file, "signal %.3f %.3f\n", package->signals[2 * i],
+            package->signals[2 * i + 1]);
   for (size_t i = 0; i < package->parked_count; i++)
     fprintf(file, "park %.3f %.3f %.4f %d\n", package->parked[i].x,
             package->parked[i].z, package->parked[i].yaw,
@@ -302,6 +317,10 @@ bool city_package_read(city_package_t* package, const char* directory) {
         if (ok) ok = city_package_add_route(package, &route);
         if (!ok) free(route.points);
       }
+    } else if (strncmp(line, "signal ", 7) == 0) {
+      float x, z;
+      ok = sscanf(line, "signal %f %f", &x, &z) == 2 &&
+           city_package_add_signal(package, x, z);
     } else if (strncmp(line, "park ", 5) == 0) {
       city_parking_t spot;
       ok = sscanf(line, "park %f %f %f %d", &spot.x, &spot.z, &spot.yaw,

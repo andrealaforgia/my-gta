@@ -124,6 +124,11 @@ typedef struct {
 } city_terrain_t;
 
 typedef struct {
+  int kind; /* osm_furniture_t */
+  double x, z;
+} city_furniture_t;
+
+typedef struct {
   city_road_t* roads;
   size_t road_count;
   city_junction_t* junctions;
@@ -134,6 +139,8 @@ typedef struct {
   size_t area_count;
   local_point_t* trees; /* single mapped trees */
   size_t tree_count;
+  city_furniture_t* furniture; /* benches, bus stops, bollards, signals */
+  size_t furniture_count;
   city_terrain_t terrain;
   projection_t projection;
   osm_bounds_t bounds;
