@@ -6,7 +6,7 @@ tool from source plus settings, and can be regenerated.
 ## Commands
 
 ```
-city-import   --input <file.osm> --output <intermediate dir> [--service-roads]
+city-import   --input <file.osm> --output <intermediate dir> [--no-service-roads] [--elevation <lattice.txt>]
 city-generate --input <intermediate dir> --config assets/city/default.cfg --output <package dir> [--name <n>]
 city-validate <package dir>
 ```
@@ -16,7 +16,9 @@ city-validate <package dir>
 
 ## Intermediate model (ADR-005)
 
-A directory with `manifest.txt`, `roads.txt`, `buildings.txt`, `areas.txt`. Lines are
+A directory with `manifest.txt`, `roads.txt`, `buildings.txt`, `areas.txt` and,
+with elevation, `terrain.txt` (`grid min_x min_z dx dz cols rows`, then one
+`row` of heights per line, north first). Lines are
 records; `#` lines are comments.
 
 ```
@@ -111,6 +113,22 @@ the physics world with the layer and friction given.
   least 12 m long, and a zebra of 0.5 m stripes when it also has
   pavements and is at least 25 m long, so crossings do not stack where
   junctions sit close together. Markings have no collider.
+- Footpaths (class path) are drawn only where they are off every street:
+  sampled every 2 m, stretches on a carriageway or its pavement are left
+  out, so a path ends at the pavement instead of lying across the road.
+- With terrain the ground is cut into 12 m cells (heights minus 5 cm), all
+  surfaces are subdivided to edges under 12 m and lifted by the ground
+  height under each vertex, roads and pavements are sampled every 8 m,
+  buildings stand level at the height of their centre on a 3 m skirt, and
+  the spawn rises with the ground. Without terrain the ground is one quad
+  per chunk and nothing moves.
+- Roofs: footprints that nearly fill their bounding rectangle get a hip
+  or gable roof; every other building under 22 m and between 25 and 9000
+  m2 gets a ridge along the long axis of its bounding rectangle, falling
+  away on both sides, with the walls rising to meet it; taller or larger
+  ones are flat. Material is terracotta (70 %), slate (30 %) or the flat
+  bitumen texture. Facades use one of twelve styles with their own
+  palette, shutters, arches, balconies and window width.
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

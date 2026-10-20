@@ -12,7 +12,7 @@ needs a window or a GPU.
 |---|---|
 | math | vector, quaternion, matrix, transform, box, ray, plane, frustum and damping behaviour under the ADR-007 conventions |
 | core | fixed-step frame clock and catch-up cap, configuration parsing and defaults, keyboard mapping, dead zones, steering filter |
-| mesh | box and cylinder builders, winding, appending, the 5x7 font |
+| mesh | box and cylinder builders, winding, appending, subdividing, the 5x7 font |
 | physics | a dropped box lands and rests, contact impulses, a wall stops a slide, friction, ray casts with layers and friction, torque from point forces, interpolation state |
 | vehicle | parameter loading, settling, 0 to 50 km/h, braking distance, turning direction, reverse, wet grip, reset, wheel transforms, handbrake skid |
 | camera | settles behind and above, follows at speed, a wall pulls it in, reversing |

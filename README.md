@@ -77,8 +77,9 @@ that accelerates, brakes, steers, reverses, skids and collides, a chase
 camera, the offline pipeline from OSM XML to a validated cooked package,
 and driving through the generated city: roads with stop lines and zebra crossings, pedestrian streets and
 paths, squares, parks with trees, car parks, water, lamp posts, and
-buildings with courtyards, plaster facades and hipped terracotta roofs.
+hills from a real elevation model, and buildings with courtyards, twelve
+facade styles and hipped, gabled or ridge roofs in terracotta, slate or flat.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
-glTF import, elevation, chunk streaming. See the end of
+glTF import, bridges, chunk streaming. See the end of
 `docs/architecture.md` for the measured performance baseline.

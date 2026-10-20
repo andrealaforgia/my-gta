@@ -33,9 +33,14 @@ have a PBF.
 
 - Ways tagged `highway` with a drivable class: motorway, trunk, primary,
   secondary, tertiary, residential, living_street, unclassified, road
-  (and their `_link` forms). Service roads (driveways, car park aisles)
-  are skipped unless `--service-roads` is given: they are short, dense
-  and make junctions a mess without adding anywhere to drive.
+  (and their `_link` forms). Service roads are kept when they are alleys
+  or plain service streets; driveways, car park aisles, drive-throughs,
+  emergency accesses and anything tagged `access=private|no` are skipped
+  (`--no-service-roads` drops them all): they clutter blocks without
+  adding anywhere to drive.
+- Ways with `tunnel` other than `no` (underpasses, `building_passage`)
+  are not drawn at all. On the surface they ran across gardens and
+  rooftops; in Pordenone 46 ways were skipped for this.
 - `highway=pedestrian` ways become the `pedestrian` class: a paved street
   the whole width across, no separate pavements. With `area=yes` they are
   squares (areas, below).
@@ -52,8 +57,15 @@ have a PBF.
 - `oneway`, `layer`, `bridge`, `tunnel`, `surface`, `name` are kept as
   metadata.
 - Ways tagged `building` that are closed rings with area. Height from
-  `height`, else `building:levels` x 3.2 m, else a deterministic default
-  between 6 and 15 m seeded by the way id. Rings are made anticlockwise.
+  `height`, else `building:levels` x 3.2 m, else the typical height of
+  its kind (house and terrace two storeys, hut and garage 3 m, apartments
+  five, church 16 m), else the median of tagged buildings within 80 m
+  varied by a storey up or down by the way id, else two to four storeys.
+  Rings are made anticlockwise.
+- Interior corners of roads are replaced by arcs (quadratic, up to 8 m
+  back from the corner) and two segments meeting end to end at a node
+  nothing else uses, with the same class, width and direction rules, are
+  joined into one road first, so bends are not junctions.
 - Areas: closed ways and multipolygon relations tagged `natural=water`,
   `waterway=riverbank`, `landuse=reservoir|basin` (water); `leisure=park`
   and friends, `landuse=grass|forest|meadow|...`, `natural=wood|scrub`
@@ -84,6 +96,18 @@ layers only connect where they share a node, which is how OSM models it.
 
 Equirectangular projection about the centre of the extract's bounds:
 x = east metres, z = south metres (north is -z), y up. Within a few
-kilometres this is accurate to well under a metre. No elevation: the
-ground is flat at y = 0 (bridges and tunnels are flattened too, which is a
-known limit of the first slice).
+kilometres this is accurate to well under a metre.
+
+## Elevation
+
+OpenStreetMap carries no ground height, so the hills come from a separate
+lattice: `scripts/fetch_elevation.py MIN_LAT MIN_LON MAX_LAT MAX_LON
+OUT [SPACING_M]` samples the EU-DEM 25 m model (Copernicus, free with
+attribution) through the public Open Topo Data API every 30 m, with 100 m
+of margin, and writes `grid` and `row` lines. `city-import --elevation
+FILE` projects it onto the model's local grid, smooths it with one 3x3
+box pass (the model is a surface model, so rooftops leak in), makes it
+relative to its lowest sample and writes `terrain.txt` beside the model.
+`make city` passes `data/<name>.elevation.txt` when it exists. Pordenone
+falls 21 m from the north west to the river in the south east. Bridges
+are still at ground level, a known limit.
