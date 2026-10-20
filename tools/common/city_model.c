@@ -7,8 +7,24 @@
 #include "log.h"
 
 static const char* class_names[ROAD_CLASS_COUNT] = {
-    "motorway",    "primary", "secondary",   "tertiary",
-    "residential", "service", "unclassified"};
+    "motorway", "primary",      "secondary",  "tertiary", "residential",
+    "service",  "unclassified", "pedestrian", "path",     "waterway"};
+static const char* area_names[AREA_KIND_COUNT] = {"water", "park", "parking",
+                                                  "square"};
+
+const char* area_kind_name(area_kind_t kind) {
+  return kind < AREA_KIND_COUNT ? area_names[kind] : "park";
+}
+
+bool area_kind_from_name(const char* name, area_kind_t* kind) {
+  for (int i = 0; i < AREA_KIND_COUNT; i++) {
+    if (strcmp(area_names[i], name) == 0) {
+      *kind = (area_kind_t)i;
+      return true;
+    }
+  }
+  return false;
+}
 
 const char* road_class_name(road_class_t class) {
   return class < ROAD_CLASS_COUNT ? class_names[class] : "unclassified";
@@ -60,6 +76,15 @@ city_junction_t* city_model_add_junction(city_model_t* model) {
   return junction;
 }
 
+city_area_t* city_model_add_area(city_model_t* model) {
+  void* grown = grow(model->areas, model->area_count, sizeof(city_area_t));
+  if (!grown) return NULL;
+  model->areas = grown;
+  city_area_t* area = &model->areas[model->area_count++];
+  memset(area, 0, sizeof(*area));
+  return area;
+}
+
 void city_model_free(city_model_t* model) {
   for (size_t i = 0; i < model->road_count; i++) {
     free(model->roads[i].points);
@@ -67,8 +92,10 @@ void city_model_free(city_model_t* model) {
   }
   for (size_t i = 0; i < model->building_count; i++)
     free(model->buildings[i].points);
+  for (size_t i = 0; i < model->area_count; i++) free(model->areas[i].points);
   free(model->roads);
   free(model->buildings);
+  free(model->areas);
   free(model->junctions);
   memset(model, 0, sizeof(*model));
 }
@@ -125,6 +152,21 @@ static bool write_buildings(const city_model_t* model, const char* directory) {
   return true;
 }
 
+static bool write_areas(const city_model_t* model, const char* directory) {
+  FILE* file = open_in(directory, "areas.txt", "w");
+  if (!file) return false;
+  fprintf(file, "# city-intermediate %d areas\n", CITY_MODEL_VERSION);
+  for (size_t i = 0; i < model->area_count; i++) {
+    const city_area_t* a = &model->areas[i];
+    fprintf(file, "area %lld %s %zu\n", (long long)a->source_id,
+            area_kind_name(a->kind), a->point_count);
+    for (size_t p = 0; p < a->point_count; p++)
+      fprintf(file, "p %.4f %.4f\n", a->points[p].x, a->points[p].z);
+  }
+  fclose(file);
+  return true;
+}
+
 static bool write_manifest(const city_model_t* model, const char* directory) {
   FILE* file = open_in(directory, "manifest.txt", "w");
   if (!file) return false;
@@ -140,8 +182,9 @@ static bool write_manifest(const city_model_t* model, const char* directory) {
   fprintf(file, "origin %.7f %.7f\n", model->projection.origin_lat,
           model->projection.origin_lon);
   fprintf(file, "projection equirectangular x=east z=south metres\n");
-  fprintf(file, "counts roads %zu junctions %zu buildings %zu\n",
-          model->road_count, model->junction_count, model->building_count);
+  fprintf(file, "counts roads %zu junctions %zu buildings %zu areas %zu\n",
+          model->road_count, model->junction_count, model->building_count,
+          model->area_count);
   fprintf(file,
           "stats ways_total %zu roads_accepted %zu ways_ignored %zu "
           "roads_degenerate %zu "
@@ -163,7 +206,7 @@ bool city_model_write(const city_model_t* model, const char* directory) {
     return false;
   }
   return write_roads(model, directory) && write_buildings(model, directory) &&
-         write_manifest(model, directory);
+         write_areas(model, directory) && write_manifest(model, directory);
 }
 
 /* ---- reading ---- */
@@ -278,6 +321,41 @@ static bool read_buildings(city_model_t* model, const char* directory) {
   return true;
 }
 
+static bool read_areas(city_model_t* model, const char* directory) {
+  FILE* file = open_in(directory, "areas.txt", "r");
+  if (!file) return false;
+  char line[512];
+  city_area_t* area = NULL;
+  size_t expected = 0;
+  while (fgets(line, sizeof(line), file)) {
+    if (line[0] == '#') continue;
+    if (strncmp(line, "area ", 5) == 0) {
+      long long id;
+      char kind[CITY_TEXT_LENGTH];
+      size_t count;
+      if (sscanf(line, "area %lld %63s %zu", &id, kind, &count) != 3) {
+        fclose(file);
+        return false;
+      }
+      area = city_model_add_area(model);
+      if (!area) break;
+      area->source_id = id;
+      if (!area_kind_from_name(kind, &area->kind)) area->kind = AREA_PARK;
+      area->points = calloc(count, sizeof(local_point_t));
+      expected = count;
+    } else if (strncmp(line, "p ", 2) == 0 && area &&
+               area->point_count < expected) {
+      double x, z;
+      if (sscanf(line, "p %lf %lf", &x, &z) != 2) break;
+      area->points[area->point_count].x = x;
+      area->points[area->point_count].z = z;
+      area->point_count++;
+    }
+  }
+  fclose(file);
+  return true;
+}
+
 static bool read_manifest(city_model_t* model, const char* directory) {
   FILE* file = open_in(directory, "manifest.txt", "r");
   if (!file) return false;
@@ -306,5 +384,5 @@ static bool read_manifest(city_model_t* model, const char* directory) {
 bool city_model_read(city_model_t* model, const char* directory) {
   memset(model, 0, sizeof(*model));
   return read_manifest(model, directory) && read_roads(model, directory) &&
-         read_buildings(model, directory);
+         read_buildings(model, directory) && read_areas(model, directory);
 }

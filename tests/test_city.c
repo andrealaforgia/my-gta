@@ -8,6 +8,7 @@
 #include "osm_reader.h"
 #include "test_groups.h"
 #include "test_support.h"
+#include "triangulate.h"
 
 static city_model_t import_fixture(void) {
   osm_data_t osm;
@@ -44,8 +45,9 @@ static const city_building_t* building(const city_model_t* model,
 
 static void roads_are_split_at_junctions_and_classified(void) {
   city_model_t model = import_fixture();
-  /* Six grid ways of two segments each, the curved road, the stub road. */
-  assert(model.road_count == 14);
+  /* Six grid ways of two segments each, the curved road, the stub road,
+   * the footway, the Corso and the cycleway. */
+  assert(model.road_count == 18); /* including the stream */
   const city_road_t* main_west = road_from(&model, 102, 0);
   assert(main_west && main_west->class == ROAD_CLASS_PRIMARY);
   assert(near(main_west->width, 9.0f) && !main_west->width_inferred);
@@ -58,7 +60,15 @@ static void roads_are_split_at_junctions_and_classified(void) {
   const city_road_t* curved = road_from(&model, 107, 0);
   assert(curved && curved->point_count == 5 &&
          strcmp(curved->surface, "cobblestone") == 0);
-  assert(road_from(&model, 108, 0) == NULL); /* footway ignored */
+  const city_road_t* footway = road_from(&model, 108, 0);
+  assert(footway && footway->class == ROAD_CLASS_PATH && footway->width < 3.0f);
+  const city_road_t* corso = road_from(&model, 301, 0);
+  assert(corso && corso->class == ROAD_CLASS_PEDESTRIAN);
+  assert(road_from(&model, 302, 0)->class == ROAD_CLASS_PATH); /* cycleway */
+  assert(road_from(&model, 303, 0) ==
+         NULL); /* a sidewalk: the pavements cover it */
+  assert(road_from(&model, 304, 0) ==
+         NULL); /* a pedestrian area is an area, not a road */
   city_model_free(&model);
 }
 
@@ -80,8 +90,8 @@ static void junctions_carry_their_degree_and_position(void) {
   assert(junction(&model, 1) && junction(&model, 1)->degree == 2);
   assert(junction(&model, 3) &&
          junction(&model, 3)->degree == 3); /* corner plus the curved road */
-  assert(junction(&model, 13) &&
-         junction(&model, 13)->degree == 1); /* cul-de-sac */
+  assert(junction(&model, 13) && junction(&model, 13)->degree == 2);
+  assert(junction(&model, 14) && junction(&model, 14)->degree == 1);
   const city_junction_t* centre = junction(&model, 5);
   const city_junction_t* corner = junction(&model, 1);
   /* n5 is north-east of n1: larger x, smaller z. */
@@ -92,7 +102,7 @@ static void junctions_carry_their_degree_and_position(void) {
 
 static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   city_model_t model = import_fixture();
-  assert(model.building_count == 5);
+  assert(model.building_count == 7); /* five ways and two multipolygons */
   const city_building_t* tagged = building(&model, 201);
   assert(tagged && near(tagged->height, 12) &&
          tagged->height_source == HEIGHT_TAGGED);
@@ -106,7 +116,12 @@ static void buildings_get_heights_from_tags_levels_or_defaults(void) {
   assert(plain->point_count == 6);
   assert(building(&model, 204) == NULL);
   assert(model.stats.buildings_malformed == 1);
-  assert(model.stats.relations_skipped == 1);
+  const city_building_t* palazzo = building(&model, 401);
+  assert(palazzo && near(palazzo->height, 20) && palazzo->point_count == 4);
+  const city_building_t* church = building(&model, 402);
+  assert(church && church->point_count == 4 &&
+         strcmp(church->category, "church") == 0);
+  assert(model.stats.relations_skipped == 0);
   city_model_free(&model);
 }
 
@@ -135,6 +150,28 @@ static void default_heights_are_stable_for_the_same_source(void) {
   city_model_free(&b);
 }
 
+static const city_area_t* area(const city_model_t* model, int64_t source_id) {
+  for (size_t i = 0; i < model->area_count; i++)
+    if (model->areas[i].source_id == source_id) return &model->areas[i];
+  return NULL;
+}
+
+static void areas_come_from_land_use_water_parking_and_squares(void) {
+  city_model_t model = import_fixture();
+  assert(model.area_count == 5); /* the park is both a way and a relation */
+  assert(area(&model, 304) && area(&model, 304)->kind == AREA_SQUARE);
+  assert(area(&model, 305) && area(&model, 305)->kind == AREA_WATER);
+  assert(area(&model, 306) && area(&model, 306)->kind == AREA_PARKING);
+  assert(area(&model, 403) &&
+         area(&model, 403)->kind == AREA_PARK); /* a relation */
+  for (size_t i = 0; i < model.area_count; i++) {
+    assert(model.areas[i].point_count >= 4);
+    assert(polygon_signed_area(model.areas[i].points,
+                               model.areas[i].point_count) > 0);
+  }
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -144,6 +181,10 @@ static void the_model_round_trips_through_its_text_format(void) {
   assert(loaded.road_count == model.road_count);
   assert(loaded.building_count == model.building_count);
   assert(loaded.junction_count == model.junction_count);
+  assert(loaded.area_count == model.area_count);
+  assert(area(&loaded, 305) && area(&loaded, 305)->kind == AREA_WATER);
+  assert(near_to(area(&loaded, 305)->points[1].x,
+                 area(&model, 305)->points[1].x, 1e-3));
   const city_road_t* curved = road_from(&loaded, 107, 0);
   assert(curved && curved->point_count == 5 &&
          strcmp(curved->surface, "cobblestone") == 0);
@@ -162,5 +203,6 @@ void run_city_tests(void) {
   RUN(buildings_get_heights_from_tags_levels_or_defaults);
   RUN(building_rings_are_anticlockwise_seen_from_above);
   RUN(default_heights_are_stable_for_the_same_source);
+  RUN(areas_come_from_land_use_water_parking_and_squares);
   RUN(the_model_round_trips_through_its_text_format);
 }

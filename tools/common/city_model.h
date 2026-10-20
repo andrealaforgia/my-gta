@@ -15,7 +15,7 @@
 #include "osm_reader.h"
 #include "projection.h"
 
-#define CITY_MODEL_VERSION 1
+#define CITY_MODEL_VERSION 2
 #define CITY_TEXT_LENGTH 64
 
 typedef enum {
@@ -26,8 +26,19 @@ typedef enum {
   ROAD_CLASS_RESIDENTIAL,
   ROAD_CLASS_SERVICE,
   ROAD_CLASS_UNCLASSIFIED,
+  ROAD_CLASS_PEDESTRIAN, /* a paved street for people; the car may use it */
+  ROAD_CLASS_PATH,       /* footway, cycleway, path, steps: a narrow strip */
+  ROAD_CLASS_WATERWAY,   /* a stream or canal drawn as a water ribbon */
   ROAD_CLASS_COUNT
 } road_class_t;
+
+typedef enum {
+  AREA_WATER,
+  AREA_PARK,    /* parks, gardens, grass, woods */
+  AREA_PARKING, /* car parks */
+  AREA_SQUARE,  /* pedestrian areas and squares */
+  AREA_KIND_COUNT
+} area_kind_t;
 
 typedef enum {
   HEIGHT_TAGGED,
@@ -69,6 +80,13 @@ typedef struct {
 } city_building_t;
 
 typedef struct {
+  int64_t source_id;
+  area_kind_t kind;
+  local_point_t* points; /* anticlockwise from above, not repeated */
+  size_t point_count;
+} city_area_t;
+
+typedef struct {
   size_t ways_total;
   size_t roads_accepted;
   size_t ways_ignored;
@@ -76,6 +94,8 @@ typedef struct {
   size_t buildings_accepted;
   size_t buildings_malformed;
   size_t relations_skipped;
+  size_t areas_accepted;
+  size_t rings_unclosed;
   size_t widths_inferred;
   size_t heights_defaulted;
 } city_stats_t;
@@ -87,6 +107,8 @@ typedef struct {
   size_t junction_count;
   city_building_t* buildings;
   size_t building_count;
+  city_area_t* areas;
+  size_t area_count;
   projection_t projection;
   osm_bounds_t bounds;
   char source[256];
@@ -95,6 +117,8 @@ typedef struct {
 } city_model_t;
 
 const char* road_class_name(road_class_t class);
+const char* area_kind_name(area_kind_t kind);
+bool area_kind_from_name(const char* name, area_kind_t* kind);
 bool road_class_from_name(const char* name, road_class_t* class);
 
 void city_model_free(city_model_t* model);
@@ -105,5 +129,6 @@ bool city_model_read(city_model_t* model, const char* directory);
 city_road_t* city_model_add_road(city_model_t* model);
 city_building_t* city_model_add_building(city_model_t* model);
 city_junction_t* city_model_add_junction(city_model_t* model);
+city_area_t* city_model_add_area(city_model_t* model);
 
 #endif  // TOOLS_COMMON_CITY_MODEL_H_

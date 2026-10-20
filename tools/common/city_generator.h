@@ -40,6 +40,7 @@ typedef struct {
   size_t pavements;
   size_t ground_tiles;
   size_t lamps;
+  size_t areas;
 } city_generator_stats_t;
 
 city_generator_options_t city_generator_default_options(void);

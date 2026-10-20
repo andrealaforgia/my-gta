@@ -158,11 +158,11 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.road = upload(renderer, texture_road(2));
   set.concrete = upload(renderer, texture_concrete(3));
   set.grass = upload(renderer, texture_grass(4));
-  set.facade = upload(renderer, texture_facade(5, 4, 4));
+  set.facade = upload(renderer, texture_facade(5, 1, 1));
   set.facades[0] = set.facade;
-  set.facades[1] = upload(renderer, texture_facade(7, 3, 4));
-  set.facades[2] = upload(renderer, texture_facade(11, 5, 4));
-  set.facades[3] = upload(renderer, texture_facade(13, 4, 3));
+  set.facades[1] = upload(renderer, texture_facade(7, 1, 1));
+  set.facades[2] = upload(renderer, texture_facade(11, 1, 2));
+  set.facades[3] = upload(renderer, texture_facade(13, 1, 1));
   set.roof = upload(renderer, texture_roof(6));
   set.checker = upload(renderer, texture_checker());
   return set;

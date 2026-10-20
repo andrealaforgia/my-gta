@@ -301,9 +301,13 @@ static road_fit_t fit_road(const city_model_t* model, const city_road_t* road,
                            const city_generator_options_t* o) {
   road_fit_t fit;
   fit.half_width = road->width * 0.5;
-  fit.pavement = (o->pavements && road->class != ROAD_CLASS_SERVICE)
-                     ? o->pavement_width
-                     : 0;
+  bool has_pavement = o->pavements && road->class != ROAD_CLASS_SERVICE &&
+                      road->class != ROAD_CLASS_PEDESTRIAN &&
+                      road->class != ROAD_CLASS_PATH &&
+                      road->class != ROAD_CLASS_WATERWAY;
+  fit.pavement = has_pavement ? o->pavement_width : 0;
+  if (road->class == ROAD_CLASS_PATH || road->class == ROAD_CLASS_WATERWAY)
+    return fit;
   const double gap = 0.3, narrowest = 1.75;
   double wanted = fit.half_width + fit.pavement + gap;
   double corridor = corridor_half_width(model, road, wanted + 1.0);
@@ -415,6 +419,8 @@ static bool generate_junction(layout_t* layout, const city_model_t* model,
     for (int end = 0; end < 2 && arm_count < JUNCTION_MAX_ARMS; end++) {
       size_t index = end ? road->point_count - 1 : 0;
       if (road->node_ids[index] != junction->node_id) continue;
+      if (road->class == ROAD_CLASS_PATH || road->class == ROAD_CLASS_WATERWAY)
+        continue; /* paths and streams lie on top or below */
       size_t neighbour = end ? road->point_count - 2 : 1;
       vec2_t direction =
           v2_normalize(v2_sub(road->points[neighbour], road->points[index]));
@@ -441,9 +447,13 @@ static bool generate_junction(layout_t* layout, const city_model_t* model,
   if (!patch) return true;
 
   city_chunk_t* chunk = chunk_at(layout, junction->position);
+  bool all_pedestrian = true;
+  for (size_t a = 0; a < arm_count; a++)
+    if (model->roads[sources[a].road].class != ROAD_CLASS_PEDESTRIAN)
+      all_pedestrian = false;
   city_part_t* part = city_chunk_add_part(
-      chunk, "junction", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
-      o->road_friction, (uint64_t)junction->node_id);
+      chunk, all_pedestrian ? "paving" : "junction", PART_COLLIDER_MESH,
+      COLLISION_LAYER_GROUND, o->road_friction, (uint64_t)junction->node_id);
   if (!part) return false;
   if (!add_polygon_part(chunk, part, shape.polygon, shape.polygon_count,
                         o->road_height, 0.1f))
@@ -564,12 +574,25 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
                               cuts.end, points);
   lateral_offsets(points, count, laterals);
   city_chunk_t* chunk = chunk_at(layout, centroid(points, count));
+  bool for_people =
+      road->class == ROAD_CLASS_PEDESTRIAN || road->class == ROAD_CLASS_PATH;
+  bool water = road->class == ROAD_CLASS_WATERWAY;
+  /* Paths sit a little above the roads they cross; streams just above the
+   * grass and below everything else, with nothing to collide with. */
+  float height = road->class == ROAD_CLASS_PATH ? o->road_height + 0.012f
+                 : water                        ? 0.02f
+                                                : o->road_height;
   city_part_t* part = city_chunk_add_part(
-      chunk, "road", PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
+      chunk,
+      water        ? "water"
+      : for_people ? "paving"
+                   : "road",
+      water ? PART_COLLIDER_NONE : PART_COLLIDER_MESH, COLLISION_LAYER_GROUND,
       o->road_friction, (uint64_t)road->source_id);
   double half = fit.half_width;
-  bool ok = part && add_strip(&part->mesh, points, laterals, count, -half, half,
-                              o->road_height, o->road_texture_length);
+  bool ok =
+      part && add_strip(&part->mesh, points, laterals, count, -half, half,
+                        height, for_people ? 3.0f : o->road_texture_length);
   if (ok) finish_part(chunk, part);
   stats->roads++;
 
@@ -596,12 +619,91 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
       finish_part(chunk, kerb);
       stats->pavements++;
     }
-    if (ok && o->lamp_spacing > 0)
-      ok = generate_lamps(layout, road, points, laterals, count, fit, stats);
   }
+  if (ok && o->lamp_spacing > 0 && road->class != ROAD_CLASS_PATH &&
+      road->class != ROAD_CLASS_SERVICE && road->class != ROAD_CLASS_WATERWAY)
+    ok = generate_lamps(layout, road, points, laterals, count, fit, stats);
   free(points);
   free(laterals);
   return ok;
+}
+
+/* ---- areas: water, parks, car parks and squares ---- */
+
+static bool add_area_polygon(city_chunk_t* chunk, city_part_t* part,
+                             const local_point_t* points, size_t count, float y,
+                             float uv_scale) {
+  uint32_t* indices = malloc(3 * (count - 2) * sizeof(uint32_t));
+  if (!indices) return false;
+  bool clean;
+  size_t triangles = triangulate_polygon(points, count, indices, &clean);
+  uint32_t base = (uint32_t)part->mesh.vertex_count;
+  for (size_t i = 0; i < count; i++)
+    if (!add_vertex(&part->mesh, at(points[i], y), vec3(0, 1, 0),
+                    (float)(points[i].x * uv_scale),
+                    (float)(points[i].z * uv_scale))) {
+      free(indices);
+      return false;
+    }
+  for (size_t t = 0; t < triangles; t++) {
+    local_point_t tri[3] = {points[indices[t * 3]], points[indices[t * 3 + 1]],
+                            points[indices[t * 3 + 2]]};
+    if (fabs(polygon_signed_area(tri, 3)) < 1e-4) continue;
+    if (!add_face(&part->mesh, base + indices[t * 3], base + indices[t * 3 + 1],
+                  base + indices[t * 3 + 2], vec3(0, 1, 0))) {
+      free(indices);
+      return false;
+    }
+  }
+  free(indices);
+  finish_part(chunk, part);
+  return true;
+}
+
+static bool generate_area(layout_t* layout, const city_area_t* area,
+                          city_generator_stats_t* stats) {
+  const city_generator_options_t* o = layout->options;
+  const char* material = "park";
+  float y = 0.025f;
+  part_collider_t collider = PART_COLLIDER_NONE;
+  float friction = 0;
+  switch (area->kind) {
+    case AREA_WATER:
+      material = "water";
+      y = 0.02f;
+      break;
+    case AREA_PARKING:
+      material = "parking";
+      y = o->road_height - 0.01f;
+      collider = PART_COLLIDER_MESH;
+      friction = o->road_friction;
+      break;
+    case AREA_SQUARE:
+      material = "paving";
+      y = o->road_height + 0.012f;
+      collider = PART_COLLIDER_MESH;
+      friction = o->pavement_friction;
+      break;
+    default:
+      break;
+  }
+  if (area->point_count < 3) return true;
+  city_chunk_t* chunk =
+      chunk_at(layout, centroid(area->points, area->point_count));
+  city_part_t* part =
+      city_chunk_add_part(chunk, material, collider, COLLISION_LAYER_GROUND,
+                          friction, (uint64_t)area->source_id);
+  if (!part) return false;
+  if (!add_area_polygon(chunk, part, area->points, area->point_count, y,
+                        o->ground_uv_scale))
+    return false;
+  if (part->mesh.index_count == 0) {
+    mesh_data_free(&part->mesh);
+    chunk->part_count--;
+    return true;
+  }
+  stats->areas++;
+  return true;
 }
 
 static bool generate_building(layout_t* layout, const city_building_t* building,
@@ -724,7 +826,9 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
     for (size_t r = 0; r < model->road_count; r++) {
       const city_road_t* road = &model->roads[r];
       if (road->class == ROAD_CLASS_SERVICE ||
-          road->class == ROAD_CLASS_MOTORWAY)
+          road->class == ROAD_CLASS_MOTORWAY ||
+          road->class == ROAD_CLASS_PEDESTRIAN ||
+          road->class == ROAD_CLASS_PATH || road->class == ROAD_CLASS_WATERWAY)
         continue;
       local_point_t middle = centroid(road->points, road->point_count);
       if (fabs(middle.x) > limit || fabs(middle.z) > limit) continue;
@@ -831,6 +935,8 @@ bool city_generate(city_package_t* package, const city_model_t* model,
                            stats);
   for (size_t r = 0; ok && r < model->road_count; r++)
     ok = generate_road(&layout, &model->roads[r], fits[r], cuts[r], stats);
+  for (size_t a = 0; ok && a < model->area_count; a++)
+    ok = generate_area(&layout, &model->areas[a], stats);
   for (size_t b = 0; ok && b < model->building_count; b++)
     ok = generate_building(&layout, &model->buildings[b], stats);
   free(fits);
@@ -840,11 +946,12 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     return false;
   }
   choose_spawn(package, model, options);
-  LOG_INFO("generate",
-           "%d x %d chunks, %zu roads, %zu junction patches, %zu pavements, "
-           "%zu lamps, %zu buildings (%zu approximated), %zu triangles",
-           layout.columns, layout.rows, stats->roads, stats->junction_patches,
-           stats->pavements, stats->lamps, stats->buildings,
-           stats->buildings_unclean, city_package_triangle_count(package));
+  LOG_INFO(
+      "generate",
+      "%d x %d chunks, %zu roads, %zu junction patches, %zu pavements, "
+      "%zu lamps, %zu areas, %zu buildings (%zu approximated), %zu triangles",
+      layout.columns, layout.rows, stats->roads, stats->junction_patches,
+      stats->pavements, stats->lamps, stats->areas, stats->buildings,
+      stats->buildings_unclean, city_package_triangle_count(package));
   return true;
 }

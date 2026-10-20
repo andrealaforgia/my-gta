@@ -33,10 +33,24 @@ typedef struct {
   size_t tag_count;
 } osm_way_t;
 
+typedef enum {
+  OSM_MEMBER_NODE,
+  OSM_MEMBER_WAY,
+  OSM_MEMBER_RELATION
+} osm_member_type_t;
+
+typedef struct {
+  osm_member_type_t type;
+  int64_t ref;
+  char role[32];
+} osm_member_t;
+
 typedef struct {
   int64_t id;
   osm_tag_t* tags;
   size_t tag_count;
+  osm_member_t* members;
+  size_t member_count;
 } osm_relation_t;
 
 typedef struct {
@@ -59,6 +73,7 @@ bool osm_parse(osm_data_t* data, const char* xml);
 void osm_free(osm_data_t* data);
 const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id);
 const osm_way_t* osm_find_way(const osm_data_t* data, int64_t id);
+const osm_relation_t* osm_find_relation(const osm_data_t* data, int64_t id);
 const char* osm_tag(const osm_tag_t* tags, size_t count, const char* key);
 
 #endif  // TOOLS_COMMON_OSM_READER_H_

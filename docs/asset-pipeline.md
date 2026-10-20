@@ -16,16 +16,21 @@ city-validate <package dir>
 
 ## Intermediate model (ADR-005)
 
-A directory with `manifest.txt`, `roads.txt`, `buildings.txt`. Lines are
+A directory with `manifest.txt`, `roads.txt`, `buildings.txt`, `areas.txt`. Lines are
 records; `#` lines are comments.
 
 ```
 road <osm way id> <class> <width m> <width inferred 0|1> <oneway> <layer> <bridge> <tunnel> <surface|-> <name|-> <point count>
 p <x> <z> <osm node id>          one per point, local metres
 junction <osm node id> <x> <z> <degree>
-building <osm way id> <height m> <height source 0 tagged|1 levels|2 default> <levels> <category> <point count>
+building <osm id> <height m> <height source 0 tagged|1 levels|2 default> <levels> <category> <point count>
 p <x> <z>                        anticlockwise seen from above, ring not repeated
+area <osm id> <water|park|parking|square> <point count>
+p <x> <z>
 ```
+
+Road classes are motorway, primary, secondary, tertiary, residential,
+service, unclassified, pedestrian, path and waterway.
 
 The manifest records source path, import date, licence, geographic
 bounds, projection origin and the import statistics (accepted, ignored,
@@ -53,7 +58,8 @@ i a b c
 ```
 
 Materials are names the game binds to its procedural textures: `road`,
-`junction`, `pavement`, `kerb`, `grass`, `roof`, `facade0..3`, `lamp`. The game
+`junction`, `pavement`, `kerb`, `grass`, `roof`, `facade0..3`, `lamp`,
+`paving` (pedestrian streets, paths, squares), `parking`, `park`, `water`. The game
 merges all parts of one material in a chunk into one mesh, so draw calls
 are about ten per chunk. Collider parts become static triangle meshes in
 the physics world with the layer and friction given.
@@ -78,6 +84,14 @@ the physics world with the layer and friction given.
   pavement corner fills with kerbs join neighbouring arms around each
   junction. Pavement tops are colliders, so the car can mount them;
   kerbs never trap wheels.
+- Pedestrian streets are paving ribbons with no pavements; a junction
+  where only pedestrian streets meet is paved too. Paths are 2 m paving
+  ribbons laid 12 mm above the roads they cross and take no part in
+  junction layouts. Streams are water ribbons 2 cm above the ground with
+  no collider.
+- Areas are flat polygons: water (2 cm, no collider), parks (2.5 cm,
+  no collider, tinted grass), car parks (asphalt, 1 cm below the roads,
+  collider), squares (paving, 12 mm above the roads, collider).
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

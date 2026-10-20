@@ -78,13 +78,14 @@ static void ear_clipping_handles_convex_and_concave_rings(void) {
 static void every_road_junction_and_building_becomes_geometry(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
-  assert(stats.roads == 14);
-  assert(count_material(&package, "road") == 14);
+  assert(stats.roads == 18);
+  assert(count_material(&package, "road") ==
+         14); /* paths and the Corso are paving */
   assert(stats.junction_patches >=
          6); /* the five T and cross junctions plus n3 */
   assert(count_material(&package, "junction") == stats.junction_patches);
-  assert(stats.buildings == 5 && count_material(&package, "roof") == 5 &&
-         count_material(&package, "facade") == 5);
+  assert(stats.buildings == 7 && count_material(&package, "roof") == 7 &&
+         count_material(&package, "facade") == 7);
   assert(stats.pavements == 13); /* every road except the service stub */
   assert(stats.ground_tiles == package.chunk_count);
   assert(package.chunk_count >= 4);
@@ -146,6 +147,33 @@ static void roads_narrow_to_fit_between_buildings(void) {
   assert(free_road);
   aabb_t free_bounds = mesh_data_bounds(&free_road->mesh);
   assert(near_to(free_bounds.max.z - free_bounds.min.z, 6.0f, 0.05f));
+  city_package_free(&package);
+}
+
+static void people_streets_paths_and_areas_get_their_own_surfaces(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  const city_part_t* corso = part_for(&package, "paving", 301);
+  assert(corso && corso->collider == PART_COLLIDER_MESH);
+  assert(part_for(&package, "pavement", 301) ==
+         NULL); /* the whole street is paved */
+  const city_part_t* footway = part_for(&package, "paving", 108);
+  assert(footway);
+  aabb_t footway_bounds = mesh_data_bounds(&footway->mesh);
+  assert(footway_bounds.min.y > 0.06f); /* above the roads it crosses */
+  assert(part_for(&package, "lamp", 108) == NULL);
+  const city_part_t* water = part_for(&package, "water", 305);
+  assert(water && water->collider == PART_COLLIDER_NONE);
+  const city_part_t* stream = part_for(&package, "water", 309);
+  assert(stream && stream->collider == PART_COLLIDER_NONE);
+  assert(part_for(&package, "lamp", 309) == NULL);
+  const city_part_t* parking = part_for(&package, "parking", 306);
+  assert(parking && parking->collider == PART_COLLIDER_MESH);
+  assert(part_for(&package, "paving", 304));
+  assert(part_for(&package, "park", 403));
+  assert(stats.areas == 5);
+  /* Multipolygon buildings are built like any other. */
+  assert(part_for(&package, "roof", 402) && part_for(&package, "roof", 401));
   city_package_free(&package);
 }
 
@@ -220,7 +248,7 @@ static void the_package_round_trips_and_validates(void) {
   assert(strcmp(loaded.source, "tests/fixtures/district.osm") == 0);
   city_validation_t report;
   assert(city_validate(&loaded, &report));
-  assert(report.roads == 14 && report.buildings == 5 && report.issues == 0);
+  assert(report.roads == 14 && report.buildings == 7 && report.issues == 0);
   /* Corrupt an index and the validator must object. */
   loaded.chunks[0].parts[0].mesh.indices[0] = 999999;
   assert(!city_validate(&loaded, &report));
@@ -259,6 +287,7 @@ void run_generator_tests(void) {
   RUN(every_road_junction_and_building_becomes_geometry);
   RUN(road_ribbons_have_their_width_and_roofs_their_height);
   RUN(roads_narrow_to_fit_between_buildings);
+  RUN(people_streets_paths_and_areas_get_their_own_surfaces);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
   RUN(the_package_round_trips_and_validates);

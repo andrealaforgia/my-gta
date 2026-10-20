@@ -26,7 +26,8 @@ typedef struct {
   osm_way_t* way; /* way being read */
   size_t ref_capacity;
   osm_relation_t* relation; /* relation being read */
-  osm_tag_t** tags;         /* tag list of the open element */
+  size_t member_capacity;
+  osm_tag_t** tags; /* tag list of the open element */
   size_t* tag_count;
   size_t tag_capacity;
   bool ok;
@@ -181,7 +182,29 @@ static void start_relation(parser_t* p, const char* start, const char* end) {
   memset(relation, 0, sizeof(*relation));
   relation->id = strtoll(id, NULL, 10);
   p->relation = relation;
+  p->member_capacity = 0;
   open_tags(p, &relation->tags, &relation->tag_count);
+}
+
+static void add_member(parser_t* p, const char* start, const char* end) {
+  if (!p->relation) return;
+  osm_member_t member;
+  char type[16], ref[32];
+  if (!attribute(start, end, "type", type, sizeof(type)) ||
+      !attribute(start, end, "ref", ref, sizeof(ref)))
+    return;
+  if (!attribute(start, end, "role", member.role, sizeof(member.role)))
+    member.role[0] = '\0';
+  member.type = strcmp(type, "way") == 0    ? OSM_MEMBER_WAY
+                : strcmp(type, "node") == 0 ? OSM_MEMBER_NODE
+                                            : OSM_MEMBER_RELATION;
+  member.ref = strtoll(ref, NULL, 10);
+  if (!grow((void**)&p->relation->members, &p->member_capacity,
+            p->relation->member_count + 1, sizeof(osm_member_t))) {
+    p->ok = false;
+    return;
+  }
+  p->relation->members[p->relation->member_count++] = member;
 }
 
 static void read_bounds(parser_t* p, const char* start, const char* end) {
@@ -234,6 +257,8 @@ static void element(parser_t* p, const char* start, const char* end) {
     if (self_closing) p->relation = NULL;
   } else if (length == 6 && strncmp(start, "bounds", 6) == 0) {
     read_bounds(p, name_end, end);
+  } else if (length == 6 && strncmp(start, "member", 6) == 0) {
+    add_member(p, name_end, end);
   }
   /* member, osm and anything else: skipped */
 }
@@ -313,8 +338,10 @@ void osm_free(osm_data_t* data) {
     free(data->ways[i].node_refs);
     free(data->ways[i].tags);
   }
-  for (size_t i = 0; i < data->relation_count; i++)
+  for (size_t i = 0; i < data->relation_count; i++) {
     free(data->relations[i].tags);
+    free(data->relations[i].members);
+  }
   free(data->nodes);
   free(data->ways);
   free(data->relations);
@@ -350,6 +377,12 @@ const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id) {
 const osm_way_t* osm_find_way(const osm_data_t* data, int64_t id) {
   for (size_t i = 0; i < data->way_count; i++)
     if (data->ways[i].id == id) return &data->ways[i];
+  return NULL;
+}
+
+const osm_relation_t* osm_find_relation(const osm_data_t* data, int64_t id) {
+  for (size_t i = 0; i < data->relation_count; i++)
+    if (data->relations[i].id == id) return &data->relations[i];
   return NULL;
 }
 

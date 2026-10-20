@@ -35,8 +35,18 @@ have a PBF.
   secondary, tertiary, residential, living_street, unclassified, road
   (and their `_link` forms). Service roads (driveways, car park aisles)
   are skipped unless `--service-roads` is given: they are short, dense
-  and make junctions a mess without adding anywhere to drive. Footways,
-  paths, cycleways, steps and pedestrian ways are always ignored.
+  and make junctions a mess without adding anywhere to drive.
+- `highway=pedestrian` ways become the `pedestrian` class: a paved street
+  the whole width across, no separate pavements. With `area=yes` they are
+  squares (areas, below).
+- Footways, cycleways, paths, steps and bridleways become the `path`
+  class: a narrow paved strip laid over whatever it crosses, with no
+  junction geometry. Footways tagged `footway=sidewalk` or
+  `footway=crossing` are skipped because the generated pavements already
+  stand for them.
+- Open ways tagged `waterway` stream, river, canal, ditch or drain become
+  the `waterway` class: a water ribbon with no collider (streams 2.5 m,
+  canals 5 m, rivers 12 m unless `width` says otherwise).
 - Width from `width`, else `lanes` x 3.25 m, else a configurable default
   per class, and the result is marked inferred.
 - `oneway`, `layer`, `bridge`, `tunnel`, `surface`, `name` are kept as
@@ -44,8 +54,16 @@ have a PBF.
 - Ways tagged `building` that are closed rings with area. Height from
   `height`, else `building:levels` x 3.2 m, else a deterministic default
   between 6 and 15 m seeded by the way id. Rings are made anticlockwise.
-- Relations tagged `building` (multipolygons) are counted and skipped with
-  a warning.
+- Areas: closed ways and multipolygon relations tagged `natural=water`,
+  `waterway=riverbank`, `landuse=reservoir|basin` (water); `leisure=park`
+  and friends, `landuse=grass|forest|meadow|...`, `natural=wood|scrub`
+  (park); `amenity=parking` (parking); `highway=pedestrian` with
+  `area=yes` or `place=square` (square).
+- Multipolygon relations tagged `building` or with an area tag have their
+  `outer` member ways chained end to end into closed rings; each ring is
+  a building or area with the relation's tags. Inner rings (courtyards)
+  are not cut out yet. Rings that do not close are counted and skipped
+  with a warning.
 
 ## Cleaning and the road graph
 

@@ -42,11 +42,19 @@ int main(int argc, char* argv[]) {
       renderer_create(window.drawable_width, window.drawable_height);
   if (!renderer) return EXIT_FAILURE;
   stage_options_t stage_options = {city ? SCENE_CITY : SCENE_TEST_TRACK, city,
-                                   NULL, true, true};
+                                   NULL, getenv("SNAPSHOT_NO_DEBUG") == NULL,
+                                   true};
   driving_stage_t stage;
   if (!driving_stage_init(&stage, &window, renderer, NULL, stage_options))
     return EXIT_FAILURE;
 
+  const char* centre = getenv("SNAPSHOT_CENTRE");
+  if (centre) {
+    float cx = 0, cz = 0;
+    sscanf(centre, "%f,%f", &cx, &cz);
+    vehicle_set_spawn(&stage.vehicle, vec3(cx, 1.0f, cz), quat_identity());
+    vehicle_reset(&stage.vehicle, stage.physics);
+  }
   driving_input_t input = {1.0f, 0.0f, steering, false};
   int steps = (int)(seconds * 120);
   for (int i = 0; i < steps; i++) {
@@ -62,8 +70,12 @@ int main(int argc, char* argv[]) {
   stage.fps = 60;
   if (overhead > 0) {
     const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);
-    stage.camera.position = vec3_add(body->position, vec3(0.01f, overhead, 0));
+    /* A hair south of straight down keeps north at the top of the frame. */
+    stage.camera.position = vec3_add(body->position, vec3(0, overhead, 0.01f));
     stage.camera.look_target = body->position;
+    stage.scene.environment.fog_start = 5000.0f; /* a map, not a view */
+    stage.scene.environment.fog_end = 6000.0f;
+    stage.scene.environment.shadow_radius = 0;
   }
   driving_stage_render(&stage);
   /* Time repeated frames for a first performance figure. */
