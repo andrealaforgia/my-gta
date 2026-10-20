@@ -384,6 +384,48 @@ static void draw_hud(driving_stage_t* stage) {
                      "DEBUG  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
 }
 
+void driving_stage_next_vehicle(driving_stage_t* stage) {
+  static const char* files[4] = {
+      "assets/vehicles/hatchback.cfg", "assets/vehicles/sedan.cfg",
+      "assets/vehicles/van.cfg", "assets/vehicles/mini.cfg"};
+  int next = (stage->vehicle_index + 1) % 4;
+  vehicle_params_t params;
+  if (!vehicle_params_load(&params, files[next])) return;
+  const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);
+  vec3_t position = vec3_add(body->position, vec3(0, 0.3f, 0));
+  quat_t rotation = body->rotation;
+  vec3_t spawn = stage->vehicle.spawn_position;
+  quat_t spawn_rotation = stage->vehicle.spawn_rotation;
+  vehicle_destroy(&stage->vehicle, stage->physics);
+  if (!vehicle_create(&stage->vehicle, stage->physics, &params, position,
+                      rotation))
+    return;
+  vehicle_set_spawn(&stage->vehicle, spawn, spawn_rotation);
+  car_visual_destroy(&stage->car_visual, stage->renderer);
+  stage->car_visual = car_visual_create(stage->renderer, &params);
+  stage->vehicle_index = next;
+}
+
+render_camera_t driving_stage_camera(const driving_stage_t* stage) {
+  if (stage->view_mode == 0) return chase_camera_render(&stage->camera);
+  transform_t chassis =
+      car_transform((driving_stage_t*)stage, (float)stage->clock.alpha);
+  /* Left-hand drive: the driver sits left of centre, eyes just above the
+   * sill. The bonnet view sits forward of the windscreen, on the centre line.
+   */
+  vec3_t local_eye = stage->view_mode == 2 ? vec3(-0.36f, 0.42f, -0.05f)
+                                           : vec3(0.0f, 0.78f, -0.9f);
+  vec3_t eye = transform_point(chassis, local_eye);
+  vec3_t forward = quat_rotate(chassis.rotation, vec3(0, 0, -1));
+  render_camera_t view = {eye,
+                          vec3_add(eye, vec3_scale(forward, 20.0f)),
+                          quat_rotate(chassis.rotation, vec3(0, 1, 0)),
+                          stage->view_mode == 2 ? 1.25f : 1.15f,
+                          0.1f,
+                          1500.0f};
+  return view;
+}
+
 void driving_stage_render(driving_stage_t* stage) {
   renderer_t* r = stage->renderer;
   transform_t chassis = car_transform(stage, (float)stage->clock.alpha);
@@ -409,7 +451,7 @@ void driving_stage_render(driving_stage_t* stage) {
     else if (strncmp(entity->label, "facade", 6) == 0)
       entity->material.window_glow = night;
   }
-  renderer_begin_frame(r, chase_camera_render(&stage->camera), environment);
+  renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
   if (stage->has_fleet) {
@@ -449,8 +491,12 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   }
   if (events.toggle_mute && stage->audio)
     audio_device_toggle_mute(stage->audio);
-  if (events.toggle_camera)
-    chase_camera_reset(&stage->camera, car_transform(stage, 1.0f));
+  if (events.next_vehicle) driving_stage_next_vehicle(stage);
+  if (events.toggle_camera) {
+    stage->view_mode = (stage->view_mode + 1) % 3;
+    if (stage->view_mode == 0)
+      chase_camera_reset(&stage->camera, car_transform(stage, 1.0f));
+  }
 }
 
 void driving_stage_run(driving_stage_t* stage) {

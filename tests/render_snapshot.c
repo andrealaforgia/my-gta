@@ -83,6 +83,7 @@ int main(int argc, char* argv[]) {
     }
   }
   stage.fps = 60;
+  stage.view_mode = getenv("SNAPSHOT_VIEW") ? atoi(getenv("SNAPSHOT_VIEW")) : 0;
   stage.map_open = getenv("SNAPSHOT_MAP") != NULL;
   if (overhead > 0) {
     const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);

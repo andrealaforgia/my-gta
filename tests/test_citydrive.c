@@ -184,6 +184,51 @@ static void the_town_sounds_follow_the_time_of_day(void) {
   stop(&run);
 }
 
+static void the_driver_sees_from_inside_and_from_the_bonnet(void) {
+  city_run_t run;
+  start(&run);
+  driving_input_t idle = {0, 0, 0, false};
+  drive(&run, idle, 0.5f);
+  vec3_t chassis = car(&run)->position;
+  vec3_t forward = quat_rotate(car(&run)->rotation, vec3(0, 0, -1));
+  run.stage.view_mode = 2;
+  render_camera_t cockpit = driving_stage_camera(&run.stage);
+  assert(vec3_distance(cockpit.eye, chassis) < 0.8f); /* inside the car */
+  vec3_t gaze = vec3_normalize(vec3_sub(cockpit.target, cockpit.eye));
+  assert(vec3_dot(gaze, forward) > 0.99f);
+  run.stage.view_mode = 1;
+  render_camera_t bonnet = driving_stage_camera(&run.stage);
+  assert(vec3_dot(vec3_sub(bonnet.eye, chassis), forward) >
+         0.5f); /* ahead of the driver */
+  run.stage.view_mode = 0;
+  render_camera_t chase = driving_stage_camera(&run.stage);
+  assert(vec3_dot(vec3_sub(chase.eye, chassis), forward) < -2.0f); /* behind */
+  stop(&run);
+}
+
+static void v_swaps_the_car_for_the_next_one_where_it_stands(void) {
+  city_run_t run;
+  start(&run);
+  driving_input_t throttle = {1, 0, 0, false};
+  drive(&run, throttle, 2.0f);
+  vec3_t where = car(&run)->position;
+  float mass = car(&run)->mass;
+  char first[64];
+  snprintf(first, sizeof(first), "%s", run.stage.vehicle.params.name);
+  driving_stage_next_vehicle(&run.stage);
+  assert(strcmp(run.stage.vehicle.params.name, first) != 0);
+  assert(vec3_distance(car(&run)->position, where) < 1.0f);
+  assert(car(&run)->mass != mass);
+  /* The new car drives. */
+  vec3_t before = car(&run)->position;
+  drive(&run, throttle, 3.0f);
+  assert(vec3_distance(car(&run)->position, before) > 4.0f);
+  /* All four in turn, and back to the first. */
+  for (int i = 0; i < 3; i++) driving_stage_next_vehicle(&run.stage);
+  assert(strcmp(run.stage.vehicle.params.name, first) == 0);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -206,5 +251,7 @@ void run_citydrive_tests(void) {
   RUN(buildings_stop_the_car);
   RUN(the_car_follows_the_hills);
   RUN(the_town_sounds_follow_the_time_of_day);
+  RUN(the_driver_sees_from_inside_and_from_the_bonnet);
+  RUN(v_swaps_the_car_for_the_next_one_where_it_stands);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

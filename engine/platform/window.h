@@ -31,6 +31,7 @@ typedef struct {
   bool toggle_fullscreen;
   bool toggle_mute;
   bool toggle_map;
+  bool next_vehicle;
 } window_events_t;
 
 typedef struct {

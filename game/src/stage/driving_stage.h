@@ -60,6 +60,8 @@ typedef struct {
   traffic_t* traffic;
   pedestrians_t* people;
   pedestrian_meshes_t people_meshes;
+  int vehicle_index;
+  int view_mode; /* 0 chase, 1 bonnet, 2 cockpit */
   bool map_open; /* M: the city map over a paused game */
   texture_handle_t map_texture;
   bool show_debug;
@@ -79,6 +81,12 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
 void driving_stage_destroy(driving_stage_t* stage);
 /* What the car should sound like now: silent while paused or on the map. */
 audio_state_t driving_stage_audio_state(const driving_stage_t* stage);
+/* Swaps the player's car for the next of hatchback, saloon, van and city
+ * car, on the spot, keeping its heading. */
+void driving_stage_next_vehicle(driving_stage_t* stage);
+/* The camera for the current view: behind the car, over the bonnet or
+ * from the driver's seat. */
+render_camera_t driving_stage_camera(const driving_stage_t* stage);
 /* One fixed simulation step with the given input. */
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt);
