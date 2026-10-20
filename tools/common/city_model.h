@@ -113,6 +113,15 @@ typedef struct {
   size_t bends_rounded;   /* interior corners replaced by arcs */
 } city_stats_t;
 
+/* Ground height above the lowest sampled point on a regular grid of local
+ * metres: column i is at x = min_x + i * dx, row j at z = min_z + j * dz
+ * (row 0 is the north edge). cols == 0 means flat ground at 0. */
+typedef struct {
+  double min_x, min_z, dx, dz;
+  int cols, rows;
+  float* heights; /* rows * cols, row-major */
+} city_terrain_t;
+
 typedef struct {
   city_road_t* roads;
   size_t road_count;
@@ -122,12 +131,21 @@ typedef struct {
   size_t building_count;
   city_area_t* areas;
   size_t area_count;
+  city_terrain_t terrain;
   projection_t projection;
   osm_bounds_t bounds;
   char source[256];
   char import_date[32];
   city_stats_t stats;
 } city_model_t;
+
+/* Bilinear height at a local point; clamped to the edge outside the grid,
+ * 0 when there is no terrain. */
+double city_terrain_height(const city_terrain_t* terrain, double x, double z);
+/* Reads a lat/lon lattice of ground elevations (tools/fetch_elevation.py),
+ * projects it onto the model's local grid, smooths it a little and makes
+ * it relative to its lowest point. */
+bool city_model_load_elevation(city_model_t* model, const char* path);
 
 const char* road_class_name(road_class_t class);
 const char* area_kind_name(area_kind_t kind);

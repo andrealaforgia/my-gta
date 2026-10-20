@@ -45,6 +45,42 @@ static void meshes_append_with_rebased_indices(void) {
   mesh_data_free(&b);
 }
 
+static float triangle_area(vec3_t a, vec3_t b, vec3_t c) {
+  return 0.5f * vec3_length(vec3_cross(vec3_sub(b, a), vec3_sub(c, a)));
+}
+
+static void a_large_triangle_is_subdivided_until_its_edges_are_short(void) {
+  mesh_data_t mesh = mesh_data_create();
+  vertex_t a = {vec3(0, 0, 0), vec3(0, 1, 0), 0, 0};
+  vertex_t b = {vec3(40, 0, 0), vec3(0, 1, 0), 4, 0};
+  vertex_t c = {vec3(0, 0, 30), vec3(0, 1, 0), 0, 3};
+  assert(mesh_data_add_vertex(&mesh, a) && mesh_data_add_vertex(&mesh, b) &&
+         mesh_data_add_vertex(&mesh, c));
+  assert(mesh_data_add_triangle(&mesh, 0, 2, 1));
+  assert(mesh_data_subdivide(&mesh, 10.0f));
+  assert(mesh_data_triangle_count(&mesh) > 8);
+  float area = 0;
+  for (size_t i = 0; i + 2 < mesh.index_count; i += 3) {
+    vec3_t p = mesh.vertices[mesh.indices[i]].position;
+    vec3_t q = mesh.vertices[mesh.indices[i + 1]].position;
+    vec3_t r = mesh.vertices[mesh.indices[i + 2]].position;
+    assert(vec3_distance(p, q) <= 10.001f && vec3_distance(q, r) <= 10.001f &&
+           vec3_distance(r, p) <= 10.001f);
+    area += triangle_area(p, q, r);
+    /* The winding is kept: same facing as the original (0, 2, 1). */
+    assert(vec3_cross(vec3_sub(q, p), vec3_sub(r, p)).y > 0);
+  }
+  assert(near_to(area, 600.0f, 0.01f)); /* 40 x 30 / 2 */
+  /* Texture coordinates follow the positions (u = x / 10, v = z / 10). */
+  for (size_t i = 0; i < mesh.vertex_count; i++) {
+    assert(near_to(mesh.vertices[i].u, mesh.vertices[i].position.x / 10.0f,
+                   1e-4f));
+    assert(near_to(mesh.vertices[i].v, mesh.vertices[i].position.z / 10.0f,
+                   1e-4f));
+  }
+  mesh_data_free(&mesh);
+}
+
 static void the_font_covers_digits_and_capitals(void) {
   for (char c = '0'; c <= '9'; c++) assert(font5x7_has_glyph(c));
   for (char c = 'A'; c <= 'Z'; c++) assert(font5x7_has_glyph(c));
@@ -58,5 +94,6 @@ void run_mesh_tests(void) {
   RUN(a_box_has_twelve_outward_facing_triangles);
   RUN(a_wheel_cylinder_spans_its_width_and_radius);
   RUN(meshes_append_with_rebased_indices);
+  RUN(a_large_triangle_is_subdivided_until_its_edges_are_short);
   RUN(the_font_covers_digits_and_capitals);
 }

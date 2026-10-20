@@ -10,7 +10,7 @@
 static void usage(void) {
   printf(
       "city-import --input <file.osm> --output <directory> "
-      "[--no-service-roads]\n\n"
+      "[--no-service-roads] [--elevation <lattice.txt>]\n\n"
       "Reads an OpenStreetMap XML extract and writes the intermediate city\n"
       "model (roads.txt, buildings.txt, manifest.txt) in local metres.\n"
       "Exits 1 on failure, 2 on bad arguments.\n");
@@ -19,12 +19,15 @@ static void usage(void) {
 int main(int argc, char* argv[]) {
   const char* input = NULL;
   const char* output = NULL;
+  const char* elevation = NULL;
   city_import_options_t options = city_import_default_options();
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
       input = argv[++i];
     } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
       output = argv[++i];
+    } else if (strcmp(argv[i], "--elevation") == 0 && i + 1 < argc) {
+      elevation = argv[++i];
     } else if (strcmp(argv[i], "--no-service-roads") == 0) {
       options.include_service_roads = false;
     } else if (strcmp(argv[i], "--help") == 0) {
@@ -49,6 +52,10 @@ int main(int argc, char* argv[]) {
   osm_free(&osm);
   if (!ok) {
     LOG_ERROR("import", "nothing drivable found in %s", input);
+    return 1;
+  }
+  if (elevation && !city_model_load_elevation(&model, elevation)) {
+    city_model_free(&model);
     return 1;
   }
   ok = city_model_write(&model, output);

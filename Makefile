@@ -111,8 +111,12 @@ EXTRACT ?= data/pordenone.osm
 CITY ?= $(basename $(notdir $(EXTRACT)))
 CITY_CONFIG ?= assets/city/default.cfg
 
+# A lattice of elevations beside the extract (see scripts/fetch_elevation.py)
+# makes the city hilly: data/<city>.elevation.txt
+ELEVATION = $(wildcard $(basename $(EXTRACT)).elevation.txt)
+
 city: tools
-	./$(CITY_IMPORT) --input $(EXTRACT) --output data/intermediate/$(CITY)
+	./$(CITY_IMPORT) --input $(EXTRACT) --output data/intermediate/$(CITY) $(if $(ELEVATION),--elevation $(ELEVATION))
 	./$(CITY_GENERATE) --input data/intermediate/$(CITY) --config $(CITY_CONFIG) --output assets_cooked/cities/$(CITY)
 	./$(CITY_VALIDATE) assets_cooked/cities/$(CITY)
 

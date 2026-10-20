@@ -359,6 +359,55 @@ static void tunnels_and_driveways_are_not_drawn_but_alleys_are(void) {
   city_model_free(&model);
 }
 
+static void an_elevation_lattice_becomes_a_terrain_that_survives_the_model(
+    void) {
+  const char* lattice_path = "/tmp/gta-like-test-elevation.txt";
+  FILE* file = fopen(lattice_path, "w");
+  assert(file);
+  /* A lattice of 4 columns and 3 rows around the fixture, rising 2 m to
+   * the east per column and 1 m to the south per row; north row first. */
+  fprintf(file, "# city-elevation 1\nsource test\nlicence none\n");
+  fprintf(file, "grid 45.0030 11.9990 0.0010 0.0020 4 3\n");
+  for (int row = 0; row < 3; row++) {
+    fprintf(file, "row");
+    for (int col = 0; col < 4; col++) fprintf(file, " %d", 20 + 2 * col + row);
+    fprintf(file, "\n");
+  }
+  fclose(file);
+  city_model_t model = import_fixture();
+  assert(model.terrain.cols == 0);
+  assert(city_model_load_elevation(&model, lattice_path));
+  assert(model.terrain.cols == 4 && model.terrain.rows == 3);
+  /* Heights are relative to the lowest, which is 0. */
+  float lowest = 1e9f;
+  for (int i = 0; i < 12; i++) lowest = fminf(lowest, model.terrain.heights[i]);
+  assert(near_to(lowest, 0.0f, 1e-4f));
+  const city_terrain_t* terrain = &model.terrain;
+  double west = terrain->min_x, east = terrain->min_x + 3 * terrain->dx;
+  double north = terrain->min_z, south = terrain->min_z + 2 * terrain->dz;
+  double z_mid = 0.5 * (north + south);
+  assert(city_terrain_height(terrain, east, z_mid) >
+         city_terrain_height(terrain, west, z_mid) + 3.0);
+  assert(city_terrain_height(terrain, 0.5 * (west + east), south) >
+         city_terrain_height(terrain, 0.5 * (west + east), north) + 0.5);
+  /* Outside the lattice the nearest edge applies, and it is continuous. */
+  assert(near_to(city_terrain_height(terrain, east + 500, z_mid),
+                 city_terrain_height(terrain, east, z_mid), 1e-4));
+  double mid_x = 0.5 * (west + east);
+  assert(fabs(city_terrain_height(terrain, mid_x, z_mid) -
+              city_terrain_height(terrain, mid_x + 0.01, z_mid)) < 0.01);
+  /* The terrain is part of the written model. */
+  const char* directory = "/tmp/gta-like-test-terrain-model";
+  assert(city_model_write(&model, directory));
+  city_model_t loaded;
+  assert(city_model_read(&loaded, directory));
+  assert(loaded.terrain.cols == 4 && loaded.terrain.rows == 3);
+  assert(near_to(city_terrain_height(&loaded.terrain, mid_x, z_mid),
+                 city_terrain_height(terrain, mid_x, z_mid), 1e-3));
+  city_model_free(&loaded);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -397,5 +446,6 @@ void run_city_tests(void) {
   RUN(two_ways_meeting_end_to_end_become_one_road_with_a_rounded_bend);
   RUN(untagged_buildings_take_heights_from_their_kind);
   RUN(tunnels_and_driveways_are_not_drawn_but_alleys_are);
+  RUN(an_elevation_lattice_becomes_a_terrain_that_survives_the_model);
   RUN(the_model_round_trips_through_its_text_format);
 }

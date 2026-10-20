@@ -206,6 +206,7 @@ typedef struct {
   const city_generator_options_t* options;
   double min_x, min_z;
   int columns, rows;
+  const city_terrain_t* terrain; /* NULL or cols == 0 for flat ground */
 } layout_t;
 
 static city_chunk_t* chunk_at(layout_t* layout, local_point_t p) {
@@ -1082,7 +1083,7 @@ static double ridge_height(const ridge_t* ridge, double eaves,
 
 static bool add_walls(city_part_t* walls, const local_point_t* ring,
                       size_t count, float h, const city_generator_options_t* o,
-                      const ridge_t* ridge) {
+                      const ridge_t* ridge, float skirt) {
   for (size_t i = 0; i < count; i++) {
     local_point_t a = ring[i], b = ring[(i + 1) % count];
     vec2_t along = v2_sub(b, a);
@@ -1114,8 +1115,9 @@ static bool add_walls(city_part_t* walls, const local_point_t* ring,
       float u1 = (float)((travelled + span) / o->window_width);
       float storey = o->storey_height;
       uint32_t base = (uint32_t)walls->mesh.vertex_count;
-      if (!add_vertex(&walls->mesh, at(p, 0), normal, u0, 0) ||
-          !add_vertex(&walls->mesh, at(q, 0), normal, u1, 0) ||
+      float v_bottom = -skirt / storey;
+      if (!add_vertex(&walls->mesh, at(p, -skirt), normal, u0, v_bottom) ||
+          !add_vertex(&walls->mesh, at(q, -skirt), normal, u1, v_bottom) ||
           !add_vertex(&walls->mesh, at(q, top_q), normal, u1, top_q / storey) ||
           !add_vertex(&walls->mesh, at(p, top_p), normal, u0, top_p / storey))
         return false;
@@ -1349,6 +1351,26 @@ static bool add_ridge_triangle(city_part_t* roof, const local_point_t* tri,
          add_ridge_face(roof, positive, np, eaves, ridge);
 }
 
+static double terrain_at(const layout_t* layout, double x, double z) {
+  return layout->terrain ? city_terrain_height(layout->terrain, x, z) : 0.0;
+}
+
+static void lift_part(city_part_t* part, float dy) {
+  for (size_t v = 0; v < part->mesh.vertex_count; v++)
+    part->mesh.vertices[v].position.y += dy;
+}
+
+/* A building stands level at the ground height of its centre. */
+static void place_on_terrain(const layout_t* layout,
+                             const city_building_t* building,
+                             city_part_t* walls, city_part_t* roof) {
+  if (!layout->terrain || layout->terrain->cols == 0) return;
+  local_point_t c = centroid(building->points, building->point_count);
+  float base = (float)terrain_at(layout, c.x, c.z);
+  lift_part(walls, base);
+  lift_part(roof, base);
+}
+
 static bool generate_building(layout_t* layout, const city_building_t* building,
                               city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -1387,14 +1409,18 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
     ridge_data.slope = ridge_data.rise / fmax(half, 0.5);
     ridge = &ridge_data;
   }
-  if (!add_walls(walls, building->points, count, h, o, ridge)) return false;
+  /* On sloping ground the walls reach below the floor so no gap shows. */
+  float skirt = layout->terrain && layout->terrain->cols > 0 ? 3.0f : 0.0f;
+  if (!add_walls(walls, building->points, count, h, o, ridge, skirt))
+    return false;
   for (size_t hole = 0; hole < building->hole_count; hole++)
     if (!add_walls(walls, building->holes[hole].points,
-                   building->holes[hole].count, h, o, ridge))
+                   building->holes[hole].count, h, o, ridge, skirt))
       return false;
   bool pitched = false;
   if (!add_pitched_roof(roof, walls, building, h, o, &pitched)) return false;
   if (pitched) {
+    place_on_terrain(layout, building, walls, roof);
     finish_part(chunk, walls);
     finish_part(chunk, roof);
     stats->buildings++;
@@ -1459,6 +1485,7 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   free(hole_points);
   free(hole_counts);
   if (!roof_ok) return false;
+  place_on_terrain(layout, building, walls, roof);
   finish_part(chunk, walls);
   finish_part(chunk, roof);
   stats->buildings++;
@@ -1467,6 +1494,10 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
 
 static bool generate_ground(layout_t* layout, city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
+  bool hilly = layout->terrain && layout->terrain->cols > 0;
+  /* Flat ground is one quad per chunk; hills a grid of about 12 m cells,
+   * a little below the roads laid on it. */
+  int cells = hilly ? (int)ceil(o->chunk_size / 12.0f) : 1;
   for (int row = 0; row < layout->rows; row++) {
     for (int column = 0; column < layout->columns; column++) {
       city_chunk_t* chunk = city_package_chunk(layout->package, column, row);
@@ -1474,26 +1505,61 @@ static bool generate_ground(layout_t* layout, city_generator_stats_t* stats) {
           city_chunk_add_part(chunk, "ground", PART_COLLIDER_MESH,
                               COLLISION_LAYER_GROUND, o->ground_friction, 0);
       if (!part) return false;
-      float x0 = (float)(layout->min_x + column * o->chunk_size),
-            x1 = x0 + o->chunk_size;
-      float z0 = (float)(layout->min_z + row * o->chunk_size),
-            z1 = z0 + o->chunk_size;
+      float x0 = (float)(layout->min_x + column * o->chunk_size);
+      float z0 = (float)(layout->min_z + row * o->chunk_size);
+      float step = o->chunk_size / (float)cells;
       float s = o->ground_uv_scale;
       uint32_t base = (uint32_t)part->mesh.vertex_count;
-      if (!add_vertex(&part->mesh, vec3(x0, 0, z0), vec3(0, 1, 0), x0 * s,
-                      z0 * s) ||
-          !add_vertex(&part->mesh, vec3(x1, 0, z0), vec3(0, 1, 0), x1 * s,
-                      z0 * s) ||
-          !add_vertex(&part->mesh, vec3(x1, 0, z1), vec3(0, 1, 0), x1 * s,
-                      z1 * s) ||
-          !add_vertex(&part->mesh, vec3(x0, 0, z1), vec3(0, 1, 0), x0 * s,
-                      z1 * s))
-        return false;
-      if (!add_face(&part->mesh, base, base + 1, base + 2, vec3(0, 1, 0)) ||
-          !add_face(&part->mesh, base, base + 2, base + 3, vec3(0, 1, 0)))
-        return false;
+      for (int j = 0; j <= cells; j++)
+        for (int i = 0; i <= cells; i++) {
+          float x = x0 + step * (float)i, z = z0 + step * (float)j;
+          float y = hilly ? (float)terrain_at(layout, x, z) - 0.05f : 0.0f;
+          if (!add_vertex(&part->mesh, vec3(x, y, z), vec3(0, 1, 0), x * s,
+                          z * s))
+            return false;
+        }
+      for (int j = 0; j < cells; j++)
+        for (int i = 0; i < cells; i++) {
+          uint32_t a = base + (uint32_t)(j * (cells + 1) + i);
+          uint32_t b = a + 1, d = a + (uint32_t)(cells + 1), c = d + 1;
+          if (!add_face(&part->mesh, a, b, c, vec3(0, 1, 0)) ||
+              !add_face(&part->mesh, a, c, d, vec3(0, 1, 0)))
+            return false;
+        }
       finish_part(chunk, part);
       stats->ground_tiles++;
+    }
+  }
+  return true;
+}
+
+/* Lays everything but the ground and the buildings (already placed) on
+ * the terrain: large surfaces are cut into small triangles first so they
+ * follow the hills, then every vertex rises by the ground height under
+ * it. Chunk bounds are rebuilt. */
+static bool apply_terrain(layout_t* layout) {
+  if (!layout->terrain || layout->terrain->cols == 0) return true;
+  static const char* surfaces[] = {"park",     "paving", "parking", "junction",
+                                   "pavement", "water",  "road"};
+  for (size_t c = 0; c < layout->package->chunk_count; c++) {
+    city_chunk_t* chunk = &layout->package->chunks[c];
+    chunk->bounds = aabb_empty();
+    for (size_t p = 0; p < chunk->part_count; p++) {
+      city_part_t* part = &chunk->parts[p];
+      bool skip = strcmp(part->material, "ground") == 0 ||
+                  strncmp(part->material, "facade", 6) == 0 ||
+                  strncmp(part->material, "roof", 4) == 0;
+      if (!skip) {
+        for (size_t k = 0; k < sizeof(surfaces) / sizeof(surfaces[0]); k++)
+          if (strcmp(part->material, surfaces[k]) == 0 &&
+              !mesh_data_subdivide(&part->mesh, 12.0f))
+            return false;
+        for (size_t v = 0; v < part->mesh.vertex_count; v++) {
+          vec3_t* position = &part->mesh.vertices[v].position;
+          position->y += (float)terrain_at(layout, position->x, position->z);
+        }
+      }
+      chunk->bounds = aabb_merge(chunk->bounds, mesh_data_bounds(&part->mesh));
     }
   }
   return true;
@@ -1600,6 +1666,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   layout_t layout;
   layout.package = package;
   layout.options = options;
+  layout.terrain = &model->terrain;
   layout.min_x =
       floor((min_x - margin) / options->chunk_size) * options->chunk_size;
   layout.min_z =
@@ -1633,11 +1700,14 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     ok = generate_building(&layout, &model->buildings[b], stats);
   free(fits);
   free(cuts);
+  ok = ok && apply_terrain(&layout);
   if (!ok) {
     LOG_ERROR("generate", "out of memory while generating");
     return false;
   }
   choose_spawn(package, model, options);
+  package->spawn_position.y += (float)terrain_at(
+      &layout, package->spawn_position.x, package->spawn_position.z);
   LOG_INFO("generate",
            "%d x %d chunks, %zu roads, %zu junction patches, %zu pavements, "
            "%zu lamps, %zu areas, %zu trees, %zu buildings (%zu approximated), "

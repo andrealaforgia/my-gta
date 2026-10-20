@@ -170,3 +170,57 @@ aabb_t mesh_data_bounds(const mesh_data_t* mesh) {
 size_t mesh_data_triangle_count(const mesh_data_t* mesh) {
   return mesh->index_count / 3;
 }
+
+static vertex_t midpoint(vertex_t a, vertex_t b) {
+  vertex_t m;
+  m.position = vec3_scale(vec3_add(a.position, b.position), 0.5f);
+  m.normal = vec3_normalize(vec3_add(a.normal, b.normal));
+  m.u = 0.5f * (a.u + b.u);
+  m.v = 0.5f * (a.v + b.v);
+  return m;
+}
+
+/* Splits one triangle recursively into `out`. Depth is bounded so a huge
+ * triangle cannot run away. */
+static bool subdivide_triangle(mesh_data_t* out, vertex_t a, vertex_t b,
+                               vertex_t c, float max_edge, int depth) {
+  float ab = vec3_distance(a.position, b.position);
+  float bc = vec3_distance(b.position, c.position);
+  float ca = vec3_distance(c.position, a.position);
+  float longest = fmaxf(ab, fmaxf(bc, ca));
+  if (longest <= max_edge || depth >= 12) {
+    uint32_t base = (uint32_t)out->vertex_count;
+    return mesh_data_add_vertex(out, a) && mesh_data_add_vertex(out, b) &&
+           mesh_data_add_vertex(out, c) &&
+           mesh_data_add_triangle(out, base, base + 1, base + 2);
+  }
+  if (ab >= bc && ab >= ca) {
+    vertex_t m = midpoint(a, b);
+    return subdivide_triangle(out, a, m, c, max_edge, depth + 1) &&
+           subdivide_triangle(out, m, b, c, max_edge, depth + 1);
+  }
+  if (bc >= ca) {
+    vertex_t m = midpoint(b, c);
+    return subdivide_triangle(out, a, b, m, max_edge, depth + 1) &&
+           subdivide_triangle(out, a, m, c, max_edge, depth + 1);
+  }
+  vertex_t m = midpoint(c, a);
+  return subdivide_triangle(out, a, b, m, max_edge, depth + 1) &&
+         subdivide_triangle(out, m, b, c, max_edge, depth + 1);
+}
+
+bool mesh_data_subdivide(mesh_data_t* mesh, float max_edge) {
+  mesh_data_t out = mesh_data_create();
+  for (size_t i = 0; i + 2 < mesh->index_count; i += 3) {
+    if (!subdivide_triangle(&out, mesh->vertices[mesh->indices[i]],
+                            mesh->vertices[mesh->indices[i + 1]],
+                            mesh->vertices[mesh->indices[i + 2]], max_edge,
+                            0)) {
+      mesh_data_free(&out);
+      return false;
+    }
+  }
+  mesh_data_free(mesh);
+  *mesh = out;
+  return true;
+}

@@ -423,6 +423,79 @@ static void irregular_buildings_get_ridge_roofs_and_tall_ones_stay_flat(void) {
   city_model_free(&model);
 }
 
+static float slope_height(float x) { return 100.0f + 0.1f * x; }
+
+static void everything_follows_the_terrain(void) {
+  /* A street and a house on ground rising 10 % to the east: the terrain
+   * is 100 m at x = 0 and climbs 0.1 m per metre. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0004\" lon=\"12.0006\"/>"
+      "<node id=\"4\" lat=\"45.0004\" lon=\"12.0009\"/>"
+      "<node id=\"5\" lat=\"45.0007\" lon=\"12.0009\"/>"
+      "<node id=\"6\" lat=\"45.0007\" lon=\"12.0006\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"20\"><nd ref=\"3\"/><nd ref=\"4\"/><nd ref=\"5\"/><nd "
+      "ref=\"6\"/><nd ref=\"3\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"8\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  float heights[4] = {slope_height(-1000), slope_height(1000),
+                      slope_height(-1000), slope_height(1000)};
+  model.terrain.min_x = -1000, model.terrain.min_z = -1000;
+  model.terrain.dx = 2000, model.terrain.dz = 2000;
+  model.terrain.cols = 2, model.terrain.rows = 2;
+  model.terrain.heights = malloc(sizeof(heights));
+  memcpy(model.terrain.heights, heights, sizeof(heights));
+  city_generator_options_t options = city_generator_default_options();
+  options.lamp_spacing = 0;
+  city_package_t package;
+  city_generator_stats_t stats;
+  assert(city_generate(&package, &model, &options, "hill", &stats));
+  /* The road surface sits 6 cm above the ground at every vertex. */
+  const city_part_t* road = part_for(&package, "road", 10);
+  assert(road && road->mesh.vertex_count >= 4);
+  for (size_t v = 0; v < road->mesh.vertex_count; v++) {
+    vec3_t p = road->mesh.vertices[v].position;
+    assert(near_to(p.y, slope_height(p.x) + 0.06f, 0.05f));
+  }
+  /* The ground is a finer grid, just under the road. */
+  size_t ground_vertices = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* ground = &package.chunks[c].parts[p];
+      if (strcmp(ground->material, "ground") != 0) continue;
+      ground_vertices += ground->mesh.vertex_count;
+      for (size_t v = 0; v < ground->mesh.vertex_count; v++) {
+        vec3_t q = ground->mesh.vertices[v].position;
+        assert(near_to(q.y, slope_height(q.x) - 0.05f, 0.02f));
+      }
+    }
+  assert(ground_vertices > 4 * package.chunk_count);
+  /* The house stands on the slope with a skirt below, and its roof is at
+   * least its 8 m above where it stands. */
+  const city_part_t* walls = facade_for(&package, 20);
+  const city_part_t* roof = roof_for(&package, 20);
+  assert(walls && roof);
+  aabb_t wall_bounds = mesh_data_bounds(&walls->mesh);
+  float base = slope_height(0.5f * (wall_bounds.min.x + wall_bounds.max.x));
+  assert(wall_bounds.min.y < base - 1.5f);
+  assert(mesh_data_bounds(&roof->mesh).min.y > base + 7.9f);
+  /* The car spawns on the road, on the slope. */
+  assert(near_to(package.spawn_position.y,
+                 slope_height(package.spawn_position.x) + 0.06f + 0.9f, 0.1f));
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -568,6 +641,7 @@ void run_generator_tests(void) {
   RUN(parallel_carriageways_share_the_gap_between_them);
   RUN(narrow_terraces_get_gabled_roofs);
   RUN(irregular_buildings_get_ridge_roofs_and_tall_ones_stay_flat);
+  RUN(everything_follows_the_terrain);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

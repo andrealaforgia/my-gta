@@ -43,6 +43,9 @@ bool mesh_data_add_box(mesh_data_t* mesh, vec3_t center, vec3_t half_extents);
 bool mesh_data_add_cylinder_x(mesh_data_t* mesh, vec3_t center, float radius,
                               float width, int segments);
 bool mesh_data_add_grid(mesh_data_t* mesh, float half_size, float spacing);
+/* Splits triangles at the midpoint of their longest edge until every edge
+ * is at most max_edge long; winding, normals and uvs are interpolated. */
+bool mesh_data_subdivide(mesh_data_t* mesh, float max_edge);
 bool mesh_data_append(mesh_data_t* mesh, const mesh_data_t* other);
 aabb_t mesh_data_bounds(const mesh_data_t* mesh);
 size_t mesh_data_triangle_count(const mesh_data_t* mesh);

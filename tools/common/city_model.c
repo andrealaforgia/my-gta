@@ -1,5 +1,6 @@
 #include "city_model.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,7 +114,167 @@ void city_model_free(city_model_t* model) {
   free(model->buildings);
   free(model->areas);
   free(model->junctions);
+  free(model->terrain.heights);
   memset(model, 0, sizeof(*model));
+}
+
+static FILE* open_in(const char* directory, const char* name,
+                     const char* mode);
+
+/* ---- terrain ---- */
+
+double city_terrain_height(const city_terrain_t* terrain, double x, double z) {
+  if (terrain->cols < 2 || terrain->rows < 2 || !terrain->heights) return 0;
+  double gx = (x - terrain->min_x) / terrain->dx;
+  double gz = (z - terrain->min_z) / terrain->dz;
+  gx = gx < 0 ? 0 : (gx > terrain->cols - 1 ? terrain->cols - 1 : gx);
+  gz = gz < 0 ? 0 : (gz > terrain->rows - 1 ? terrain->rows - 1 : gz);
+  int i = (int)gx, j = (int)gz;
+  if (i > terrain->cols - 2) i = terrain->cols - 2;
+  if (j > terrain->rows - 2) j = terrain->rows - 2;
+  double fx = gx - i, fz = gz - j;
+  const float* h = terrain->heights;
+  int w = terrain->cols;
+  double top = h[j * w + i] * (1 - fx) + h[j * w + i + 1] * fx;
+  double bottom = h[(j + 1) * w + i] * (1 - fx) + h[(j + 1) * w + i + 1] * fx;
+  return top * (1 - fz) + bottom * fz;
+}
+
+static void smooth_terrain(city_terrain_t* terrain) {
+  float* out = malloc((size_t)terrain->cols * terrain->rows * sizeof(float));
+  if (!out) return;
+  for (int j = 0; j < terrain->rows; j++)
+    for (int i = 0; i < terrain->cols; i++) {
+      float sum = 0;
+      int n = 0;
+      for (int dj = -1; dj <= 1; dj++)
+        for (int di = -1; di <= 1; di++) {
+          int jj = j + dj, ii = i + di;
+          if (jj < 0 || jj >= terrain->rows || ii < 0 || ii >= terrain->cols)
+            continue;
+          sum += terrain->heights[jj * terrain->cols + ii];
+          n++;
+        }
+      out[j * terrain->cols + i] = sum / (float)n;
+    }
+  memcpy(terrain->heights, out,
+         (size_t)terrain->cols * terrain->rows * sizeof(float));
+  free(out);
+}
+
+bool city_model_load_elevation(city_model_t* model, const char* path) {
+  FILE* file = fopen(path, "r");
+  if (!file) {
+    LOG_ERROR("city", "cannot open %s", path);
+    return false;
+  }
+  double lat = 0, lon = 0, dlat = 0, dlon = 0;
+  int cols = 0, rows = 0, row = 0;
+  float* values = NULL;
+  char line[16384];
+  bool ok = true;
+  while (ok && fgets(line, sizeof(line), file)) {
+    if (strncmp(line, "grid ", 5) == 0) {
+      ok = sscanf(line + 5, "%lf %lf %lf %lf %d %d", &lat, &lon, &dlat, &dlon,
+                  &cols, &rows) == 6 &&
+           cols >= 2 && rows >= 2 && cols <= 4096 && rows <= 4096 && dlat > 0 &&
+           dlon > 0;
+      if (ok) {
+        free(values);
+        values = malloc((size_t)cols * rows * sizeof(float));
+        ok = values != NULL;
+      }
+    } else if (strncmp(line, "row", 3) == 0 && values && row < rows) {
+      char* cursor = line + 3;
+      for (int i = 0; i < cols && ok; i++) {
+        char* end;
+        double v = strtod(cursor, &end);
+        ok = end != cursor;
+        values[row * cols + i] = (float)v;
+        cursor = end;
+      }
+      row++;
+    }
+  }
+  fclose(file);
+  if (!ok || !values || row != rows) {
+    LOG_ERROR("city", "%s: not a valid elevation lattice", path);
+    free(values);
+    return false;
+  }
+  local_point_t north_west = projection_project(&model->projection, lat, lon);
+  local_point_t east = projection_project(&model->projection, lat, lon + dlon);
+  local_point_t south = projection_project(&model->projection, lat - dlat, lon);
+  free(model->terrain.heights);
+  model->terrain.min_x = north_west.x;
+  model->terrain.min_z = north_west.z;
+  model->terrain.dx = east.x - north_west.x;
+  model->terrain.dz = south.z - north_west.z;
+  model->terrain.cols = cols;
+  model->terrain.rows = rows;
+  model->terrain.heights = values;
+  smooth_terrain(&model->terrain);
+  float lowest = values[0];
+  for (int i = 1; i < cols * rows; i++) lowest = fminf(lowest, values[i]);
+  for (int i = 0; i < cols * rows; i++) values[i] -= lowest;
+  LOG_INFO("city", "terrain: %d x %d samples every %.0f m", cols, rows,
+           model->terrain.dx);
+  return true;
+}
+
+static bool write_terrain(const city_model_t* model, const char* directory) {
+  if (model->terrain.cols == 0) return true;
+  FILE* file = open_in(directory, "terrain.txt", "w");
+  if (!file) return false;
+  const city_terrain_t* t = &model->terrain;
+  fprintf(file, "# city-terrain 1\ngrid %.4f %.4f %.4f %.4f %d %d\n", t->min_x,
+          t->min_z, t->dx, t->dz, t->cols, t->rows);
+  for (int j = 0; j < t->rows; j++) {
+    fprintf(file, "row");
+    for (int i = 0; i < t->cols; i++)
+      fprintf(file, " %.3f", t->heights[j * t->cols + i]);
+    fprintf(file, "\n");
+  }
+  fclose(file);
+  return true;
+}
+
+static bool read_terrain(city_model_t* model, const char* directory) {
+  char path[1024];
+  snprintf(path, sizeof(path), "%s/terrain.txt", directory);
+  FILE* file = fopen(path, "r");
+  if (!file) return true; /* flat ground */
+  city_terrain_t* t = &model->terrain;
+  char line[16384];
+  int row = 0;
+  bool ok = true;
+  while (ok && fgets(line, sizeof(line), file)) {
+    if (strncmp(line, "grid ", 5) == 0) {
+      ok = sscanf(line + 5, "%lf %lf %lf %lf %d %d", &t->min_x, &t->min_z,
+                  &t->dx, &t->dz, &t->cols, &t->rows) == 6 &&
+           t->cols >= 2 && t->rows >= 2 && t->cols <= 4096 && t->rows <= 4096;
+      if (ok) {
+        t->heights = malloc((size_t)t->cols * t->rows * sizeof(float));
+        ok = t->heights != NULL;
+      }
+    } else if (strncmp(line, "row", 3) == 0 && t->heights && row < t->rows) {
+      char* cursor = line + 3;
+      for (int i = 0; i < t->cols && ok; i++) {
+        char* end;
+        double v = strtod(cursor, &end);
+        ok = end != cursor;
+        t->heights[row * t->cols + i] = (float)v;
+        cursor = end;
+      }
+      row++;
+    }
+  }
+  fclose(file);
+  if (!ok || row != t->rows) {
+    LOG_ERROR("city", "%s: bad terrain", path);
+    return false;
+  }
+  return true;
 }
 
 /* ---- writing ---- */
@@ -229,7 +390,8 @@ bool city_model_write(const city_model_t* model, const char* directory) {
     return false;
   }
   return write_roads(model, directory) && write_buildings(model, directory) &&
-         write_areas(model, directory) && write_manifest(model, directory);
+         write_areas(model, directory) && write_manifest(model, directory) &&
+         write_terrain(model, directory);
 }
 
 /* ---- reading ---- */
@@ -425,5 +587,6 @@ static bool read_manifest(city_model_t* model, const char* directory) {
 bool city_model_read(city_model_t* model, const char* directory) {
   memset(model, 0, sizeof(*model));
   return read_manifest(model, directory) && read_roads(model, directory) &&
-         read_buildings(model, directory) && read_areas(model, directory);
+         read_buildings(model, directory) && read_areas(model, directory) &&
+         read_terrain(model, directory);
 }
