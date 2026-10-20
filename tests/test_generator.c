@@ -533,6 +533,66 @@ static void footpaths_stop_at_the_pavement_instead_of_crossing_the_road(void) {
   city_model_free(&model);
 }
 
+static void buildings_on_a_named_street_get_a_portico(void) {
+  /* A pedestrian "Corso Test" along the middle with a 21 x 12 m building
+   * 4 m north of it, 12 m high. With the street named in
+   * arcade_streets the ground floor is set back 3 m behind pillars and
+   * the walkway under it is paved; without, the wall is plain. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0005\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0005\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.00054\" lon=\"12.0006\"/>"
+      "<node id=\"4\" lat=\"45.00054\" lon=\"12.0009\"/>"
+      "<node id=\"5\" lat=\"45.00065\" lon=\"12.0009\"/>"
+      "<node id=\"6\" lat=\"45.00065\" lon=\"12.0006\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"pedestrian\"/><tag k=\"name\" v=\"Corso Test\"/></way>"
+      "<way id=\"20\"><nd ref=\"3\"/><nd ref=\"4\"/><nd ref=\"5\"/><nd "
+      "ref=\"6\"/><nd ref=\"3\"/><tag k=\"building\" v=\"yes\"/><tag "
+      "k=\"height\" v=\"12\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  city_generator_options_t plain_options = city_generator_default_options();
+  plain_options.lamp_spacing = 0;
+  city_generator_options_t arcade_options = plain_options;
+  snprintf(arcade_options.arcade_streets, sizeof(arcade_options.arcade_streets),
+           "Corso_Test");
+  city_package_t plain, arcaded;
+  city_generator_stats_t stats;
+  assert(city_generate(&plain, &model, &plain_options, "plain", &stats));
+  assert(city_generate(&arcaded, &model, &arcade_options, "arcade", &stats));
+  const city_part_t* plain_walls = facade_for(&plain, 20);
+  const city_part_t* walls = facade_for(&arcaded, 20);
+  assert(plain_walls && walls);
+  assert(mesh_data_triangle_count(&walls->mesh) >
+         mesh_data_triangle_count(&plain_walls->mesh) + 20);
+  /* The street-facing edge is the building's southernmost: find its z. */
+  aabb_t plain_bounds = mesh_data_bounds(&plain_walls->mesh);
+  float edge_z = plain_bounds.max.z;
+  float inset_z = edge_z - 3.0f;
+  size_t on_edge_low = 0, on_inset_low = 0, on_edge_high = 0;
+  for (size_t v = 0; v < walls->mesh.vertex_count; v++) {
+    vec3_t p = walls->mesh.vertices[v].position;
+    if (fabsf(p.z - edge_z) < 0.05f && p.y < 5.0f) on_edge_low++;
+    if (fabsf(p.z - edge_z) < 0.05f && p.y > 11.9f) on_edge_high++;
+    if (fabsf(p.z - inset_z) < 0.05f && p.y < 5.0f) on_inset_low++;
+  }
+  assert(on_edge_high >= 2); /* the upper floors stay on the building line */
+  assert(on_edge_low >= 8);  /* pillars and the soffit edge stand on it */
+  assert(on_inset_low >= 4); /* the ground floor wall is set back */
+  assert(part_for(&arcaded, "paving", 20)); /* the walkway is paved */
+  assert(part_for(&plain, "paving", 20) == NULL);
+  city_package_free(&plain);
+  city_package_free(&arcaded);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -680,6 +740,7 @@ void run_generator_tests(void) {
   RUN(irregular_buildings_get_ridge_roofs_and_tall_ones_stay_flat);
   RUN(everything_follows_the_terrain);
   RUN(footpaths_stop_at_the_pavement_instead_of_crossing_the_road);
+  RUN(buildings_on_a_named_street_get_a_portico);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

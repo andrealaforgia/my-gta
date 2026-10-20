@@ -31,6 +31,9 @@ typedef struct {
   float building_friction;
   float lamp_spacing; /* metres between lamp posts, 0 for none */
   float tree_spacing; /* metres between trees in parks, 0 for none */
+  /* Comma-separated names (spaces as underscores, as in the model) of
+   * pedestrian streets whose buildings get porticoes. */
+  char arcade_streets[256];
 } city_generator_options_t;
 
 typedef struct {

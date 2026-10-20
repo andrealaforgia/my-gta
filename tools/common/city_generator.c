@@ -15,7 +15,7 @@
 city_generator_options_t city_generator_default_options(void) {
   city_generator_options_t o = {150.0f, 0.06f, true,  2.0f,  0.18f, 8.0f,
                                 3.0f,   3.2f,  12,    0.25f, 1.0f,  0.9f,
-                                0.7f,   0.6f,  28.0f, 14.0f};
+                                0.7f,   0.6f,  28.0f, 14.0f, {0}};
   return o;
 }
 
@@ -28,6 +28,8 @@ bool city_generator_options_load(city_generator_options_t* o,
     config_free(&config);
     return false;
   }
+  const char* arcades = config_get_string(&config, "arcade_streets", "");
+  snprintf(o->arcade_streets, sizeof(o->arcade_streets), "%s", arcades);
   o->chunk_size = config_get_float(&config, "chunk_size", o->chunk_size);
   o->road_height = config_get_float(&config, "road_height", o->road_height);
   o->pavements = config_get_bool(&config, "pavements", o->pavements);
@@ -68,12 +70,12 @@ uint64_t city_generator_options_hash(const city_generator_options_t* o) {
   /* FNV-1a over a textual rendering so padding bytes do not matter. */
   char text[512];
   snprintf(text, sizeof(text),
-           "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g %g", o->chunk_size,
+           "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g %g %s", o->chunk_size,
            o->road_height, o->pavements, o->pavement_width, o->kerb_height,
            o->road_texture_length, o->window_width, o->storey_height,
            o->facade_variants, o->ground_uv_scale, o->road_friction,
            o->pavement_friction, o->ground_friction, o->building_friction,
-           o->lamp_spacing, o->tree_spacing);
+           o->lamp_spacing, o->tree_spacing, o->arcade_streets);
   uint64_t hash = 1469598103934665603ull;
   for (const char* c = text; *c; c++)
     hash = (hash ^ (uint8_t)*c) * 1099511628211ull;
@@ -207,6 +209,9 @@ typedef struct {
   double min_x, min_z;
   int columns, rows;
   const city_terrain_t* terrain; /* NULL or cols == 0 for flat ground */
+  const city_model_t* model;
+  struct arcade_edge* arcade_edges; /* street-facing building edges */
+  size_t arcade_edge_count;
 } layout_t;
 
 static city_chunk_t* chunk_at(layout_t* layout, local_point_t p) {
@@ -1125,9 +1130,205 @@ static double ridge_height(const ridge_t* ridge, double eaves,
          ridge->slope * fabs(ridge_across(ridge, p) - ridge->mid);
 }
 
-static bool add_walls(city_part_t* walls, const local_point_t* ring,
-                      size_t count, float h, const city_generator_options_t* o,
-                      const ridge_t* ridge, float skirt) {
+/* ---- porticoes ---- */
+
+#define ARCADE_DEPTH 3.0
+#define ARCADE_PILLAR 0.7
+#define ARCADE_SPACING 4.5
+
+typedef struct arcade_edge {
+  local_point_t a, b;
+} arcade_edge_t;
+
+static bool street_is_arcaded(const city_generator_options_t* o,
+                              const char* name) {
+  if (!name[0] || !o->arcade_streets[0]) return false;
+  size_t length = strlen(name);
+  const char* cursor = o->arcade_streets;
+  while (*cursor) {
+    const char* end = strchr(cursor, ',');
+    size_t token = end ? (size_t)(end - cursor) : strlen(cursor);
+    if (token == length && strncmp(cursor, name, length) == 0) return true;
+    cursor += token + (end ? 1 : 0);
+  }
+  return false;
+}
+
+/* True when edge i of a building faces a named arcaded pedestrian street
+ * closely and runs alongside it, on a building deep enough to set a
+ * ground floor back. */
+static bool edge_faces_arcade(const city_model_t* model,
+                              const city_generator_options_t* o,
+                              const city_building_t* building, size_t i,
+                              double depth_available) {
+  if (!o->arcade_streets[0] || depth_available < 8.0) return false;
+  local_point_t a = building->points[i];
+  local_point_t b = building->points[(i + 1) % building->point_count];
+  double length = hypot(b.x - a.x, b.z - a.z);
+  if (length < 6.0) return false;
+  vec2_t direction = v2_normalize(v2_sub(b, a));
+  local_point_t middle = {(a.x + b.x) * 0.5, (a.z + b.z) * 0.5};
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (road->class != ROAD_CLASS_PEDESTRIAN ||
+        !street_is_arcaded(o, road->name))
+      continue;
+    for (size_t k = 1; k < road->point_count; k++) {
+      vec2_t along = v2_normalize(v2_sub(road->points[k], road->points[k - 1]));
+      if (fabs(direction.x * along.x + direction.z * along.z) < 0.9) continue;
+      if (point_segment_distance(middle, road->points[k - 1], road->points[k]) <
+          road->width * 0.5 + 3.5)
+        return true;
+    }
+  }
+  return false;
+}
+
+static double building_depth(const city_building_t* building) {
+  /* The shorter side of the bounding rectangle. */
+  double best = 1e30;
+  for (size_t i = 0; i < building->point_count; i++) {
+    vec2_t axis =
+        v2_normalize(v2_sub(building->points[(i + 1) % building->point_count],
+                            building->points[i]));
+    if (v2_length(axis) < 0.5) continue;
+    double lo = 1e30, hi = -1e30, lo2 = 1e30, hi2 = -1e30;
+    for (size_t k = 0; k < building->point_count; k++) {
+      double along =
+          building->points[k].x * axis.x + building->points[k].z * axis.z;
+      double across =
+          -building->points[k].x * axis.z + building->points[k].z * axis.x;
+      lo = fmin(lo, along), hi = fmax(hi, along);
+      lo2 = fmin(lo2, across), hi2 = fmax(hi2, across);
+    }
+    best = fmin(best, fmin(hi - lo, hi2 - lo2));
+  }
+  return best;
+}
+
+static bool arcade_continues_at(const layout_t* layout, local_point_t p) {
+  int touching = 0;
+  for (size_t e = 0; e < layout->arcade_edge_count; e++) {
+    const arcade_edge_t* edge = &layout->arcade_edges[e];
+    if (hypot(edge->a.x - p.x, edge->a.z - p.z) < 1.5) touching++;
+    if (hypot(edge->b.x - p.x, edge->b.z - p.z) < 1.5) touching++;
+  }
+  return touching >= 2; /* this edge and its neighbour */
+}
+
+static bool add_wall_quad(city_part_t* walls, local_point_t p, local_point_t q,
+                          float y0, float y1, vec3_t normal, float u0, float u1,
+                          float v0, float v1) {
+  uint32_t base = (uint32_t)walls->mesh.vertex_count;
+  if (!add_vertex(&walls->mesh, at(p, y0), normal, u0, v0) ||
+      !add_vertex(&walls->mesh, at(q, y0), normal, u1, v0) ||
+      !add_vertex(&walls->mesh, at(q, y1), normal, u1, v1) ||
+      !add_vertex(&walls->mesh, at(p, y1), normal, u0, v1))
+    return false;
+  return add_face(&walls->mesh, base, base + 1, base + 2, normal) &&
+         add_face(&walls->mesh, base, base + 2, base + 3, normal);
+}
+
+/* One square pillar standing at `centre`, aligned to the edge. */
+static bool add_pillar(city_part_t* walls, local_point_t centre, vec2_t along,
+                       float y0, float y1, float storey) {
+  double h = ARCADE_PILLAR * 0.5;
+  vec2_t out = v2(-along.z, along.x);
+  local_point_t corner[4];
+  double signs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+  for (int k = 0; k < 4; k++) {
+    corner[k].x =
+        centre.x + along.x * h * signs[k][0] + out.x * h * signs[k][1];
+    corner[k].z =
+        centre.z + along.z * h * signs[k][0] + out.z * h * signs[k][1];
+  }
+  for (int k = 0; k < 4; k++) {
+    local_point_t p = corner[k], q = corner[(k + 1) % 4];
+    vec2_t d = v2_normalize(v2_sub(q, p));
+    vec3_t normal = vec3((float)-d.z, 0, (float)d.x);
+    /* The corners run anticlockwise seen from above: signs above go
+     * (-,-), (+,-), (+,+), (-,+). */
+    if (!add_wall_quad(walls, p, q, y0, y1, normal, 0, 0.25f, y0 / storey,
+                       y1 / storey))
+      return false;
+  }
+  return true;
+}
+
+/* The ground floor of an edge set back behind pillars: the wall at the
+ * back, the returns at the ends unless the arcade carries on, the soffit
+ * and the pillars. `floor` collects the paved walkway. */
+static bool add_portico(const layout_t* layout, city_part_t* walls,
+                        city_part_t* walkway, local_point_t a, local_point_t b,
+                        float height, float skirt) {
+  const city_generator_options_t* o = layout->options;
+  vec2_t along = v2_sub(b, a);
+  double length = v2_length(along);
+  vec2_t direction = v2_normalize(along);
+  vec3_t outward = vec3((float)-direction.z, 0, (float)direction.x);
+  vec2_t inward = v2(direction.z, -direction.x);
+  local_point_t a2 = offset(a, inward, ARCADE_DEPTH);
+  local_point_t b2 = offset(b, inward, ARCADE_DEPTH);
+  float storey = o->storey_height;
+  float top = fminf(height, 1.5f * storey);
+  float u1 = (float)(length / o->window_width);
+  /* The back wall faces out toward the street. */
+  if (!add_wall_quad(walls, a2, b2, -skirt, top, outward, 0, u1,
+                     -skirt / storey, top / storey))
+    return false;
+  /* Returns close the ends of an arcade that stops there. */
+  if (!arcade_continues_at(layout, a) &&
+      !add_wall_quad(walls, a, a2, -skirt, top,
+                     vec3((float)direction.x, 0, (float)direction.z), 0,
+                     (float)(ARCADE_DEPTH / o->window_width), -skirt / storey,
+                     top / storey))
+    return false;
+  if (!arcade_continues_at(layout, b) &&
+      !add_wall_quad(walls, b2, b, -skirt, top,
+                     vec3((float)-direction.x, 0, (float)-direction.z), 0,
+                     (float)(ARCADE_DEPTH / o->window_width), -skirt / storey,
+                     top / storey))
+    return false;
+  /* The soffit overhead, facing down. */
+  uint32_t base = (uint32_t)walls->mesh.vertex_count;
+  vec3_t down = vec3(0, -1, 0);
+  if (!add_vertex(&walls->mesh, at(a, top), down, 0, 0) ||
+      !add_vertex(&walls->mesh, at(b, top), down, u1, 0) ||
+      !add_vertex(&walls->mesh, at(b2, top), down, u1, 1) ||
+      !add_vertex(&walls->mesh, at(a2, top), down, 0, 1))
+    return false;
+  if (!add_face(&walls->mesh, base, base + 1, base + 2, down) ||
+      !add_face(&walls->mesh, base, base + 2, base + 3, down))
+    return false;
+  /* Pillars along the building line, a face in from it so the upper
+   * walls overhang them. */
+  int pillars = (int)floor(length / ARCADE_SPACING + 0.5);
+  if (pillars < 1) pillars = 1;
+  for (int k = 0; k < pillars; k++) {
+    double t = (k + 0.5) / pillars * length;
+    local_point_t centre =
+        offset(offset(a, direction, t), inward, ARCADE_PILLAR * 0.5);
+    if (!add_pillar(walls, centre, direction, -skirt, top, storey))
+      return false;
+  }
+  /* The paved walkway under it. */
+  float y = o->road_height + 0.02f;
+  uint32_t f = (uint32_t)walkway->mesh.vertex_count;
+  vec3_t up = vec3(0, 1, 0);
+  if (!add_vertex(&walkway->mesh, at(a, y), up, 0, 0) ||
+      !add_vertex(&walkway->mesh, at(b, y), up, u1, 0) ||
+      !add_vertex(&walkway->mesh, at(b2, y), up, u1, 1) ||
+      !add_vertex(&walkway->mesh, at(a2, y), up, 0, 1))
+    return false;
+  return add_face(&walkway->mesh, f, f + 1, f + 2, up) &&
+         add_face(&walkway->mesh, f, f + 2, f + 3, up);
+}
+
+static bool add_walls(const layout_t* layout, city_part_t* walls,
+                      city_part_t* walkway, const local_point_t* ring,
+                      size_t count, float h, const ridge_t* ridge, float skirt,
+                      const bool* arcaded) {
+  const city_generator_options_t* o = layout->options;
   for (size_t i = 0; i < count; i++) {
     local_point_t a = ring[i], b = ring[(i + 1) % count];
     vec2_t along = v2_sub(b, a);
@@ -1135,6 +1336,9 @@ static bool add_walls(city_part_t* walls, const local_point_t* ring,
     if (length < 1e-6) continue;
     vec2_t direction = v2_normalize(along);
     vec3_t normal = vec3((float)-direction.z, 0, (float)direction.x);
+    bool portico = arcaded && arcaded[i];
+    float storey = o->storey_height;
+    float bottom = portico ? fminf(h, 1.5f * storey) : -skirt;
     /* Split where the edge crosses the ridge so the top follows it. */
     local_point_t pieces[3] = {a, b, b};
     size_t piece_count = 2;
@@ -1157,19 +1361,24 @@ static bool add_walls(city_part_t* walls, const local_point_t* ring,
       float top_q = ridge ? (float)ridge_height(ridge, h, q) : h;
       float u0 = (float)(travelled / o->window_width);
       float u1 = (float)((travelled + span) / o->window_width);
-      float storey = o->storey_height;
       uint32_t base = (uint32_t)walls->mesh.vertex_count;
-      float v_bottom = -skirt / storey;
-      if (!add_vertex(&walls->mesh, at(p, -skirt), normal, u0, v_bottom) ||
-          !add_vertex(&walls->mesh, at(q, -skirt), normal, u1, v_bottom) ||
-          !add_vertex(&walls->mesh, at(q, top_q), normal, u1, top_q / storey) ||
-          !add_vertex(&walls->mesh, at(p, top_p), normal, u0, top_p / storey))
+      /* Above a portico the texture restarts at a clean storey line. */
+      float v_bottom = portico ? 0.0f : -skirt / storey;
+      float v_shift = portico ? bottom / storey : 0.0f;
+      if (!add_vertex(&walls->mesh, at(p, bottom), normal, u0, v_bottom) ||
+          !add_vertex(&walls->mesh, at(q, bottom), normal, u1, v_bottom) ||
+          !add_vertex(&walls->mesh, at(q, top_q), normal, u1,
+                      top_q / storey - v_shift) ||
+          !add_vertex(&walls->mesh, at(p, top_p), normal, u0,
+                      top_p / storey - v_shift))
         return false;
       if (!add_face(&walls->mesh, base, base + 1, base + 2, normal) ||
           !add_face(&walls->mesh, base, base + 2, base + 3, normal))
         return false;
       travelled += span;
     }
+    if (portico && !add_portico(layout, walls, walkway, a, b, h, skirt))
+      return false;
   }
   return true;
 }
@@ -1415,6 +1624,22 @@ static void place_on_terrain(const layout_t* layout,
   lift_part(roof, base);
 }
 
+/* Puts the finished building on the ground and keeps its parts. The
+ * walkway part is dropped when no edge needed one. */
+static void finish_building(layout_t* layout, const city_building_t* building,
+                            city_chunk_t* chunk, city_part_t* walls,
+                            city_part_t* roof, city_part_t* walkway) {
+  place_on_terrain(layout, building, walls, roof);
+  finish_part(chunk, walls);
+  finish_part(chunk, roof);
+  if (walkway->mesh.vertex_count == 0) {
+    mesh_data_free(&walkway->mesh);
+    chunk->part_count--; /* the walkway is the last part */
+  } else {
+    finish_part(chunk, walkway);
+  }
+}
+
 static bool generate_building(layout_t* layout, const city_building_t* building,
                               city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -1438,9 +1663,22 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
                                 COLLISION_LAYER_BUILDING, o->building_friction,
                                 (uint64_t)building->source_id)
           : NULL;
-  if (!walls || !roof) return false;
-  walls = &chunk->parts[chunk->part_count -
-                        2]; /* the roof's addition may have moved the array */
+  city_part_t* walkway =
+      roof ? city_chunk_add_part(chunk, "paving", PART_COLLIDER_MESH,
+                                 COLLISION_LAYER_GROUND, o->pavement_friction,
+                                 (uint64_t)building->source_id)
+           : NULL;
+  if (!walls || !roof || !walkway) return false;
+  /* Adding parts may have moved the array: walls, roof, walkway are the last
+   * three. */
+  walls = &chunk->parts[chunk->part_count - 3];
+  roof = &chunk->parts[chunk->part_count - 2];
+  walkway = &chunk->parts[chunk->part_count - 1];
+  bool* arcaded = calloc(count, sizeof(bool));
+  if (!arcaded) return false;
+  double depth = building_depth(building);
+  for (size_t i = 0; i < count; i++)
+    arcaded[i] = edge_faces_arcade(layout->model, o, building, i, depth);
   float h = building->height;
   ridge_t ridge_data;
   const ridge_t* ridge = NULL;
@@ -1453,20 +1691,20 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
     ridge_data.slope = ridge_data.rise / fmax(half, 0.5);
     ridge = &ridge_data;
   }
-  /* On sloping ground the walls reach below the floor so no gap shows. */
+  /* On sloping ground the walls reach below the walkway so no gap shows. */
   float skirt = layout->terrain && layout->terrain->cols > 0 ? 3.0f : 0.0f;
-  if (!add_walls(walls, building->points, count, h, o, ridge, skirt))
-    return false;
+  bool walls_ok = add_walls(layout, walls, walkway, building->points, count, h,
+                            ridge, skirt, arcaded);
+  free(arcaded);
+  if (!walls_ok) return false;
   for (size_t hole = 0; hole < building->hole_count; hole++)
-    if (!add_walls(walls, building->holes[hole].points,
-                   building->holes[hole].count, h, o, ridge, skirt))
+    if (!add_walls(layout, walls, walkway, building->holes[hole].points,
+                   building->holes[hole].count, h, ridge, skirt, NULL))
       return false;
   bool pitched = false;
   if (!add_pitched_roof(roof, walls, building, h, o, &pitched)) return false;
   if (pitched) {
-    place_on_terrain(layout, building, walls, roof);
-    finish_part(chunk, walls);
-    finish_part(chunk, roof);
+    finish_building(layout, building, chunk, walls, roof, walkway);
     stats->buildings++;
     return true;
   }
@@ -1529,9 +1767,7 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   free(hole_points);
   free(hole_counts);
   if (!roof_ok) return false;
-  place_on_terrain(layout, building, walls, roof);
-  finish_part(chunk, walls);
-  finish_part(chunk, roof);
+  finish_building(layout, building, chunk, walls, roof, walkway);
   stats->buildings++;
   return true;
 }
@@ -1711,6 +1947,9 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   layout.package = package;
   layout.options = options;
   layout.terrain = &model->terrain;
+  layout.model = model;
+  layout.arcade_edges = NULL;
+  layout.arcade_edge_count = 0;
   layout.min_x =
       floor((min_x - margin) / options->chunk_size) * options->chunk_size;
   layout.min_z =
@@ -1740,8 +1979,27 @@ bool city_generate(city_package_t* package, const city_model_t* model,
                        stats);
   for (size_t a = 0; ok && a < model->area_count; a++)
     ok = generate_area(&layout, &model->areas[a], stats);
+  /* Edges that face an arcaded street, so neighbouring porticoes join. */
+  if (options->arcade_streets[0]) {
+    layout.arcade_edges =
+        calloc(model->building_count * 8 + 8, sizeof(arcade_edge_t));
+    size_t capacity = model->building_count * 8 + 8;
+    for (size_t b = 0; ok && b < model->building_count; b++) {
+      const city_building_t* building = &model->buildings[b];
+      double depth = building_depth(building);
+      for (size_t i = 0; i < building->point_count; i++)
+        if (edge_faces_arcade(model, options, building, i, depth) &&
+            layout.arcade_edge_count < capacity) {
+          arcade_edge_t* edge =
+              &layout.arcade_edges[layout.arcade_edge_count++];
+          edge->a = building->points[i];
+          edge->b = building->points[(i + 1) % building->point_count];
+        }
+    }
+  }
   for (size_t b = 0; ok && b < model->building_count; b++)
     ok = generate_building(&layout, &model->buildings[b], stats);
+  free(layout.arcade_edges);
   free(fits);
   free(cuts);
   ok = ok && apply_terrain(&layout);

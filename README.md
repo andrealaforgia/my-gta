@@ -77,7 +77,7 @@ that accelerates, brakes, steers, reverses, skids and collides, a chase
 camera, the offline pipeline from OSM XML to a validated cooked package,
 and driving through the generated city: roads with stop lines and zebra crossings, pedestrian streets and
 paths, squares, parks with trees, car parks, water, lamp posts, and
-hills from a real elevation model, and buildings with courtyards, twelve
+hills from a real elevation model, porticoes along the Corso, and buildings with courtyards, twelve
 facade styles and hipped, gabled or ridge roofs in terracotta, slate or flat.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:

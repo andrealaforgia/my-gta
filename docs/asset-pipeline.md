@@ -129,6 +129,15 @@ the physics world with the layer and friction given.
   ones are flat. Material is terracotta (70 %), slate (30 %) or the flat
   bitumen texture. Facades use one of twelve styles with their own
   palette, shutters, arches, balconies and window width.
+- Porticoes: with `arcade_streets` set in the config (comma separated
+  names as in the model, underscores for spaces; Pordenone's config names
+  Corso_Vittorio_Emanuele_Secondo), a building edge at least 6 m long that
+  runs alongside such a pedestrian street within half its width plus
+  3.5 m, on a building at least 8 m deep, gets a portico: the ground
+  floor (1.5 storeys) is set 3 m back behind square pillars every 4.5 m,
+  the upper floors overhang on the original line with the facade texture
+  restarting at a clean storey, and the walkway is a paved part of its own.
+  The ends are closed unless a neighbouring arcaded edge continues.
 - Lamp posts stand in the middle of the pavement every `lamp_spacing`
   metres, alternating sides, with an arm and head over the road; they are
   colliders on the prop layer. `lamp_spacing = 0` turns them off.

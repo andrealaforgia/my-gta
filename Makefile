@@ -109,7 +109,8 @@ sanitize:
 # make city EXTRACT=data/pordenone.osm CITY=pordenone
 EXTRACT ?= data/pordenone.osm
 CITY ?= $(basename $(notdir $(EXTRACT)))
-CITY_CONFIG ?= assets/city/default.cfg
+# A city can have its own settings: assets/city/<city>.cfg
+CITY_CONFIG ?= $(if $(wildcard assets/city/$(CITY).cfg),assets/city/$(CITY).cfg,assets/city/default.cfg)
 
 # A lattice of elevations beside the extract (see scripts/fetch_elevation.py)
 # makes the city hilly: data/<city>.elevation.txt
