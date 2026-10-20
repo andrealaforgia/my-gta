@@ -269,6 +269,7 @@ void vehicle_reset(vehicle_t* vehicle, physics_world_t* world) {
   vehicle->steering_filter.value = 0;
   vehicle->forward_speed = 0;
   vehicle->skid_intensity = 0;
+  vehicle->damage = 0;
   place_wheels(vehicle);
 }
 
@@ -335,7 +336,8 @@ static float drive_force_per_wheel(const vehicle_t* vehicle, float throttle) {
   const vehicle_params_t* p = &vehicle->params;
   if (vehicle->shift_timer > 0) return 0;
   float ratio = current_ratio(vehicle);
-  float torque = vehicle_engine_torque(p, vehicle->rpm) * throttle;
+  float torque = vehicle_engine_torque(p, vehicle->rpm) * throttle *
+                 vehicle_power_factor(vehicle);
   if (throttle < 0.05f) {
     /* Engine braking grows with revs and only acts while the wheels drive
      * the engine, so a stopped car is not dragged backwards. */
@@ -503,6 +505,13 @@ void vehicle_update(vehicle_t* vehicle, physics_world_t* world,
         contact->impulse > vehicle->impact_impulse)
       vehicle->impact_impulse = contact->impulse;
   }
+  /* A hard impact dents it; a scrape or a bump does not. Roughly a third of
+   * a wreck for a crash at forty kilometres an hour into a wall. */
+  const float dent_floor = 1500.0f, dent_scale = 12000.0f;
+  if (vehicle->impact_impulse > dent_floor) {
+    vehicle->damage += (vehicle->impact_impulse - dent_floor) / dent_scale;
+    if (vehicle->damage > 1.0f) vehicle->damage = 1.0f;
+  }
 }
 
 /* ---- telemetry ---- */
@@ -510,6 +519,10 @@ void vehicle_update(vehicle_t* vehicle, physics_world_t* world,
 float vehicle_forward_speed(const vehicle_t* vehicle) {
   return vehicle->forward_speed;
 }
+float vehicle_power_factor(const vehicle_t* vehicle) {
+  return 1.0f - 0.45f * vehicle->damage;
+}
+
 float vehicle_speed_kmh(const vehicle_t* vehicle) {
   return vehicle->forward_speed * 3.6f;
 }

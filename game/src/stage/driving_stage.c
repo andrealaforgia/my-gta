@@ -113,6 +113,7 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     return state;
   }
   state.engine_running = true;
+  state.horn = stage->horn;
   state.rain = stage->rain;
   state.city = 1.0f * (1.0f - 0.7f * stage->rain);
   state.night = daylight_lamp_glow(stage->hour);
@@ -409,6 +410,12 @@ static void draw_hud(driving_stage_t* stage) {
            car->handbrake ? "HANDBRAKE" : "");
   renderer_draw_text(r, x, y, scale * 1.2f, vec3(0.8f, 0.8f, 0.8f), line);
   y += 12 * scale;
+  if (car->damage > 0.02f) {
+    snprintf(line, sizeof(line), "DAMAGE %3.0f%%", car->damage * 100.0f);
+    renderer_draw_text(r, x + 380 * scale / 2.5f, y - 11 * scale, scale * 1.2f,
+                       vec3(1.0f, 0.35f + 0.4f * (1.0f - car->damage), 0.25f),
+                       line);
+  }
   render_stats_t stats = renderer_stats(r);
   snprintf(line, sizeof(line),
            "%4.0f FPS %5.2f MS FRAME %5.2f MS PHYSICS %d DRAWS %d TRIS",
@@ -565,6 +572,8 @@ void driving_stage_render(driving_stage_t* stage) {
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
   car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
+  car_visual_draw_smoke(&stage->car_visual, r, chassis, stage->vehicle.damage,
+                        stage->rain_clock);
   if (stage->view_mode == 2)
     car_visual_draw_cockpit(&stage->car_visual, r, chassis,
                             driving_stage_wheel_angle(stage));
@@ -644,6 +653,7 @@ void driving_stage_run(driving_stage_t* stage) {
     previous = now;
     handle_events(stage, window_poll(stage->window));
     driving_input_t input = window_driving_input(stage->window);
+    stage->horn = window_horn_held(stage->window);
     driving_stage_advance(stage, input, frame_seconds);
     driving_stage_render(stage);
     window_swap(stage->window);

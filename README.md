@@ -57,6 +57,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | space | handbrake |
 | R | reset to the spawn |
 | C | change view: chase, bonnet, cockpit |
+| H | horn (hold) |
 | V | swap to the next car: hatchback, saloon, van, city car |
 | M | the city map over a paused game, with street names and your position |
 | P | pause |

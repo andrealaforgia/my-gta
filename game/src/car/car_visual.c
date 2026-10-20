@@ -187,6 +187,10 @@ car_visual_t car_visual_create(renderer_t* renderer,
                     vec3(0.085f, 0.016f, 0.016f));
   mesh_data_add_box(&hub_mesh, vec3(0.085f, 0, 0),
                     vec3(0.085f, 0.016f, 0.016f));
+  mesh_data_t smoke_mesh = mesh_data_create();
+  mesh_data_add_ellipsoid(&smoke_mesh, vec3_zero(), vec3(0.5f, 0.45f, 0.5f), 3,
+                          6);
+  visual.smoke_puff = upload(renderer, &smoke_mesh);
   visual.dashboard = upload(renderer, &dash_mesh);
   visual.wheel_rim = upload(renderer, &rim_mesh);
   visual.wheel_hub = upload(renderer, &hub_mesh);
@@ -218,6 +222,7 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
   renderer_release_mesh(renderer, visual->rear_lights);
   renderer_release_mesh(renderer, visual->trim);
   renderer_release_mesh(renderer, visual->wheel);
+  renderer_release_mesh(renderer, visual->smoke_puff);
   renderer_release_mesh(renderer, visual->dashboard);
   renderer_release_mesh(renderer, visual->wheel_rim);
   renderer_release_mesh(renderer, visual->wheel_hub);
@@ -231,8 +236,16 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
   headlights.emissive = 0.15f + 1.6f * lights_on;
   material_t tail_lights = visual->rear_light_material;
   tail_lights.emissive = 0.1f + 0.9f * lights_on + 1.2f * vehicle->brake;
-  renderer_draw_mesh(renderer, visual->chassis, visual->paint, model);
-  renderer_draw_mesh(renderer, visual->cabin, visual->paint, model);
+  material_t paint = visual->paint;
+  float tint = car_visual_damage_tint(vehicle->damage);
+  float grey = 0.3f * paint.base_color.x + 0.59f * paint.base_color.y +
+               0.11f * paint.base_color.z;
+  paint.base_color =
+      vec3_add(vec3_scale(paint.base_color, tint),
+               vec3_scale(vec3(grey, grey, grey), (1.0f - tint) * 0.6f));
+  paint.roughness = fminf(paint.roughness + (1.0f - tint) * 0.5f, 1.0f);
+  renderer_draw_mesh(renderer, visual->chassis, paint, model);
+  renderer_draw_mesh(renderer, visual->cabin, paint, model);
   renderer_draw_mesh(renderer, visual->glass, visual->glass_material, model);
   renderer_draw_mesh(renderer, visual->lights, headlights, model);
   renderer_draw_mesh(renderer, visual->rear_lights, tail_lights, model);
@@ -286,4 +299,30 @@ void car_visual_draw_cockpit(const car_visual_t* visual, renderer_t* renderer,
   material_t rubber = material_rough(vec3(0.07f, 0.07f, 0.075f), 0.85f);
   renderer_draw_mesh(renderer, visual->wheel_rim, rubber, model);
   renderer_draw_mesh(renderer, visual->wheel_hub, visual->dash_material, model);
+}
+
+float car_visual_damage_tint(float damage) {
+  if (damage <= 0) return 1.0f;
+  return 1.0f - 0.6f * (damage > 1 ? 1 : damage);
+}
+
+void car_visual_draw_smoke(const car_visual_t* visual, renderer_t* renderer,
+                           transform_t chassis, float damage, float time) {
+  if (damage < 0.6f) return;
+  int puffs = 6 + (int)((damage - 0.6f) * 10.0f);
+  material_t grey = material_rough(vec3(0.2f, 0.2f, 0.21f), 1.0f);
+  vec3_t nose =
+      transform_point(chassis, vec3(0, 0.1f, -visual->half_extents.z * 0.75f));
+  for (int i = 0; i < puffs; i++) {
+    float phase = fmodf(time * 0.9f + (float)i / (float)puffs, 1.0f);
+    float rise = phase * 2.4f;
+    float drift = sinf((float)i * 2.3f + time) * 0.25f * phase;
+    float size = 0.2f + phase * 0.9f;
+    vec3_t at = vec3(nose.x + drift, nose.y + rise, nose.z + drift * 0.6f);
+    mat4_t model = mat4_multiply(mat4_translation(at),
+                                 mat4_scaling(vec3(size, size, size)));
+    grey.base_color =
+        vec3_scale(vec3(0.24f, 0.24f, 0.25f), 1.0f - 0.6f * phase);
+    renderer_draw_mesh(renderer, visual->smoke_puff, grey, model);
+  }
 }

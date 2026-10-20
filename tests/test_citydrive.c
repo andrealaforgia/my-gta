@@ -323,6 +323,36 @@ static void the_cockpit_has_a_dashboard_and_a_wheel_that_turns(void) {
   stop(&run);
 }
 
+static void the_horn_sounds_only_while_held_and_not_on_the_map(void) {
+  city_run_t run;
+  start(&run);
+  assert(!driving_stage_audio_state(&run.stage).horn);
+  run.stage.horn = true;
+  assert(driving_stage_audio_state(&run.stage).horn);
+  run.stage.map_open = true;
+  assert(!driving_stage_audio_state(&run.stage).horn);
+  stop(&run);
+}
+
+static void a_wrecked_car_smokes_and_looks_scuffed(void) {
+  city_run_t run;
+  start(&run);
+  driving_stage_render(&run.stage);
+  int sound = renderer_stats(run.renderer).draw_calls;
+  run.stage.vehicle.damage = 0.3f; /* dented, not yet smoking */
+  driving_stage_render(&run.stage);
+  assert(renderer_stats(run.renderer).draw_calls == sound);
+  assert(car_visual_damage_tint(0.3f) < 1.0f &&
+         car_visual_damage_tint(0.3f) > 0.6f);
+  run.stage.vehicle.damage = 0.8f;
+  driving_stage_render(&run.stage);
+  assert(renderer_stats(run.renderer).draw_calls >=
+         sound + 5); /* puffs of smoke */
+  assert(car_visual_damage_tint(1.0f) < car_visual_damage_tint(0.5f));
+  assert(car_visual_damage_tint(0.0f) == 1.0f);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -351,5 +381,7 @@ void run_citydrive_tests(void) {
   RUN(the_chase_view_widens_with_speed);
   RUN(rain_comes_on_gradually_wets_the_roads_and_is_heard);
   RUN(the_cockpit_has_a_dashboard_and_a_wheel_that_turns);
+  RUN(the_horn_sounds_only_while_held_and_not_on_the_map);
+  RUN(a_wrecked_car_smokes_and_looks_scuffed);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

@@ -49,6 +49,8 @@ window_options_t window_default_options(const char* title);
 bool window_open(window_t* window, window_options_t options);
 void window_close(window_t* window);
 window_events_t window_poll(window_t* window);
+/* Whether the horn is held: the H key or the controller's B button. */
+bool window_horn_held(const window_t* window);
 driving_input_t window_driving_input(const window_t* window);
 void window_swap(window_t* window);
 void window_toggle_fullscreen(window_t* window);

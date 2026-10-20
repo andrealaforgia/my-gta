@@ -22,6 +22,7 @@ typedef struct {
   float night;             /* 0..1: crickets in place of birds */
   float traffic;           /* 0..1: cars passing close by */
   float rain;              /* 0..1: how hard it is raining */
+  bool horn;               /* the horn is held down */
 } audio_state_t;
 
 typedef struct {
@@ -59,6 +60,7 @@ typedef struct {
   float impact_lowpass;
   float city_smoothed, night_smoothed, traffic_smoothed, rain_smoothed;
   float rain_lowpass, rain_previous;
+  float horn_level, horn_phase_a, horn_phase_b;
   float city_lowpass, city_lowpass2, traffic_lowpass, traffic_lowpass2;
   float cricket_phase, cricket_gate;
   float bird_phase, bird_frequency, bird_envelope, bird_rate;

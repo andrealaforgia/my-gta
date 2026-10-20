@@ -321,7 +321,32 @@ static void every_car_in_the_fleet_accelerates_corners_and_stops_sensibly(
   }
 }
 
+static void crashes_dent_the_car_and_take_off_power_until_it_is_reset(void) {
+  track_t track = flat_track(1.0f);
+  /* A wall at 40 m. */
+  physics_add_static_box(track.world,
+                         transform_at(vec3(0, 2, -40), quat_identity()),
+                         vec3(30, 2, 1), COLLISION_LAYER_BUILDING, 0.5f, 1);
+  assert(track.car.damage == 0.0f);
+  driving_input_t throttle = {1, 0, 0, false};
+  float power_before = vehicle_power_factor(&track.car);
+  assert(near_to(power_before, 1.0f, 1e-4f));
+  drive(&track, throttle, 9.0f); /* into the wall at speed */
+  float damage = track.car.damage;
+  assert(damage > 0.15f && damage <= 1.0f);
+  assert(vehicle_power_factor(&track.car) < 1.0f &&
+         vehicle_power_factor(&track.car) >= 0.55f);
+  /* A bump at walking pace does nothing; damage only ever grows. */
+  float before = track.car.damage;
+  vehicle_reset(&track.car, track.world);
+  assert(track.car.damage == 0.0f);
+  assert(near_to(vehicle_power_factor(&track.car), 1.0f, 1e-4f));
+  assert(before > 0.0f);
+  destroy(&track);
+}
+
 void run_vehicle_tests(void) {
+  RUN(crashes_dent_the_car_and_take_off_power_until_it_is_reset);
   RUN(every_car_in_the_fleet_accelerates_corners_and_stops_sensibly);
   RUN(hard_braking_dips_the_nose_a_couple_of_degrees);
   RUN(a_hard_corner_leans_the_body_a_few_degrees_not_a_dozen);

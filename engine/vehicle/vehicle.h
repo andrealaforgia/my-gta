@@ -56,8 +56,8 @@ typedef struct {
    * body: the suspension's roll centre. The lower the car's real centre of
    * mass sits relative to it, the less the body leans in a corner. */
   float roll_centre_lift;
-  float drag_coefficient;   /* N per (m/s)^2 */
-  float max_steer_angle;    /* radians at full lock */
+  float drag_coefficient; /* N per (m/s)^2 */
+  float max_steer_angle;  /* radians at full lock */
   float steering_rate;
   float steering_half_lock_speed;
   float brake_force;     /* N, whole car */
@@ -117,6 +117,7 @@ typedef struct {
   float forward_speed;  /* m/s along the chassis forward axis */
   float skid_intensity; /* 0..1 */
   float impact_impulse; /* largest chassis contact impulse this step */
+  float damage;         /* 0 new to 1 wrecked: grows with hard impacts */
 } vehicle_t;
 
 vehicle_params_t vehicle_params_default(void);
@@ -133,6 +134,8 @@ void vehicle_update(vehicle_t* vehicle, physics_world_t* world,
                     driving_input_t input, float dt);
 
 float vehicle_forward_speed(const vehicle_t* vehicle);
+/* Engine power left after damage: 1 when sound, down to 0.55. */
+float vehicle_power_factor(const vehicle_t* vehicle);
 float vehicle_speed_kmh(const vehicle_t* vehicle);
 float vehicle_rpm(const vehicle_t* vehicle);
 int vehicle_gear(const vehicle_t* vehicle);

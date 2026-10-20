@@ -173,6 +173,14 @@ static float axis(const SDL_GameController* controller,
   return apply_dead_zone((float)raw / 32767.0f, CONTROLLER_DEAD_ZONE);
 }
 
+bool window_horn_held(const window_t* window) {
+  const Uint8* keys = SDL_GetKeyboardState(NULL);
+  if (keys[SDL_SCANCODE_H]) return true;
+  return window->controller &&
+         SDL_GameControllerGetButton((SDL_GameController*)window->controller,
+                                     SDL_CONTROLLER_BUTTON_B);
+}
+
 driving_input_t window_driving_input(const window_t* window) {
   driving_input_t keyboard =
       driving_input_from_keys(SDL_GetKeyboardState(NULL));

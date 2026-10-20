@@ -28,6 +28,7 @@ typedef struct {
   float ride_height;   /* chassis centre above the road on its wheels */
   vec3_t half_extents; /* of the chassis box */
   mesh_handle_t dashboard, wheel_rim, wheel_hub; /* the inside */
+  mesh_handle_t smoke_puff;
   material_t dash_material;
 } car_visual_t;
 
@@ -49,5 +50,13 @@ void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
  * windscreen and a steering wheel turned by `wheel_angle` radians. */
 void car_visual_draw_cockpit(const car_visual_t* visual, renderer_t* renderer,
                              transform_t chassis, float wheel_angle);
+
+/* How much of its paint colour survives at a damage level: 1 when sound,
+ * duller as it is battered. */
+float car_visual_damage_tint(float damage);
+/* Puffs of smoke rising from the bonnet once damage passes 0.6, thicker as
+ * it worsens; `time` in seconds moves them. */
+void car_visual_draw_smoke(const car_visual_t* visual, renderer_t* renderer,
+                           transform_t chassis, float damage, float time);
 
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

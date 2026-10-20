@@ -36,7 +36,7 @@ static void print_help(void) {
       "  --debug                  start with the debug overlay on\n"
       "  --help\n\n"
       "Controls: arrows or WASD drive, space handbrake, R reset, P pause,\n"
-      "C view (chase, bonnet, cockpit), V next car, F1 debug, M map,\n"
+      "C view (chase, bonnet, cockpit), V next car, H horn, F1 debug, M map,\n"
       "T rain, N mute, F11 fullscreen, Esc quit. A game "
       "controller\n"
       "steers with the left stick, triggers for throttle and brake, A "

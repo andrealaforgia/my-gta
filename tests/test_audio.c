@@ -305,7 +305,32 @@ static void rain_is_a_soft_wash_that_is_louder_in_heavier_rain(void) {
   assert(best < 0.6f);
 }
 
+static void the_horn_is_a_two_note_chord_that_starts_and_stops_quickly(void) {
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  state.engine_running = false;
+  static float out[RATE];
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE) < 1e-4f);
+  state.horn = true;
+  render(&mixer, state, out, RATE);
+  float loud = rms(out + RATE / 2, RATE / 2);
+  assert(loud > 0.05f && loud < 0.4f);
+  /* Two pitches, a third apart: strong at 420 and at 530 Hz, weak between
+   * and well above. */
+  float a = power_at(out + RATE / 4, RATE / 2, 420.0f);
+  float b = power_at(out + RATE / 4, RATE / 2, 530.0f);
+  float between = power_at(out + RATE / 4, RATE / 2, 700.0f);
+  assert(a > between * 20.0f && b > between * 20.0f);
+  /* It cuts off when let go, in a few hundredths of a second. */
+  state.horn = false;
+  render(&mixer, state, out, 4800);
+  render(&mixer, state, out, RATE / 2);
+  assert(peak(out + RATE / 4, RATE / 4) < 0.003f);
+}
+
 void run_audio_tests(void) {
+  RUN(the_horn_is_a_two_note_chord_that_starts_and_stops_quickly);
   RUN(rain_is_a_soft_wash_that_is_louder_in_heavier_rain);
   RUN(the_town_has_a_background_that_is_quiet_and_goes_with_the_level);
   RUN(crickets_sing_by_night_in_a_high_steady_note);

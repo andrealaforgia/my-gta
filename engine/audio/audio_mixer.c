@@ -6,7 +6,7 @@
 #define CYLINDERS 4
 
 audio_state_t audio_state_default(void) {
-  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0, 0};
+  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0, 0, false};
   return state;
 }
 
@@ -221,6 +221,27 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     float wash = (drop - mixer->rain_lowpass) * 0.5f; /* highs only */
     float patter = (noise(mixer) > 0.985f ? 1.0f : 0.0f) * noise(mixer) * 0.5f;
     float rain = (wash * 0.09f + patter * 0.05f) * mixer->rain_smoothed;
+    /* The horn: two reedy notes, a major third apart, that come on in a
+     * few milliseconds and cut off in a few more. */
+    float horn_target = s->horn ? 1.0f : 0.0f;
+    mixer->horn_level += (horn_target - mixer->horn_level) *
+                         (horn_target > mixer->horn_level ? 0.004f : 0.002f) *
+                         48000.0f / (float)mixer->sample_rate * 6.0f;
+    float horn = 0;
+    if (mixer->horn_level > 0.001f) {
+      mixer->horn_phase_a += 420.0f * dt;
+      mixer->horn_phase_b += 530.0f * dt;
+      if (mixer->horn_phase_a >= 1.0f) mixer->horn_phase_a -= 1.0f;
+      if (mixer->horn_phase_b >= 1.0f) mixer->horn_phase_b -= 1.0f;
+      float a = mixer->horn_phase_a * 2.0f - 1.0f,
+            b = mixer->horn_phase_b * 2.0f - 1.0f;
+      /* A soft saw: harmonics fall away, so it is a horn and not a buzzer. */
+      float wa =
+          sinf(2.0f * (float)M_PI * mixer->horn_phase_a) * 0.7f + a * 0.2f;
+      float wb =
+          sinf(2.0f * (float)M_PI * mixer->horn_phase_b) * 0.7f + b * 0.2f;
+      horn = (wa + wb) * 0.17f * mixer->horn_level;
+    }
     /* The bell: a strike every three seconds, each ringing out. */
     mixer->bell_timer -= dt;
     mixer->bell_age += dt;
@@ -243,7 +264,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       bell *= 0.16f;
     }
     out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
-                        bird + cricket + bell + rain) *
+                        bird + cricket + bell + rain + horn) *
                        gain);
   }
 }
