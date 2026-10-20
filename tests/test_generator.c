@@ -183,11 +183,11 @@ static void road_ribbons_have_their_width_and_roofs_their_height(void) {
   aabb_t roof_bounds = mesh_data_bounds(&roof->mesh);
   assert(near(roof_bounds.min.y, 12) && roof_bounds.max.y > 13.0f &&
          roof_bounds.max.y < 17.0f);
-  /* The L-shaped footprint stays flat at its height. */
-  const city_part_t* flat = roof_for(&package, 203);
-  assert(flat && mesh_data_triangle_count(&flat->mesh) == 4);
-  aabb_t flat_bounds = mesh_data_bounds(&flat->mesh);
-  assert(near(flat_bounds.min.y, flat_bounds.max.y));
+  /* The L-shaped footprint gets a ridge roof over its outline. */
+  const city_part_t* ridge = roof_for(&package, 203);
+  assert(ridge && mesh_data_triangle_count(&ridge->mesh) > 4);
+  aabb_t ridge_bounds = mesh_data_bounds(&ridge->mesh);
+  assert(ridge_bounds.max.y > ridge_bounds.min.y + 1.0f);
   const city_part_t* walls = facade_for(&package, 201);
   assert(walls && mesh_data_triangle_count(&walls->mesh) == 8);
   assert(walls->collider == PART_COLLIDER_MESH && walls->layer == 2);
