@@ -27,7 +27,6 @@ GROUPS = (
     "osm",
     "city",
     "generator",
-    "package",
 )
 
 
