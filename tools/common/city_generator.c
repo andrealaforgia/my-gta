@@ -1012,11 +1012,13 @@ static vec3_t rectangle_point(const bounding_rectangle_t* r, double along,
               (float)(r->axis.z * along + r->across.z * across));
 }
 
-/* A hipped roof with eaves on footprints that nearly fill their bounding
- * rectangle and have no courtyard. Sets *done when it built one. */
-static bool add_hipped_roof(city_part_t* roof, const city_building_t* building,
-                            float h, const city_generator_options_t* o,
-                            bool* done) {
+/* A pitched roof with eaves on footprints that nearly fill their bounding
+ * rectangle and have no courtyard: hipped, or gabled when the footprint is
+ * a narrow terrace, with the gable triangles added to the walls. Sets
+ * *done when it built one. */
+static bool add_pitched_roof(city_part_t* roof, city_part_t* walls,
+                             const city_building_t* building, float h,
+                             const city_generator_options_t* o, bool* done) {
   *done = false;
   if (building->hole_count > 0 || building->point_count < 4) return true;
   bounding_rectangle_t r =
@@ -1025,10 +1027,14 @@ static bool add_hipped_roof(city_part_t* roof, const city_building_t* building,
       fabs(polygon_signed_area(building->points, building->point_count));
   if (r.area <= 0 || footprint / r.area < 0.82) return true;
   const double eaves = 0.35;
-  double a0 = r.along_min - eaves, a1 = r.along_max + eaves;
+  double width = r.across_max - r.across_min;
+  double length = r.along_max - r.along_min;
+  bool gabled = width < 9.0 && length > 1.6 * width;
+  double a0 = r.along_min - (gabled ? 0 : eaves);
+  double a1 = r.along_max + (gabled ? 0 : eaves);
   double c0 = r.across_min - eaves, c1 = r.across_max + eaves;
   double half_span = (c1 - c0) * 0.5, mid = (c0 + c1) * 0.5;
-  double inset = fmin(half_span, (a1 - a0) * 0.5);
+  double inset = gabled ? 0 : fmin(half_span, (a1 - a0) * 0.5);
   float rise = (float)fmin(half_span * 0.6, 4.0);
   float ridge_y = h + rise;
   vec3_t e00 = rectangle_point(&r, a0, c0, h),
@@ -1051,10 +1057,31 @@ static bool add_hipped_roof(city_part_t* roof, const city_building_t* building,
   if (!add_face(&roof->mesh, base + 0, base + 1, base + 5, up) ||
       !add_face(&roof->mesh, base + 0, base + 5, base + 4, up) ||
       !add_face(&roof->mesh, base + 2, base + 3, base + 4, up) ||
-      !add_face(&roof->mesh, base + 2, base + 4, base + 5, up) ||
-      !add_face(&roof->mesh, base + 1, base + 2, base + 5, up) ||
-      !add_face(&roof->mesh, base + 3, base + 0, base + 4, up))
+      !add_face(&roof->mesh, base + 2, base + 4, base + 5, up))
     return false;
+  if (!gabled && (!add_face(&roof->mesh, base + 1, base + 2, base + 5, up) ||
+                  !add_face(&roof->mesh, base + 3, base + 0, base + 4, up)))
+    return false;
+  if (gabled) {
+    /* The gable triangles stand on the end walls, facing out along the
+     * axis, textured like the wall below. */
+    vec3_t ends[2][3] = {{e10, e11, r1}, {e01, e00, r0}};
+    for (int end = 0; end < 2; end++) {
+      vec3_t outward = vec3((float)r.axis.x, 0, (float)r.axis.z);
+      if (end == 1) outward = vec3_scale(outward, -1);
+      uint32_t g = (uint32_t)walls->mesh.vertex_count;
+      for (int i = 0; i < 3; i++) {
+        float u = (float)(((i == 0)   ? c0
+                           : (i == 1) ? c1
+                                      : mid) /
+                          o->window_width);
+        float v = (ends[end][i].y) / o->storey_height;
+        if (!add_vertex(&walls->mesh, ends[end][i], outward, u, v))
+          return false;
+      }
+      if (!add_face(&walls->mesh, g, g + 1, g + 2, outward)) return false;
+    }
+  }
   uint32_t under = (uint32_t)roof->mesh.vertex_count;
   vec3_t down = vec3(0, -1, 0);
   for (int i = 0; i < 4; i++)
@@ -1064,7 +1091,6 @@ static bool add_hipped_roof(city_part_t* roof, const city_building_t* building,
   if (!add_face(&roof->mesh, under + 0, under + 1, under + 2, down) ||
       !add_face(&roof->mesh, under + 0, under + 2, under + 3, down))
     return false;
-  (void)o;
   *done = true;
   return true;
 }
@@ -1095,9 +1121,9 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
     if (!add_walls(walls, building->holes[hole].points,
                    building->holes[hole].count, h, o))
       return false;
-  bool hipped = false;
-  if (!add_hipped_roof(roof, building, h, o, &hipped)) return false;
-  if (hipped) {
+  bool pitched = false;
+  if (!add_pitched_roof(roof, walls, building, h, o, &pitched)) return false;
+  if (pitched) {
     finish_part(chunk, walls);
     finish_part(chunk, roof);
     stats->buildings++;

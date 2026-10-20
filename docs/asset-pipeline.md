@@ -119,7 +119,9 @@ the physics world with the layer and friction given.
   roof. Courtyards are bridged into the outline before ear clipping
   (`tools/common/triangulate.c`) and get walls that face into the
   courtyard. A footprint without a courtyard that fills at least 82% of
-  its minimum bounding rectangle gets a hipped roof instead: eaves 0.35 m
+  its minimum bounding rectangle gets a pitched roof instead (gabled when
+  it is a terrace under 9 m wide and 1.6 times longer than wide, with
+  gable triangles on the end walls; hipped otherwise): eaves 0.35 m
   beyond the rectangle at the wall height, a ridge along the long side
   raised by 0.6 of the half span (at most 4 m), two slopes, two hips and
   the underside of the eaves. In central Pordenone that is about six

@@ -304,6 +304,43 @@ static void parallel_carriageways_share_the_gap_between_them(void) {
   city_model_free(&model);
 }
 
+static const city_part_t* facade_for(const city_package_t* package,
+                                     uint64_t source) {
+  for (int i = 0; i < 4; i++) {
+    char name[16];
+    snprintf(name, sizeof(name), "facade%d", i);
+    const city_part_t* walls = part_for(package, name, source);
+    if (walls) return walls;
+  }
+  return NULL;
+}
+
+static void narrow_terraces_get_gabled_roofs(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  /* Building 208 is a 39 x 6 m terrace: the ridge runs the full length,
+   * so the roof is two slopes and the underside of the eaves, and each
+   * end wall rises to the ridge as a gable in the facade material. */
+  const city_part_t* roof = part_for(&package, "roof", 208);
+  assert(roof && mesh_data_triangle_count(&roof->mesh) == 6);
+  const city_part_t* walls = facade_for(&package, 208);
+  assert(walls && mesh_data_triangle_count(&walls->mesh) == 10);
+  aabb_t roof_bounds = mesh_data_bounds(&roof->mesh);
+  aabb_t wall_bounds = mesh_data_bounds(&walls->mesh);
+  float eaves = roof_bounds.min.y;
+  assert(roof_bounds.max.y > eaves + 1.5f && roof_bounds.max.y < eaves + 2.5f);
+  assert(
+      near(wall_bounds.max.y, roof_bounds.max.y)); /* gables reach the ridge */
+  /* No eaves past the gable ends; 0.35 m eaves along the sides of the
+   * 5.7 m wide terrace. */
+  assert(near_to(roof_bounds.max.x - roof_bounds.min.x,
+                 wall_bounds.max.x - wall_bounds.min.x, 0.05f));
+  assert(near_to(roof_bounds.max.z - roof_bounds.min.z, 6.4f, 0.2f));
+  /* The wide block keeps its hips. */
+  assert(mesh_data_triangle_count(&part_for(&package, "roof", 201)->mesh) == 8);
+  city_package_free(&package);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -447,6 +484,7 @@ void run_generator_tests(void) {
   RUN(people_streets_paths_and_areas_get_their_own_surfaces);
   RUN(trees_grow_in_parks_and_nowhere_else);
   RUN(parallel_carriageways_share_the_gap_between_them);
+  RUN(narrow_terraces_get_gabled_roofs);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
