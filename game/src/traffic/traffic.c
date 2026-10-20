@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "route_path.h"
+
 #define ACCELERATION 2.4f
 #define BRAKING 6.5f
 #define LOOKAHEAD 16.0f
@@ -23,11 +25,10 @@ typedef struct {
 } car_t;
 
 typedef struct {
+  route_path_t path;
   const city_route_t* route;
   float length;
-  float* cumulative; /* distance to each point */
-  float* ground;     /* ground height at each point */
-  float cruise;      /* metres per second */
+  float cruise; /* metres per second */
 } lane_t;
 
 struct traffic {
@@ -49,24 +50,7 @@ static uint32_t next_random(traffic_t* t) {
  * travel, before the lane offset. */
 static void sample(const lane_t* lane, float d, int direction, float* x,
                    float* z, float* dx, float* dz, float* ground) {
-  const city_route_t* route = lane->route;
-  float along = direction > 0 ? d : lane->length - d;
-  if (along < 0) along = 0;
-  if (along > lane->length) along = lane->length;
-  size_t k = 1;
-  while (k + 1 < route->point_count && lane->cumulative[k] < along) k++;
-  float a = lane->cumulative[k - 1], b = lane->cumulative[k];
-  float t = b > a ? (along - a) / (b - a) : 0;
-  float x0 = route->points[2 * (k - 1)], z0 = route->points[2 * (k - 1) + 1];
-  float x1 = route->points[2 * k], z1 = route->points[2 * k + 1];
-  *x = x0 + (x1 - x0) * t;
-  *z = z0 + (z1 - z0) * t;
-  float length = hypotf(x1 - x0, z1 - z0);
-  float ux = length > 1e-4f ? (x1 - x0) / length : 1,
-        uz = length > 1e-4f ? (z1 - z0) / length : 0;
-  *dx = direction > 0 ? ux : -ux;
-  *dz = direction > 0 ? uz : -uz;
-  *ground = lane->ground[k - 1] + (lane->ground[k] - lane->ground[k - 1]) * t;
+  route_path_sample(&lane->path, d, direction, x, z, dx, dz, ground);
 }
 
 static float lane_offset(const lane_t* lane) {
@@ -112,30 +96,12 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
   for (size_t r = 0; r < route_count; r++) {
     lane_t* lane = &t->lanes[r];
     lane->route = &routes[r];
-    lane->cumulative = calloc(routes[r].point_count, sizeof(float));
-    lane->ground = calloc(routes[r].point_count, sizeof(float));
-    if (!lane->cumulative || !lane->ground) {
+    if (!route_path_init(&lane->path, &routes[r], physics)) {
       traffic_destroy(t, physics);
       return NULL;
     }
-    for (size_t k = 1; k < routes[r].point_count; k++)
-      lane->cumulative[k] =
-          lane->cumulative[k - 1] +
-          hypotf(
-              routes[r].points[2 * k] - routes[r].points[2 * (k - 1)],
-              routes[r].points[2 * k + 1] - routes[r].points[2 * (k - 1) + 1]);
-    lane->length = lane->cumulative[routes[r].point_count - 1];
+    lane->length = lane->path.length;
     lane->cruise = routes[r].width > 7.5f ? 11.0f : 7.5f;
-    for (size_t k = 0; k < routes[r].point_count; k++) {
-      ray_t down = {
-          vec3(routes[r].points[2 * k], 300.0f, routes[r].points[2 * k + 1]),
-          vec3(0, -1, 0)};
-      ray_cast_result_t hit;
-      lane->ground[k] =
-          physics_ray_cast(physics, down, 600.0f, COLLISION_LAYER_GROUND, &hit)
-              ? hit.hit.point.y
-              : 0.0f;
-    }
     if (routes[r].drivable && lane->length > 12.0f)
       drivable_length += lane->length;
   }
@@ -183,10 +149,7 @@ void traffic_destroy(traffic_t* t, physics_world_t* physics) {
   if (!t) return;
   for (size_t i = 0; i < t->car_count; i++)
     physics_remove_collider(physics, t->cars[i].collider);
-  for (size_t r = 0; r < t->lane_count; r++) {
-    free(t->lanes[r].cumulative);
-    free(t->lanes[r].ground);
-  }
+  for (size_t r = 0; r < t->lane_count; r++) route_path_free(&t->lanes[r].path);
   free(t->lanes);
   free(t->cars);
   free(t);

@@ -56,6 +56,14 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
           stage->scene.routes, stage->scene.route_count, stage->physics,
           &stage->fleet, options.traffic_cars, 2026);
   }
+  if (stage->has_fleet && options.pedestrians > 0 &&
+      stage->scene.route_count > 0) {
+    stage->people =
+        pedestrians_create(stage->scene.routes, stage->scene.route_count,
+                           stage->physics, options.pedestrians, 2027);
+    if (stage->people)
+      stage->people_meshes = pedestrian_meshes_create(renderer);
+  }
   stage->hour = options.start_hour;
   stage->hour_seconds = options.hour_seconds;
   if (stage->scene.map.size > 0)
@@ -73,6 +81,9 @@ void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
     traffic_destroy(stage->traffic, stage->physics);
+    if (stage->people)
+      pedestrian_meshes_destroy(&stage->people_meshes, stage->renderer);
+    pedestrians_destroy(stage->people);
     parked_cars_destroy(&stage->parked, stage->physics);
     if (stage->has_fleet) fleet_destroy(&stage->fleet, stage->renderer);
     if (stage->map_texture.id)
@@ -123,6 +134,10 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
     traffic_step(stage->traffic, stage->physics, player->position,
                  player->velocity, dt);
   }
+  if (stage->people)
+    pedestrians_step(
+        stage->people,
+        physics_body(stage->physics, stage->vehicle.body)->position, dt);
   physics_world_step(stage->physics, dt);
   stage->simulated_seconds += dt;
 }
@@ -386,6 +401,8 @@ void driving_stage_render(driving_stage_t* stage) {
   if (stage->has_fleet) {
     vec3_t eye = stage->camera.position;
     parked_cars_draw(&stage->parked, &stage->fleet, r, eye, 170.0f, night);
+    if (stage->people)
+      pedestrians_draw(stage->people, &stage->people_meshes, r, eye, 110.0f);
     if (stage->traffic)
       traffic_draw(stage->traffic, &stage->fleet, r, eye, 220.0f, night);
   }

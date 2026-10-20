@@ -7,6 +7,7 @@
 
 #include "fleet.h"
 #include "parked_cars.h"
+#include "pedestrians.h"
 #include "test_groups.h"
 #include "test_support.h"
 #include "traffic.h"
@@ -243,7 +244,107 @@ static void each_car_carries_a_solid_box_that_moves_with_it(void) {
   renderer_destroy(renderer);
 }
 
+static double distance_to_line(const float* p, double x, double z) {
+  double dx = p[2] - p[0], dz = p[3] - p[1], l2 = dx * dx + dz * dz;
+  double u = ((x - p[0]) * dx + (z - p[1]) * dz) / l2;
+  u = u < 0 ? 0 : (u > 1 ? 1 : u);
+  return hypot(x - (p[0] + u * dx), z - (p[1] + u * dz));
+}
+
+static void people_walk_on_the_pavements_at_a_walking_pace(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[3] = {route(west, 1, 2, 0), route(east, 2, 3, 0),
+                            route(south, 2, 4, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 3, world, 10, 9);
+  assert(people && pedestrians_count(people) == 10);
+  for (int step = 0; step < 120 * 40; step++) {
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+    if (step % 120) continue;
+    for (size_t i = 0; i < pedestrians_count(people); i++) {
+      pedestrian_t p = pedestrians_get(people, i);
+      /* Road 3 m each side of the centre line, pavement 2 m beyond: people
+       * walk the pavement, which is 3.2 to 5 m out (a little looser at the
+       * junction where the roads meet). */
+      double d = 1e9;
+      for (int r = 0; r < 3; r++)
+        d = fmin(
+            d, distance_to_line(routes[r].points, p.position.x, p.position.z));
+      assert(d > 2.5 && d < 5.2);
+      assert(p.speed >= 0.0f && p.speed < 1.9f);
+      assert(p.position.y > 1.9f &&
+             p.position.y < 2.1f); /* on the ground (at 2) */
+    }
+  }
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void people_go_round_the_junctions_and_turn_back_at_dead_ends(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[3] = {route(west, 1, 2, 0), route(east, 2, 3, 0),
+                            route(south, 2, 4, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 3, world, 6, 21);
+  int visited[3] = {0, 0, 0};
+  float furthest_west = 0;
+  for (int step = 0; step < 120 * 600; step++) {
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+    if (step % 60) continue;
+    for (size_t i = 0; i < pedestrians_count(people); i++) {
+      pedestrian_t p = pedestrians_get(people, i);
+      visited[p.route]++;
+      furthest_west = fminf(furthest_west, p.position.x);
+    }
+  }
+  assert(visited[0] > 0 && visited[1] > 0 && visited[2] > 0);
+  assert(furthest_west > -103.0f); /* never wandered off the end of a road */
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void
+a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 1, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  float phase_before = pedestrians_get(people, 0).phase;
+  for (int step = 0; step < 120 * 5; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  pedestrian_t walking = pedestrians_get(people, 0);
+  assert(walking.speed > 0.8f && walking.phase > phase_before + 4.0f);
+  /* A car pulls up two metres away. */
+  vec3_t near_by = vec3(walking.position.x + 1.5f, 2.0f, walking.position.z);
+  for (int step = 0; step < 120 * 3; step++)
+    pedestrians_step(people, near_by, 1.0f / 120.0f);
+  pedestrian_t waiting = pedestrians_get(people, 0);
+  assert(waiting.speed < 0.05f);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void people_are_drawn_only_when_near(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 4, 8);
+  pedestrian_meshes_t meshes = pedestrian_meshes_create(renderer);
+  assert(meshes.torso.id && meshes.head.id && meshes.leg.id && meshes.arm.id);
+  int near_drawn =
+      pedestrians_draw(people, &meshes, renderer, vec3(-50, 3, 0), 120);
+  int far_drawn =
+      pedestrians_draw(people, &meshes, renderer, vec3(900, 3, 900), 120);
+  assert(near_drawn == 4 && far_drawn == 0);
+  pedestrian_meshes_destroy(&meshes, renderer);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 void run_traffic_tests(void) {
+  RUN(people_walk_on_the_pavements_at_a_walking_pace);
+  RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);
+  RUN(a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk);
+  RUN(people_are_drawn_only_when_near);
   RUN(the_fleet_has_four_bodies_and_a_palette);
   RUN(parked_cars_stand_on_the_ground_and_are_solid);
   RUN(cars_follow_the_roads_on_the_right_at_a_sensible_speed);
