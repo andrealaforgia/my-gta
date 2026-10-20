@@ -56,11 +56,21 @@ static const city_part_t* part_for(const city_package_t* package,
 
 static const city_part_t* facade_for(const city_package_t* package,
                                      uint64_t source) {
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 12; i++) {
     char name[16];
     snprintf(name, sizeof(name), "facade%d", i);
     const city_part_t* walls = part_for(package, name, source);
     if (walls) return walls;
+  }
+  return NULL;
+}
+
+static const city_part_t* roof_for(const city_package_t* package,
+                                   uint64_t source) {
+  const char* kinds[] = {"roof", "roof_slate", "roof_flat"};
+  for (int i = 0; i < 3; i++) {
+    const city_part_t* roof = part_for(package, kinds[i], source);
+    if (roof) return roof;
   }
   return NULL;
 }
@@ -117,14 +127,9 @@ static void ear_clipping_cuts_holes_out(void) {
 static void courtyards_are_open_to_the_sky(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
-  const city_part_t* roof = part_for(&package, "roof", 404);
+  const city_part_t* roof = roof_for(&package, 404);
   assert(roof && mesh_data_triangle_count(&roof->mesh) == 8);
-  const city_part_t* walls = NULL;
-  for (int i = 0; i < 4 && !walls; i++) {
-    char name[16];
-    snprintf(name, sizeof(name), "facade%d", i);
-    walls = part_for(&package, name, 404);
-  }
+  const city_part_t* walls = facade_for(&package, 404);
   assert(walls && mesh_data_triangle_count(&walls->mesh) == 16);
   /* Courtyard walls face into the courtyard: their normals point towards
    * the centre of the footprint. */
@@ -172,24 +177,17 @@ static void road_ribbons_have_their_width_and_roofs_their_height(void) {
   /* A rectangular footprint gets a hipped roof: eaves at the wall height,
    * a ridge above it, two hips and two long slopes plus the underside of
    * the eaves. */
-  const city_part_t* roof = part_for(&package, "roof", 201);
+  const city_part_t* roof = roof_for(&package, 201);
   assert(roof && mesh_data_triangle_count(&roof->mesh) == 8);
   aabb_t roof_bounds = mesh_data_bounds(&roof->mesh);
   assert(near(roof_bounds.min.y, 12) && roof_bounds.max.y > 13.0f &&
          roof_bounds.max.y < 17.0f);
   /* The L-shaped footprint stays flat at its height. */
-  const city_part_t* flat = part_for(&package, "roof", 203);
+  const city_part_t* flat = roof_for(&package, 203);
   assert(flat && mesh_data_triangle_count(&flat->mesh) == 4);
   aabb_t flat_bounds = mesh_data_bounds(&flat->mesh);
   assert(near(flat_bounds.min.y, flat_bounds.max.y));
-  const city_part_t* walls = part_for(&package, "facade", 201);
-  if (!walls) {
-    for (int i = 0; i < 4 && !walls; i++) {
-      char name[16];
-      snprintf(name, sizeof(name), "facade%d", i);
-      walls = part_for(&package, name, 201);
-    }
-  }
+  const city_part_t* walls = facade_for(&package, 201);
   assert(walls && mesh_data_triangle_count(&walls->mesh) == 8);
   assert(walls->collider == PART_COLLIDER_MESH && walls->layer == 2);
   /* Wall normals point away from the footprint centre. */
@@ -271,7 +269,7 @@ static void people_streets_paths_and_areas_get_their_own_surfaces(void) {
   assert(part_for(&package, "park", 403));
   assert(stats.areas == 5);
   /* Multipolygon buildings are built like any other. */
-  assert(part_for(&package, "roof", 402) && part_for(&package, "roof", 401));
+  assert(roof_for(&package, 402) && roof_for(&package, 401));
   city_package_free(&package);
 }
 
@@ -337,7 +335,7 @@ static void narrow_terraces_get_gabled_roofs(void) {
   /* Building 208 is a 39 x 6 m terrace: the ridge runs the full length,
    * so the roof is two slopes and the underside of the eaves, and each
    * end wall rises to the ridge as a gable in the facade material. */
-  const city_part_t* roof = part_for(&package, "roof", 208);
+  const city_part_t* roof = roof_for(&package, 208);
   assert(roof && mesh_data_triangle_count(&roof->mesh) == 6);
   const city_part_t* walls = facade_for(&package, 208);
   assert(walls && mesh_data_triangle_count(&walls->mesh) == 10);
@@ -353,8 +351,75 @@ static void narrow_terraces_get_gabled_roofs(void) {
                  wall_bounds.max.x - wall_bounds.min.x, 0.05f));
   assert(near_to(roof_bounds.max.z - roof_bounds.min.z, 6.4f, 0.2f));
   /* The wide block keeps its hips. */
-  assert(mesh_data_triangle_count(&part_for(&package, "roof", 201)->mesh) == 8);
+  assert(mesh_data_triangle_count(&roof_for(&package, 201)->mesh) == 8);
   city_package_free(&package);
+}
+
+static city_package_t generate_inline(const char* xml, city_model_t* model) {
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  assert(city_import(model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  city_generator_options_t options = city_generator_default_options();
+  city_package_t package;
+  city_generator_stats_t stats;
+  assert(city_generate(&package, model, &options, "inline", &stats));
+  return package;
+}
+
+static void irregular_buildings_get_ridge_roofs_and_tall_ones_stay_flat(void) {
+  /* An L-shaped building 9 m high (building 1) and a 30 m tower with the
+   * same plan (building 2). */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.00026\"/>"
+      "<node id=\"3\" lat=\"45.00009\" lon=\"12.00026\"/>"
+      "<node id=\"4\" lat=\"45.00009\" lon=\"12.00013\"/>"
+      "<node id=\"5\" lat=\"45.00018\" lon=\"12.00013\"/>"
+      "<node id=\"6\" lat=\"45.00018\" lon=\"12.0000\"/>"
+      "<node id=\"11\" lat=\"45.0010\" lon=\"12.0000\"/>"
+      "<node id=\"12\" lat=\"45.0010\" lon=\"12.00026\"/>"
+      "<node id=\"13\" lat=\"45.00109\" lon=\"12.00026\"/>"
+      "<node id=\"14\" lat=\"45.00109\" lon=\"12.00013\"/>"
+      "<node id=\"15\" lat=\"45.00118\" lon=\"12.00013\"/>"
+      "<node id=\"16\" lat=\"45.00118\" lon=\"12.0000\"/>"
+      "<way id=\"1\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd "
+      "ref=\"4\"/><nd ref=\"5\"/><nd ref=\"6\"/><nd ref=\"1\"/><tag "
+      "k=\"building\" v=\"yes\"/><tag k=\"height\" v=\"9\"/></way>"
+      "<way id=\"2\"><nd ref=\"11\"/><nd ref=\"12\"/><nd ref=\"13\"/><nd "
+      "ref=\"14\"/><nd ref=\"15\"/><nd ref=\"16\"/><nd ref=\"11\"/><tag "
+      "k=\"building\" v=\"yes\"/><tag k=\"height\" v=\"30\"/></way>"
+      "<way id=\"3\"><nd ref=\"1\"/><nd ref=\"11\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "</osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* roof = roof_for(&package, 1);
+  assert(roof && strcmp(roof->material, "roof_flat") != 0);
+  aabb_t roof_bounds = mesh_data_bounds(&roof->mesh);
+  assert(roof_bounds.min.y > 8.99f && roof_bounds.min.y < 9.5f);
+  assert(roof_bounds.max.y > 10.0f && roof_bounds.max.y < 14.0f);
+  const city_part_t* walls = facade_for(&package, 1);
+  assert(walls);
+  /* The walls rise to the roof: the gable ends reach the ridge. */
+  assert(
+      near_to(mesh_data_bounds(&walls->mesh).max.y, roof_bounds.max.y, 0.1f));
+  /* Every roof face leans upward or sideways, never down. */
+  for (size_t i = 0; i + 2 < roof->mesh.index_count; i += 3) {
+    vec3_t a = roof->mesh.vertices[roof->mesh.indices[i]].position;
+    vec3_t b = roof->mesh.vertices[roof->mesh.indices[i + 1]].position;
+    vec3_t c = roof->mesh.vertices[roof->mesh.indices[i + 2]].position;
+    assert(vec3_cross(vec3_sub(b, a), vec3_sub(c, a)).y > 0);
+  }
+  /* The tower stays flat. */
+  const city_part_t* flat = part_for(&package, "roof_flat", 2);
+  assert(flat);
+  aabb_t flat_bounds = mesh_data_bounds(&flat->mesh);
+  assert(near(flat_bounds.min.y, 30) && near(flat_bounds.max.y, 30));
+  city_package_free(&package);
+  city_model_free(&model);
 }
 
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
@@ -412,7 +477,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
           strcmp(part->material, "leaves") == 0)
         continue;
       bool flat = strncmp(part->material, "facade", 6) != 0 &&
-                  strcmp(part->material, "roof") != 0; /* eaves face down */
+                  strncmp(part->material, "roof", 4) != 0; /* eaves face down */
       for (size_t i = 0; i + 2 < part->mesh.index_count; i += 3) {
         vec3_t a = part->mesh.vertices[part->mesh.indices[i]].position;
         vec3_t b = part->mesh.vertices[part->mesh.indices[i + 1]].position;
@@ -501,6 +566,7 @@ void run_generator_tests(void) {
   RUN(trees_grow_in_parks_and_nowhere_else);
   RUN(parallel_carriageways_share_the_gap_between_them);
   RUN(narrow_terraces_get_gabled_roofs);
+  RUN(irregular_buildings_get_ridge_roofs_and_tall_ones_stay_flat);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

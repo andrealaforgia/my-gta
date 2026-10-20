@@ -24,10 +24,8 @@ static material_t material_for(const char* name,
       {"grass", textures->grass, vec3(0.9f, 0.9f, 0.9f), 1.0f},
       {"ground", textures->earth, vec3(0.95f, 0.95f, 0.95f), 1.0f},
       {"roof", textures->roof, vec3(0.9f, 0.9f, 0.9f), 0.9f},
-      {"facade0", textures->facades[0], vec3(1, 1, 1), 0.8f},
-      {"facade1", textures->facades[1], vec3(1, 1, 1), 0.8f},
-      {"facade2", textures->facades[2], vec3(1, 1, 1), 0.8f},
-      {"facade3", textures->facades[3], vec3(1, 1, 1), 0.8f},
+      {"roof_slate", textures->roof_slate, vec3(0.95f, 0.95f, 0.95f), 0.8f},
+      {"roof_flat", textures->roof_flat, vec3(0.95f, 0.95f, 0.95f), 0.9f},
       {"lamp", {0}, vec3(0.22f, 0.23f, 0.25f), 0.45f},
       {"paving", textures->concrete, vec3(0.92f, 0.86f, 0.76f), 0.85f},
       {"parking", textures->asphalt, vec3(0.85f, 0.85f, 0.85f), 0.95f},
@@ -37,6 +35,13 @@ static material_t material_for(const char* name,
       {"leaves", {0}, vec3(0.22f, 0.42f, 0.16f), 0.95f},
       {"marking", {0}, vec3(0.9f, 0.9f, 0.86f), 0.7f},
   };
+  int style = -1;
+  if (sscanf(name, "facade%d", &style) == 1 && style >= 0 &&
+      style < CITY_FACADE_STYLES) {
+    material_t m = material_rough(vec3(1, 1, 1), 0.8f);
+    m.texture = textures->facades[style];
+    return m;
+  }
   for (size_t i = 0; i < sizeof(bindings) / sizeof(bindings[0]); i++) {
     if (strcmp(bindings[i].name, name) == 0) {
       material_t m = material_rough(bindings[i].tint, bindings[i].roughness);
@@ -110,10 +115,11 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   if (!city_package_read(&package, package_directory)) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
   static const char* materials[] = {
-      "grass", "road",    "junction", "pavement", "kerb",
-      "roof",  "facade0", "facade1",  "facade2",  "facade3",
-      "lamp",  "paving",  "parking",  "park",     "water",
-      "trunk", "leaves",  "marking",  "ground"};
+      "grass",      "road",      "junction", "pavement", "kerb",    "roof",
+      "roof_slate", "roof_flat", "facade0",  "facade1",  "facade2", "facade3",
+      "facade4",    "facade5",   "facade6",  "facade7",  "facade8", "facade9",
+      "facade10",   "facade11",  "lamp",     "paving",   "parking", "park",
+      "water",      "trunk",     "leaves",   "marking",  "ground"};
   int draws = 0, colliders = 0;
   bool ok = true;
   for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {

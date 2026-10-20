@@ -14,7 +14,7 @@
 
 city_generator_options_t city_generator_default_options(void) {
   city_generator_options_t o = {150.0f, 0.06f, true,  2.0f,  0.18f, 8.0f,
-                                3.0f,   3.2f,  4,     0.25f, 1.0f,  0.9f,
+                                3.0f,   3.2f,  12,    0.25f, 1.0f,  0.9f,
                                 0.7f,   0.6f,  28.0f, 14.0f};
   return o;
 }
@@ -1060,9 +1060,29 @@ static bool generate_area(layout_t* layout, const city_area_t* area,
 /* Wall quads around a ring. The ring is anticlockwise for an outline and
  * clockwise for a courtyard, so "outside is to the right" faces the
  * street in one case and the courtyard in the other. */
+/* A pitched roof over an irregular footprint: the roof is a ridge along
+ * the long axis of the footprint's bounding rectangle, falling away on
+ * both sides, and the walls rise to meet it. */
+typedef struct {
+  vec2_t across; /* unit vector across the ridge */
+  double mid;    /* across-coordinate of the ridge line */
+  double slope;  /* rise per metre away from the ridge */
+  double rise;   /* height of the ridge above the eaves */
+} ridge_t;
+
+static double ridge_across(const ridge_t* ridge, local_point_t p) {
+  return p.x * ridge->across.x + p.z * ridge->across.z;
+}
+
+static double ridge_height(const ridge_t* ridge, double eaves,
+                           local_point_t p) {
+  return eaves + ridge->rise -
+         ridge->slope * fabs(ridge_across(ridge, p) - ridge->mid);
+}
+
 static bool add_walls(city_part_t* walls, const local_point_t* ring,
-                      size_t count, float h,
-                      const city_generator_options_t* o) {
+                      size_t count, float h, const city_generator_options_t* o,
+                      const ridge_t* ridge) {
   for (size_t i = 0; i < count; i++) {
     local_point_t a = ring[i], b = ring[(i + 1) % count];
     vec2_t along = v2_sub(b, a);
@@ -1070,16 +1090,40 @@ static bool add_walls(city_part_t* walls, const local_point_t* ring,
     if (length < 1e-6) continue;
     vec2_t direction = v2_normalize(along);
     vec3_t normal = vec3((float)-direction.z, 0, (float)direction.x);
-    float u = (float)(length / o->window_width), v = h / o->storey_height;
-    uint32_t base = (uint32_t)walls->mesh.vertex_count;
-    if (!add_vertex(&walls->mesh, at(a, 0), normal, 0, 0) ||
-        !add_vertex(&walls->mesh, at(b, 0), normal, u, 0) ||
-        !add_vertex(&walls->mesh, at(b, h), normal, u, v) ||
-        !add_vertex(&walls->mesh, at(a, h), normal, 0, v))
-      return false;
-    if (!add_face(&walls->mesh, base, base + 1, base + 2, normal) ||
-        !add_face(&walls->mesh, base, base + 2, base + 3, normal))
-      return false;
+    /* Split where the edge crosses the ridge so the top follows it. */
+    local_point_t pieces[3] = {a, b, b};
+    size_t piece_count = 2;
+    if (ridge) {
+      double ca = ridge_across(ridge, a) - ridge->mid;
+      double cb = ridge_across(ridge, b) - ridge->mid;
+      if (ca * cb < 0) {
+        double t = ca / (ca - cb);
+        pieces[1] =
+            (local_point_t){a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t};
+        pieces[2] = b;
+        piece_count = 3;
+      }
+    }
+    double travelled = 0;
+    for (size_t k = 0; k + 1 < piece_count; k++) {
+      local_point_t p = pieces[k], q = pieces[k + 1];
+      double span = hypot(q.x - p.x, q.z - p.z);
+      float top_p = ridge ? (float)ridge_height(ridge, h, p) : h;
+      float top_q = ridge ? (float)ridge_height(ridge, h, q) : h;
+      float u0 = (float)(travelled / o->window_width);
+      float u1 = (float)((travelled + span) / o->window_width);
+      float storey = o->storey_height;
+      uint32_t base = (uint32_t)walls->mesh.vertex_count;
+      if (!add_vertex(&walls->mesh, at(p, 0), normal, u0, 0) ||
+          !add_vertex(&walls->mesh, at(q, 0), normal, u1, 0) ||
+          !add_vertex(&walls->mesh, at(q, top_q), normal, u1, top_q / storey) ||
+          !add_vertex(&walls->mesh, at(p, top_p), normal, u0, top_p / storey))
+        return false;
+      if (!add_face(&walls->mesh, base, base + 1, base + 2, normal) ||
+          !add_face(&walls->mesh, base, base + 2, base + 3, normal))
+        return false;
+      travelled += span;
+    }
   }
   return true;
 }
@@ -1130,6 +1174,34 @@ static vec3_t rectangle_point(const bounding_rectangle_t* r, double along,
                               double across, float y) {
   return vec3((float)(r->axis.x * along + r->across.x * across), y,
               (float)(r->axis.z * along + r->across.z * across));
+}
+
+typedef enum { ROOF_FLAT, ROOF_HIPPED, ROOF_GABLED, ROOF_RIDGE } roof_shape_t;
+
+/* Footprints that nearly fill their bounding rectangle and have no
+ * courtyard get a pitched roof with eaves; a narrow, long one a gabled
+ * roof. Every other building under 22 m, over a hut and under a
+ * warehouse, gets a ridge roof that follows its outline. Taller and
+ * larger ones stay flat. */
+static roof_shape_t roof_shape(const city_building_t* building) {
+  double footprint =
+      fabs(polygon_signed_area(building->points, building->point_count));
+  bool nearly_rectangular = false;
+  roof_shape_t shape = ROOF_FLAT;
+  if (building->hole_count == 0 && building->point_count >= 4) {
+    bounding_rectangle_t r =
+        bounding_rectangle(building->points, building->point_count);
+    if (r.area > 0 && footprint / r.area >= 0.82) {
+      nearly_rectangular = true;
+      double width = r.across_max - r.across_min;
+      double length = r.along_max - r.along_min;
+      shape = width < 9.0 && length > 1.6 * width ? ROOF_GABLED : ROOF_HIPPED;
+    }
+  }
+  if (nearly_rectangular) return shape;
+  if (building->height < 22.0f && footprint > 25.0 && footprint < 9000.0)
+    return ROOF_RIDGE;
+  return ROOF_FLAT;
 }
 
 /* A pitched roof with eaves on footprints that nearly fill their bounding
@@ -1215,6 +1287,68 @@ static bool add_pitched_roof(city_part_t* roof, city_part_t* walls,
   return true;
 }
 
+/* One roof triangle over the footprint, cut along the ridge so the two
+ * slopes meet in a crisp line, lifted onto the roof surface. */
+static bool add_ridge_face(city_part_t* roof, const local_point_t* poly,
+                           size_t count, float eaves, const ridge_t* ridge) {
+  for (size_t i = 1; i + 1 < count; i++) {
+    local_point_t corners[3] = {poly[0], poly[i], poly[i + 1]};
+    if (fabs(polygon_signed_area(corners, 3)) < 1e-7) continue;
+    uint32_t base = (uint32_t)roof->mesh.vertex_count;
+    for (int k = 0; k < 3; k++) {
+      double c = ridge_across(ridge, corners[k]) - ridge->mid;
+      double sign = c < 0 ? -1.0 : 1.0;
+      /* A corner on the ridge takes the side its triangle lies on. */
+      if (fabs(c) < 1e-6) {
+        double sum = 0;
+        for (int m = 0; m < 3; m++)
+          sum += ridge_across(ridge, corners[m]) - ridge->mid;
+        sign = sum < 0 ? -1.0 : 1.0;
+      }
+      vec3_t normal = vec3_normalize(
+          vec3((float)(sign * ridge->slope * ridge->across.x), 1.0f,
+               (float)(sign * ridge->slope * ridge->across.z)));
+      float y = (float)ridge_height(ridge, eaves, corners[k]);
+      if (!add_vertex(&roof->mesh, at(corners[k], y), normal,
+                      (float)(corners[k].x * 0.4), (float)(corners[k].z * 0.4)))
+        return false;
+    }
+    if (!add_face(&roof->mesh, base, base + 1, base + 2, vec3(0, 1, 0)))
+      return false;
+  }
+  return true;
+}
+
+static bool add_ridge_triangle(city_part_t* roof, const local_point_t* tri,
+                               float eaves, const ridge_t* ridge) {
+  double side[3];
+  bool crosses = false;
+  for (int k = 0; k < 3; k++) {
+    side[k] = ridge_across(ridge, tri[k]) - ridge->mid;
+  }
+  for (int k = 0; k < 3; k++)
+    if (side[k] * side[(k + 1) % 3] < -1e-9) crosses = true;
+  if (!crosses) return add_ridge_face(roof, tri, 3, eaves, ridge);
+  /* Clip the triangle against the ridge line into a negative-side and a
+   * positive-side polygon (each of three or four corners). */
+  local_point_t negative[4], positive[4];
+  size_t nn = 0, np = 0;
+  for (int k = 0; k < 3; k++) {
+    local_point_t a = tri[k], b = tri[(k + 1) % 3];
+    double sa = side[k], sb = side[(k + 1) % 3];
+    if (sa <= 0) negative[nn++] = a;
+    if (sa >= 0) positive[np++] = a;
+    if (sa * sb < -1e-9) {
+      double t = sa / (sa - sb);
+      local_point_t m = {a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t};
+      negative[nn++] = m;
+      positive[np++] = m;
+    }
+  }
+  return add_ridge_face(roof, negative, nn, eaves, ridge) &&
+         add_ridge_face(roof, positive, np, eaves, ridge);
+}
+
 static bool generate_building(layout_t* layout, const city_building_t* building,
                               city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -1227,19 +1361,36 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
   city_part_t* walls = city_chunk_add_part(
       chunk, facade, PART_COLLIDER_MESH, COLLISION_LAYER_BUILDING,
       o->building_friction, (uint64_t)building->source_id);
+  unsigned roof_hash =
+      (unsigned)((uint64_t)building->source_id * 2246822519u >> 7);
+  const char* roof_material = roof_shape(building) == ROOF_FLAT ? "roof_flat"
+                              : roof_hash % 10 < 7              ? "roof"
+                                                                : "roof_slate";
   city_part_t* roof =
-      walls ? city_chunk_add_part(
-                  chunk, "roof", PART_COLLIDER_MESH, COLLISION_LAYER_BUILDING,
-                  o->building_friction, (uint64_t)building->source_id)
-            : NULL;
+      walls
+          ? city_chunk_add_part(chunk, roof_material, PART_COLLIDER_MESH,
+                                COLLISION_LAYER_BUILDING, o->building_friction,
+                                (uint64_t)building->source_id)
+          : NULL;
   if (!walls || !roof) return false;
   walls = &chunk->parts[chunk->part_count -
                         2]; /* the roof's addition may have moved the array */
   float h = building->height;
-  if (!add_walls(walls, building->points, count, h, o)) return false;
+  ridge_t ridge_data;
+  const ridge_t* ridge = NULL;
+  if (roof_shape(building) == ROOF_RIDGE) {
+    bounding_rectangle_t r = bounding_rectangle(building->points, count);
+    double half = (r.across_max - r.across_min) * 0.5;
+    ridge_data.across = r.across;
+    ridge_data.mid = (r.across_min + r.across_max) * 0.5;
+    ridge_data.rise = fmin(fmax(half * 0.55, 0.8), 4.0);
+    ridge_data.slope = ridge_data.rise / fmax(half, 0.5);
+    ridge = &ridge_data;
+  }
+  if (!add_walls(walls, building->points, count, h, o, ridge)) return false;
   for (size_t hole = 0; hole < building->hole_count; hole++)
     if (!add_walls(walls, building->holes[hole].points,
-                   building->holes[hole].count, h, o))
+                   building->holes[hole].count, h, o, ridge))
       return false;
   bool pitched = false;
   if (!add_pitched_roof(roof, walls, building, h, o, &pitched)) return false;
@@ -1281,16 +1432,27 @@ static bool generate_building(layout_t* layout, const city_building_t* building,
     stats->buildings_unclean++;
   }
   bool roof_ok = true;
-  for (size_t i = 0; i < merged_count && roof_ok; i++)
-    roof_ok =
-        add_vertex(&roof->mesh, at(merged[i], h), vec3(0, 1, 0),
-                   (float)(merged[i].x * 0.4), (float)(merged[i].z * 0.4));
-  for (size_t t = 0; t < triangles && roof_ok; t++) {
-    local_point_t tri[3] = {merged[indices[t * 3]], merged[indices[t * 3 + 1]],
-                            merged[indices[t * 3 + 2]]};
-    if (fabs(polygon_signed_area(tri, 3)) < 1e-6) continue;
-    roof_ok = add_face(&roof->mesh, indices[t * 3], indices[t * 3 + 1],
-                       indices[t * 3 + 2], vec3(0, 1, 0));
+  if (ridge) {
+    for (size_t t = 0; t < triangles && roof_ok; t++) {
+      local_point_t tri[3] = {merged[indices[t * 3]],
+                              merged[indices[t * 3 + 1]],
+                              merged[indices[t * 3 + 2]]};
+      if (fabs(polygon_signed_area(tri, 3)) < 1e-6) continue;
+      roof_ok = add_ridge_triangle(roof, tri, h, ridge);
+    }
+  } else {
+    for (size_t i = 0; i < merged_count && roof_ok; i++)
+      roof_ok =
+          add_vertex(&roof->mesh, at(merged[i], h), vec3(0, 1, 0),
+                     (float)(merged[i].x * 0.4), (float)(merged[i].z * 0.4));
+    for (size_t t = 0; t < triangles && roof_ok; t++) {
+      local_point_t tri[3] = {merged[indices[t * 3]],
+                              merged[indices[t * 3 + 1]],
+                              merged[indices[t * 3 + 2]]};
+      if (fabs(polygon_signed_area(tri, 3)) < 1e-6) continue;
+      roof_ok = add_face(&roof->mesh, indices[t * 3], indices[t * 3 + 1],
+                         indices[t * 3 + 2], vec3(0, 1, 0));
+    }
   }
   free(merged);
   free(indices);

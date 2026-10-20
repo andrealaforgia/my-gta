@@ -73,7 +73,8 @@ uint8_t* texture_grass(unsigned seed) {
   return grainy(seed, 0.28f, 0.42f, 0.18f, 0.5f, 0.3f);
 }
 uint8_t* texture_earth(unsigned seed) {
-  return grainy(seed, 0.50f, 0.45f, 0.37f, 0.35f, 0.2f);
+  /* Courtyards and verges in a town: worn grey paving with soil patches. */
+  return grainy(seed, 0.52f, 0.50f, 0.46f, 0.35f, 0.2f);
 }
 uint8_t* texture_roof(unsigned seed) {
   uint8_t* pixels = grainy(seed, 0.72f, 0.42f, 0.30f, 0.25f, 0.12f);
@@ -127,13 +128,31 @@ uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns) {
       {0.84f, 0.66f, 0.60f}, /* faded pink */
       {0.78f, 0.80f, 0.70f}, /* pale sage */
       {0.70f, 0.62f, 0.52f}, /* old stone */
+      {0.92f, 0.90f, 0.86f}, /* whitewash */
+      {0.66f, 0.70f, 0.74f}, /* grey-blue */
+      {0.76f, 0.40f, 0.32f}, /* brick red */
+      {0.88f, 0.78f, 0.58f}, /* sand */
+      {0.62f, 0.60f, 0.58f}, /* concrete */
+      {0.82f, 0.70f, 0.50f}, /* straw yellow */
   };
-  const float* base = palette[seed % 6];
+  static const float shutter_colours[][3] = {
+      {0.22f, 0.30f, 0.24f}, /* green */
+      {0.36f, 0.24f, 0.16f}, /* brown */
+      {0.34f, 0.38f, 0.44f}, /* slate blue */
+      {0.56f, 0.20f, 0.18f}, /* oxblood */
+  };
+  const float* base = palette[seed % 12];
+  const float* shutter_colour = shutter_colours[(seed / 3) % 4];
   uint8_t* pixels = grainy(seed, base[0], base[1], base[2], 0.16f, 0.06f);
   if (!pixels) return NULL;
   int cell_w = TEXTURE_SIZE / (window_columns > 0 ? window_columns : 1);
   int cell_h = TEXTURE_SIZE / (window_rows > 0 ? window_rows : 1);
-  bool shutters_open = (seed % 2) == 0;
+  bool shutters_open = (seed % 3) != 0;
+  bool arched = ((seed / 2) % 3) == 0;
+  bool balcony = ((seed / 5) % 3) == 0;
+  bool wide = ((seed / 7) % 4) == 0;
+  bool dark_frames = ((seed / 11) % 3) == 0;
+  float window_lo = wide ? 0.28f : 0.36f, window_hi = wide ? 0.72f : 0.64f;
   for (int y = 0; y < TEXTURE_SIZE; y++) {
     for (int x = 0; x < TEXTURE_SIZE; x++) {
       int cx = x % cell_w, cy = y % cell_h;
@@ -144,22 +163,42 @@ uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns) {
         put(pixels, x, y, base[0] * 0.78f, base[1] * 0.78f, base[2] * 0.76f);
         continue;
       }
-      bool in_window = fx > 0.36f && fx < 0.64f && fy > 0.22f && fy < 0.78f;
-      bool sill = fx > 0.32f && fx < 0.68f && fy > 0.18f && fy <= 0.22f;
-      bool shutter = shutters_open ? ((fx > 0.24f && fx < 0.35f) ||
-                                      (fx > 0.65f && fx < 0.76f)) &&
-                                         fy > 0.22f && fy < 0.78f
-                                   : false;
-      if (sill) {
+      float top = 0.78f;
+      bool in_window =
+          fx > window_lo && fx < window_hi && fy > 0.22f && fy < top;
+      if (arched && fy >= 0.62f && fy < 0.86f) {
+        /* A round head on the window: an ellipse over its top quarter. */
+        float centre = 0.5f, half = (window_hi - window_lo) * 0.5f;
+        float t = (fy - 0.62f) / 0.24f;
+        in_window = fx > centre - half * sqrtf(fmaxf(1.0f - t * t, 0.0f)) &&
+                    fx < centre + half * sqrtf(fmaxf(1.0f - t * t, 0.0f));
+      }
+      bool sill = fx > window_lo - 0.04f && fx < window_hi + 0.04f &&
+                  fy > 0.18f && fy <= 0.22f;
+      bool rail = balcony && fy > 0.22f && fy < 0.34f &&
+                  fx > window_lo - 0.06f && fx < window_hi + 0.06f &&
+                  (fy < 0.25f || ((int)(fx * 40) % 3) == 0);
+      bool shutter = shutters_open &&
+                     ((fx > window_lo - 0.12f && fx < window_lo - 0.01f) ||
+                      (fx > window_hi + 0.01f && fx < window_hi + 0.12f)) &&
+                     fy > 0.22f && fy < top;
+      if (rail) {
+        put(pixels, x, y, 0.16f, 0.16f, 0.17f);
+      } else if (sill) {
         put(pixels, x, y, 0.82f, 0.80f, 0.74f);
       } else if (shutter) {
         float slat = ((cy / 3) % 2) ? 0.9f : 1.0f;
-        put(pixels, x, y, 0.22f * slat, 0.30f * slat, 0.24f * slat);
+        put(pixels, x, y, shutter_colour[0] * slat, shutter_colour[1] * slat,
+            shutter_colour[2] * slat);
       } else if (in_window) {
-        bool frame = fx < 0.39f || fx > 0.61f || fy < 0.25f || fy > 0.75f ||
-                     (fx > 0.49f && fx < 0.51f) || (fy > 0.49f && fy < 0.51f);
+        float inset = fminf(fminf(fx - window_lo, window_hi - fx), fy - 0.22f);
+        bool frame = inset < 0.03f || (fx > 0.49f && fx < 0.51f) ||
+                     (fy > 0.49f && fy < 0.51f);
         if (frame) {
-          put(pixels, x, y, 0.80f, 0.78f, 0.72f);
+          if (dark_frames)
+            put(pixels, x, y, 0.28f, 0.20f, 0.14f);
+          else
+            put(pixels, x, y, 0.80f, 0.78f, 0.72f);
         } else {
           float sky = 0.3f + noise((unsigned)(x / cell_w),
                                    (unsigned)(y / cell_h), seed + 5) *
@@ -169,6 +208,38 @@ uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns) {
       }
     }
   }
+  return pixels;
+}
+
+uint8_t* texture_roof_slate(unsigned seed) {
+  uint8_t* pixels = grainy(seed, 0.34f, 0.35f, 0.38f, 0.2f, 0.1f);
+  if (!pixels) return NULL;
+  const int tile_w = 12, row_h = 12;
+  for (int y = 0; y < TEXTURE_SIZE; y++)
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      int row = y / row_h;
+      int shifted = x + (row % 2) * tile_w / 2;
+      float across = (float)(shifted % tile_w) / tile_w;
+      float shade = across < 0.08f ? 0.7f : 1.0f;
+      float edge = (y % row_h) < 2 ? 0.65f : 1.0f;
+      uint8_t* q = pixels + (y * TEXTURE_SIZE + x) * 4;
+      put(pixels, x, y, q[0] / 255.0f * shade * edge,
+          q[1] / 255.0f * shade * edge, q[2] / 255.0f * shade * edge);
+    }
+  return pixels;
+}
+
+uint8_t* texture_roof_flat(unsigned seed) {
+  uint8_t* pixels = grainy(seed, 0.42f, 0.42f, 0.41f, 0.3f, 0.18f);
+  if (!pixels) return NULL;
+  /* Bitumen sheets with seams every 64 px. */
+  for (int y = 0; y < TEXTURE_SIZE; y++)
+    for (int x = 0; x < TEXTURE_SIZE; x++)
+      if (x % 64 < 2) {
+        uint8_t* q = pixels + (y * TEXTURE_SIZE + x) * 4;
+        put(pixels, x, y, q[0] / 255.0f * 0.7f, q[1] / 255.0f * 0.7f,
+            q[2] / 255.0f * 0.7f);
+      }
   return pixels;
 }
 
@@ -200,12 +271,15 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.concrete = upload(renderer, texture_concrete(3));
   set.grass = upload(renderer, texture_grass(4));
   set.earth = upload(renderer, texture_earth(17));
-  set.facade = upload(renderer, texture_facade(5, 1, 1));
-  set.facades[0] = set.facade;
-  set.facades[1] = upload(renderer, texture_facade(7, 1, 1));
-  set.facades[2] = upload(renderer, texture_facade(11, 1, 2));
-  set.facades[3] = upload(renderer, texture_facade(13, 1, 1));
+  static const unsigned facade_seeds[CITY_FACADE_STYLES] = {
+      36, 49, 62, 75, 88, 101, 114, 127, 140, 153, 166, 179};
+  for (int i = 0; i < CITY_FACADE_STYLES; i++)
+    set.facades[i] = upload(
+        renderer, texture_facade(facade_seeds[i], 1, (i % 3) == 2 ? 2 : 1));
+  set.facade = set.facades[0];
   set.roof = upload(renderer, texture_roof(6));
+  set.roof_slate = upload(renderer, texture_roof_slate(8));
+  set.roof_flat = upload(renderer, texture_roof_flat(9));
   set.checker = upload(renderer, texture_checker());
   return set;
 }

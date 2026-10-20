@@ -108,8 +108,9 @@ typedef struct {
   size_t ends_snapped;
   size_t widths_inferred;
   size_t heights_defaulted;
-  size_t roads_merged;  /* segments joined end to end through a bend */
-  size_t bends_rounded; /* interior corners replaced by arcs */
+  size_t tunnels_skipped; /* underpasses and building passages */
+  size_t roads_merged;    /* segments joined end to end through a bend */
+  size_t bends_rounded;   /* interior corners replaced by arcs */
 } city_stats_t;
 
 typedef struct {

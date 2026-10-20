@@ -317,6 +317,48 @@ static void untagged_buildings_take_heights_from_their_kind(void) {
   city_model_free(&model);
 }
 
+static void tunnels_and_driveways_are_not_drawn_but_alleys_are(void) {
+  /* Four streets: an underpass (tunnel=yes), a passage under a building,
+   * a driveway and an alley, plus a plain residential street. Only the
+   * street and the alley are on the surface and drivable. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.003\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0010\"/>"
+      "<node id=\"3\" lat=\"45.0005\" lon=\"12.0000\"/>"
+      "<node id=\"4\" lat=\"45.0005\" lon=\"12.0010\"/>"
+      "<node id=\"5\" lat=\"45.0010\" lon=\"12.0000\"/>"
+      "<node id=\"6\" lat=\"45.0010\" lon=\"12.0010\"/>"
+      "<node id=\"7\" lat=\"45.0015\" lon=\"12.0000\"/>"
+      "<node id=\"8\" lat=\"45.0015\" lon=\"12.0010\"/>"
+      "<node id=\"9\" lat=\"45.0020\" lon=\"12.0000\"/>"
+      "<node id=\"10\" lat=\"45.0020\" lon=\"12.0010\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"unclassified\"/><tag k=\"tunnel\" v=\"yes\"/><tag k=\"layer\" "
+      "v=\"-1\"/></way>"
+      "<way id=\"12\"><nd ref=\"5\"/><nd ref=\"6\"/><tag k=\"highway\" "
+      "v=\"residential\"/><tag k=\"tunnel\" v=\"building_passage\"/></way>"
+      "<way id=\"13\"><nd ref=\"7\"/><nd ref=\"8\"/><tag k=\"highway\" "
+      "v=\"service\"/><tag k=\"service\" v=\"driveway\"/></way>"
+      "<way id=\"14\"><nd ref=\"9\"/><nd ref=\"10\"/><tag k=\"highway\" "
+      "v=\"service\"/><tag k=\"service\" v=\"alley\"/></way>"
+      "</osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  assert(model.road_count == 2);
+  assert(road_from(&model, 10, 0) && road_from(&model, 14, 0));
+  assert(road_from(&model, 11, 0) == NULL && road_from(&model, 12, 0) == NULL);
+  assert(road_from(&model, 13, 0) == NULL);
+  assert(model.stats.tunnels_skipped == 2);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -354,5 +396,6 @@ void run_city_tests(void) {
   RUN(dangling_road_ends_snap_onto_the_road_they_nearly_reach);
   RUN(two_ways_meeting_end_to_end_become_one_road_with_a_rounded_bend);
   RUN(untagged_buildings_take_heights_from_their_kind);
+  RUN(tunnels_and_driveways_are_not_drawn_but_alleys_are);
   RUN(the_model_round_trips_through_its_text_format);
 }

@@ -64,7 +64,7 @@ static void validate_part(const city_chunk_t* chunk, const city_part_t* part,
   if (part->collider == PART_COLLIDER_MESH) report->colliders++;
   if (strcmp(part->material, "road") == 0) report->roads++;
   if (strcmp(part->material, "junction") == 0) report->junctions++;
-  if (strcmp(part->material, "roof") == 0) report->buildings++;
+  if (strncmp(part->material, "roof", 4) == 0) report->buildings++;
 }
 
 bool city_validate(const city_package_t* package, city_validation_t* report) {

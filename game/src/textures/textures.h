@@ -11,6 +11,7 @@
 #include "renderer.h"
 
 #define TEXTURE_SIZE 256
+#define CITY_FACADE_STYLES 12
 
 typedef struct {
   texture_handle_t asphalt;
@@ -19,8 +20,10 @@ typedef struct {
   texture_handle_t grass;
   texture_handle_t earth; /* bare yards and courtyards between buildings */
   texture_handle_t facade;
-  texture_handle_t facades[4];
+  texture_handle_t facades[CITY_FACADE_STYLES];
   texture_handle_t roof;
+  texture_handle_t roof_slate;
+  texture_handle_t roof_flat;
   texture_handle_t checker;
 } texture_set_t;
 
@@ -32,6 +35,8 @@ uint8_t* texture_grass(unsigned seed);
 uint8_t* texture_earth(unsigned seed);
 uint8_t* texture_facade(unsigned seed, int window_rows, int window_columns);
 uint8_t* texture_roof(unsigned seed);
+uint8_t* texture_roof_slate(unsigned seed);
+uint8_t* texture_roof_flat(unsigned seed);
 uint8_t* texture_checker(void);
 
 texture_set_t texture_set_upload(renderer_t* renderer);

@@ -449,6 +449,26 @@ static void import_roads(city_model_t* model, const osm_data_t* osm,
       model->stats.ways_total--; /* a square: handled with the areas */
       continue;
     }
+    const char* tunnel = osm_tag(way->tags, way->tag_count, "tunnel");
+    if (tunnel && strcmp(tunnel, "no") != 0) {
+      /* Underpasses and passages under buildings are not on the surface
+       * we draw; drawn there they run across gardens and rooftops. */
+      model->stats.tunnels_skipped++;
+      model->stats.ways_ignored++;
+      continue;
+    }
+    const char* service = osm_tag(way->tags, way->tag_count, "service");
+    const char* access = osm_tag(way->tags, way->tag_count, "access");
+    if (highway && strcmp(highway, "service") == 0 &&
+        ((service && (strcmp(service, "driveway") == 0 ||
+                      strcmp(service, "parking_aisle") == 0 ||
+                      strcmp(service, "drive-through") == 0 ||
+                      strcmp(service, "emergency_access") == 0)) ||
+         (access &&
+          (strcmp(access, "private") == 0 || strcmp(access, "no") == 0)))) {
+      model->stats.ways_ignored++; /* clutter inside blocks and car parks */
+      continue;
+    }
     const char* footway = osm_tag(way->tags, way->tag_count, "footway");
     if (footway && (strcmp(footway, "sidewalk") == 0 ||
                     strcmp(footway, "crossing") == 0)) {
@@ -790,17 +810,24 @@ static void settle_heights(city_model_t* model,
       if (hypot(oc.x - centre.x, oc.z - centre.z) <= options->neighbour_reach)
         nearby[found++] = other->height;
     }
+    unsigned hash = stable_hash(building->source_id);
     if (found > 0) {
       qsort(nearby, found, sizeof(float), compare_floats);
+      float median = found % 2
+                         ? nearby[found / 2]
+                         : 0.5f * (nearby[found / 2 - 1] + nearby[found / 2]);
+      /* Streets are not uniform: a storey up or down, mostly the same. */
+      static const int storeys[4] = {-1, 0, 0, 1};
       building->height =
-          found % 2 ? nearby[found / 2]
-                    : 0.5f * (nearby[found / 2 - 1] + nearby[found / 2]);
+          fmaxf(2.0f * options->storey_height,
+                median + (float)storeys[hash % 4] * options->storey_height);
       building->height_source = HEIGHT_FROM_NEIGHBOURS;
     } else {
-      float t = (float)(stable_hash(building->source_id) % 1000) / 999.0f;
-      building->height =
-          options->default_height_min +
-          (options->default_height_max - options->default_height_min) * t;
+      /* Two to four storeys, weighted towards three. */
+      static const int storeys[10] = {2, 2, 3, 3, 3, 3, 4, 4, 4, 2};
+      float height = (float)storeys[hash % 10] * options->storey_height;
+      building->height = fminf(fmaxf(height, options->default_height_min),
+                               options->default_height_max);
       model->stats.heights_defaulted++;
     }
     if (building->levels == 0)
@@ -1068,11 +1095,13 @@ bool city_import(city_model_t* model, const osm_data_t* osm,
            "%zu road segments, %zu junctions, %zu buildings, %zu areas; %zu "
            "ways ignored, "
            "%zu degenerate, %zu malformed buildings, %zu relations skipped, "
-           "%zu ends snapped, %zu roads merged, %zu bends rounded",
+           "%zu ends snapped, %zu roads merged, %zu bends rounded, %zu tunnels "
+           "skipped",
            model->road_count, model->junction_count, model->building_count,
            model->area_count, model->stats.ways_ignored,
            model->stats.roads_degenerate, model->stats.buildings_malformed,
            model->stats.relations_skipped, model->stats.ends_snapped,
-           model->stats.roads_merged, model->stats.bends_rounded);
+           model->stats.roads_merged, model->stats.bends_rounded,
+           model->stats.tunnels_skipped);
   return model->road_count > 0;
 }
