@@ -102,11 +102,12 @@ car_visual_t car_visual_create(renderer_t* renderer,
       mesh_data_add_quad(&glass_mesh, a, b, c, d, 1);
   }
   mesh_data_t lights_mesh = mesh_data_create();
+  mesh_data_t rear_mesh = mesh_data_create();
   for (int side = -1; side <= 1; side += 2) {
     mesh_data_add_box(&lights_mesh,
                       vec3(side * w * 0.6f, floor + 0.45f * h.y, -L - 0.01f),
                       vec3(w * 0.16f, h.y * 0.12f, 0.02f));
-    mesh_data_add_box(&lights_mesh,
+    mesh_data_add_box(&rear_mesh,
                       vec3(side * w * 0.6f, floor + 0.5f * h.y, L + 0.01f),
                       vec3(w * 0.18f, h.y * 0.1f, 0.02f));
   }
@@ -130,6 +131,7 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.cabin = upload(renderer, &cabin_mesh);
   visual.glass = upload(renderer, &glass_mesh);
   visual.lights = upload(renderer, &lights_mesh);
+  visual.rear_lights = upload(renderer, &rear_mesh);
   visual.trim = upload(renderer, &trim_mesh);
   visual.wheel = upload(renderer, &wheel);
   visual.paint = material_plain(vec3(0.72f, 0.1f, 0.08f));
@@ -138,6 +140,7 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.glass_material = material_rough(vec3(0.12f, 0.16f, 0.22f), 0.1f);
   visual.glass_material.metallic = 0.6f;
   visual.light_material = material_rough(vec3(0.95f, 0.9f, 0.7f), 0.3f);
+  visual.rear_light_material = material_rough(vec3(0.8f, 0.08f, 0.05f), 0.3f);
   visual.trim_material = material_rough(vec3(0.12f, 0.12f, 0.13f), 0.7f);
   visual.rubber = material_rough(vec3(0.08f, 0.08f, 0.08f), 0.9f);
   return visual;
@@ -148,6 +151,7 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
   renderer_release_mesh(renderer, visual->cabin);
   renderer_release_mesh(renderer, visual->glass);
   renderer_release_mesh(renderer, visual->lights);
+  renderer_release_mesh(renderer, visual->rear_lights);
   renderer_release_mesh(renderer, visual->trim);
   renderer_release_mesh(renderer, visual->wheel);
 }
@@ -159,6 +163,8 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
   renderer_draw_mesh(renderer, visual->cabin, visual->paint, model);
   renderer_draw_mesh(renderer, visual->glass, visual->glass_material, model);
   renderer_draw_mesh(renderer, visual->lights, visual->light_material, model);
+  renderer_draw_mesh(renderer, visual->rear_lights, visual->rear_light_material,
+                     model);
   renderer_draw_mesh(renderer, visual->trim, visual->trim_material, model);
   for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
     transform_t wheel = vehicle_wheel_transform(vehicle, chassis, i);
