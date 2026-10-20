@@ -86,6 +86,26 @@ int main(int argc, char* argv[]) {
   if (status != EXIT_SUCCESS) LOG_ERROR("snapshot", "the frame looks blank");
   if (!save_bmp(path, width, height, pixels)) status = EXIT_FAILURE;
   render_stats_t stats = renderer_stats(renderer);
+  LOG_INFO("snapshot", "shadow map coverage %.3f",
+           renderer_shadow_coverage(renderer));
+  if (getenv("SNAPSHOT_SHADOW_MAP")) {
+    size_t count = 2048u * 2048u;
+    float* depths = malloc(count * sizeof(float));
+    int size = renderer_read_shadow_map(renderer, depths, count);
+    if (size > 0) {
+      uint8_t* grey = malloc(count * 4);
+      for (size_t i = 0; i < count; i++) {
+        uint8_t v = (uint8_t)(255.0f * (1.0f - depths[i]) * 4.0f > 255
+                                  ? 255
+                                  : 255.0f * (1.0f - depths[i]) * 4.0f);
+        grey[i * 4] = grey[i * 4 + 1] = grey[i * 4 + 2] = v;
+        grey[i * 4 + 3] = 255;
+      }
+      save_bmp(getenv("SNAPSHOT_SHADOW_MAP"), size, size, grey);
+      free(grey);
+    }
+    free(depths);
+  }
   LOG_INFO("snapshot",
            "%s: %dx%d, %d draws, %d triangles, %.2f ms per frame, car at %.1f "
            "km/h after %.1f s",

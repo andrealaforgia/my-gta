@@ -17,7 +17,7 @@ OSM XML extract --> city-import --> intermediate model --> city-generate --> coo
 | `engine/core` | logging, key = value configuration | libc |
 | `engine/math` | vectors, quaternions, matrices, transforms, boxes, rays, frustums, damping | libc |
 | `engine/platform` | window and GL context, events, keyboard and controller mapping, fixed-step frame clock, clock | core, SDL2 |
-| `engine/renderer` | the renderer interface, CPU meshes, materials, the 5x7 font; `gl/` is the only OpenGL code | core, math |
+| `engine/renderer` | the renderer interface, CPU meshes, materials, the 5x7 font; `gl/` is the only OpenGL code: a deferred draw list, a shadow-map pass and the main pass | core, math |
 | `engine/assets` | the cooked city package reader and writer | renderer (mesh data), math |
 | `engine/world` | entities with transforms and bounds, frustum culling, drawing | renderer, math |
 | `engine/physics` | box bodies, static box and mesh colliders, ray casts, contacts, stepping | core, math |
@@ -44,6 +44,18 @@ Ownership is explicit: the stage owns the physics world, the world, the
 scene's meshes and the vehicle; `main` owns the window, renderer and
 audio device and passes pointers down. No globals.
 
+## Rendering
+
+`renderer_draw_mesh` only records a draw. `renderer_end_frame` renders the
+list twice: first into a 2048 x 2048 depth map from an orthographic light
+box of `shadow_radius` metres around the camera target (front faces
+culled, box centre snapped to texels so shadows do not shimmer), then the
+main pass with one directional light, hemisphere ambient, a 3 x 3 PCF
+shadow lookup, metallic/roughness shading and distance fog, followed by
+debug lines and text. `GTA_DEBUG_SHADOWS=1` in the environment draws the
+shadow factor instead of colour; `render_snapshot` can dump the shadow
+map with `SNAPSHOT_SHADOW_MAP=<file.bmp>`.
+
 ## Conventions
 
 See `docs/decisions/ADR-007-coordinate-conventions.md`: +X east, +Y up,
@@ -53,8 +65,9 @@ anticlockwise front faces.
 ## Performance baseline (2026-10-20)
 
 Reference machine: Apple M4 Pro, 24 GB, macOS 26.5, 1920x1080 drawable.
-`render_snapshot` on the Pordenone package (80 chunks, 25k triangles,
-380 meshes, 1672 colliders): 309 draw calls and 22k triangles after
-frustum culling, 4.9 ms per frame measured over 60 frames with vsync off.
+`render_snapshot` on the Pordenone package without service roads (80
+chunks, 23k triangles, 1472 colliders, shadows on): 472 draw calls across
+the shadow and main passes, 17k triangles after frustum culling, 2.3 ms
+per frame measured over 60 frames with vsync off at a street-level view.
 The physics step with the car is well under a millisecond. No instancing,
 LOD or chunk streaming yet; every chunk is loaded at start.

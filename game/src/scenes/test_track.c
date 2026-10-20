@@ -144,11 +144,12 @@ bool scene_build_test_track(scene_t* scene, scene_context_t c) {
   scene->spawn_position = vec3(0, 0.9f, 0);
   scene->spawn_rotation = quat_identity();
   render_environment_t environment = {vec3(0.45f, 0.9f, 0.35f),
-                                      vec3(1.0f, 0.96f, 0.88f),
-                                      0.42f,
+                                      vec3(1.15f, 1.1f, 0.98f),
+                                      0.3f,
                                       vec3(0.58f, 0.72f, 0.92f),
                                       120.0f,
-                                      700.0f};
+                                      700.0f,
+                                      90.0f};
   scene->environment = environment;
   LOG_INFO("scene", "test track: %zu entities, %zu colliders",
            world_count(c.world), physics_collider_count(c.physics));

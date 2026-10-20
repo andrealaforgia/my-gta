@@ -128,6 +128,18 @@ mat4_t mat4_perspective(float fov_y, float aspect, float near_plane,
   return r;
 }
 
+mat4_t mat4_orthographic(float left, float right, float bottom, float top,
+                         float near_plane, float far_plane) {
+  mat4_t r = mat4_identity();
+  r.m[0] = 2.0f / (right - left);
+  r.m[5] = 2.0f / (top - bottom);
+  r.m[10] = -2.0f / (far_plane - near_plane);
+  r.m[12] = -(right + left) / (right - left);
+  r.m[13] = -(top + bottom) / (top - bottom);
+  r.m[14] = -(far_plane + near_plane) / (far_plane - near_plane);
+  return r;
+}
+
 mat4_t mat4_look_at(vec3_t eye, vec3_t target, vec3_t up) {
   vec3_t forward = vec3_normalize(vec3_sub(target, eye));
   vec3_t side = vec3_normalize(vec3_cross(forward, up));

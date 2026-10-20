@@ -27,6 +27,8 @@ mat4_t mat4_inverse(mat4_t a);
  * clip z in [-1, 1] as OpenGL expects. */
 mat4_t mat4_perspective(float fov_y, float aspect, float near_plane,
                         float far_plane);
+mat4_t mat4_orthographic(float left, float right, float bottom, float top,
+                         float near_plane, float far_plane);
 mat4_t mat4_look_at(vec3_t eye, vec3_t target, vec3_t up);
 vec3_t mat4_transform_point(mat4_t a, vec3_t p);
 vec3_t mat4_transform_direction(mat4_t a, vec3_t d);

@@ -20,7 +20,8 @@ needs a window or a GPU.
 | world | stable ids and bounds, frustum visiting, drawing only what is visible |
 | osm | the fixture loads, bad files are refused, entities unescape, projection to metres |
 | city | road classification and splitting, cleaning, junction degrees, building heights and winding, deterministic defaults, text round trip |
-| generator | ear clipping, every feature becomes geometry, widths and heights, winding, spawn on a road, package round trip and validation, determinism, settings hash |
+| junction | corner intersections, cuts, exact patches, bevels, pavement corners, polyline cutting |
+| generator | ear clipping, every feature becomes geometry, widths and heights, corridor fitting, lamp posts, winding, spawn on a road, package round trip and validation, determinism, settings hash |
 | citydrive | the fixture city loads from a cooked package, the car drives its spawn road and through a junction, a building stops it |
 
 GPU checks are separate: `make snapshot` renders the track through a

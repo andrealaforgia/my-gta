@@ -53,7 +53,7 @@ i a b c
 ```
 
 Materials are names the game binds to its procedural textures: `road`,
-`junction`, `pavement`, `kerb`, `grass`, `roof`, `facade0..3`. The game
+`junction`, `pavement`, `kerb`, `grass`, `roof`, `facade0..3`, `lamp`. The game
 merges all parts of one material in a chunk into one mesh, so draw calls
 are about ten per chunk. Collider parts become static triangle meshes in
 the physics world with the layer and friction given.
@@ -78,6 +78,9 @@ the physics world with the layer and friction given.
   pavement corner fills with kerbs join neighbouring arms around each
   junction. Pavement tops are colliders, so the car can mount them;
   kerbs never trap wheels.
+- Lamp posts stand in the middle of the pavement every `lamp_spacing`
+  metres, alternating sides, with an arm and head over the road; they are
+  colliders on the prop layer. `lamp_spacing = 0` turns them off.
 - Buildings are extruded footprints: wall quads with outward normals and a
   texture repeat per `window_width` and `storey_height`, an ear-clipped
   roof. Facade variant is a stable hash of the source id. Both are

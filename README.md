@@ -71,11 +71,11 @@ docs/     architecture, decisions, pipeline, physics, testing
 ## Status
 
 What works: the engine (fixed 120 Hz physics with render interpolation,
-forward renderer with fog and debug drawing, synthesised audio), a car
+forward renderer with shadows, fog and debug drawing, synthesised audio), a car
 that accelerates, brakes, steers, reverses, skids and collides, a chase
 camera, the offline pipeline from OSM XML to a validated cooked package,
 and driving through the generated city. `docs/testing.md` lists what the
 tests cover and `docs/vehicle-physics.md` the handling model and its
-limits. Not done: glTF import, shadows, elevation, multipolygon buildings,
-chunk streaming, lane markings at junctions. See the end of
+limits. Not done: glTF import, elevation, multipolygon buildings, chunk
+streaming, lane markings at junctions. See the end of
 `docs/architecture.md` for the measured performance baseline.

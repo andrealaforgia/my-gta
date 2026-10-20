@@ -198,6 +198,22 @@ static void draw_hud(driving_stage_t* stage) {
   }
   if (stage->show_debug) {
     y += 12 * scale;
+    const rigid_body_t* body = physics_body(stage->physics, car->body);
+    ray_t down = {body->position, vec3(0, -1, 0)};
+    ray_cast_result_t under;
+    if (physics_ray_cast(stage->physics, down, 5.0f, COLLISION_LAYER_ALL,
+                         &under)) {
+      snprintf(line, sizeof(line),
+               "SURFACE LAYER %d FRICTION %.2f SOURCE %llu AT %.1f %.1f %.1f",
+               (int)under.layer, under.friction,
+               (unsigned long long)under.source_id, body->position.x,
+               body->position.y, body->position.z);
+    } else {
+      snprintf(line, sizeof(line), "SURFACE NONE AT %.1f %.1f %.1f",
+               body->position.x, body->position.y, body->position.z);
+    }
+    renderer_draw_text(r, x, y, scale, vec3(0.6f, 0.9f, 1.0f), line);
+    y += 10 * scale;
     for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
       const wheel_state_t* w = &car->wheels[i];
       snprintf(line, sizeof(line),

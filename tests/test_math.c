@@ -142,6 +142,17 @@ static void perspective_maps_near_to_minus_one_and_far_to_one(void) {
   assert(near_to(up.y, right.x * 16.0f / 9.0f, 1e-4));
 }
 
+static void orthographic_maps_the_box_to_the_unit_cube(void) {
+  mat4_t o = mat4_orthographic(-10, 10, -5, 5, 1, 101);
+  vec3_t corner = mat4_project_point(o, vec3(10, 5, -1));
+  assert(near(corner.x, 1) && near(corner.y, 1) && near(corner.z, -1));
+  vec3_t far_corner = mat4_project_point(o, vec3(-10, -5, -101));
+  assert(near(far_corner.x, -1) && near(far_corner.y, -1) &&
+         near(far_corner.z, 1));
+  vec3_t centre = mat4_project_point(o, vec3(0, 0, -51));
+  assert(near(centre.x, 0) && near(centre.z, 0));
+}
+
 static void look_at_faces_the_target_down_minus_z(void) {
   mat4_t view = mat4_look_at(vec3(0, 0, 10), vec3(0, 0, 0), vec3(0, 1, 0));
   assert(near_vec(mat4_transform_point(view, vec3(0, 0, 0)), vec3(0, 0, -10)));
@@ -281,6 +292,7 @@ void run_math_tests(void) {
   RUN(rigid_inverse_undoes_the_transform);
   RUN(general_inverse_undoes_scale_too);
   RUN(perspective_maps_near_to_minus_one_and_far_to_one);
+  RUN(orthographic_maps_the_box_to_the_unit_cube);
   RUN(look_at_faces_the_target_down_minus_z);
   RUN(transforms_apply_scale_then_rotation_then_translation);
   RUN(transforms_interpolate_position_and_rotation);

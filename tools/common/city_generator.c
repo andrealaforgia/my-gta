@@ -13,8 +13,9 @@
 #include "triangulate.h"
 
 city_generator_options_t city_generator_default_options(void) {
-  city_generator_options_t o = {150.0f, 0.06f, true,  2.0f, 0.18f, 8.0f, 3.0f,
-                                3.2f,   4,     0.25f, 1.0f, 0.9f,  0.7f, 0.6f};
+  city_generator_options_t o = {150.0f, 0.06f, true, 2.0f, 0.18f,
+                                8.0f,   3.0f,  3.2f, 4,    0.25f,
+                                1.0f,   0.9f,  0.7f, 0.6f, 28.0f};
   return o;
 }
 
@@ -50,6 +51,7 @@ bool city_generator_options_load(city_generator_options_t* o,
       config_get_float(&config, "ground_friction", o->ground_friction);
   o->building_friction =
       config_get_float(&config, "building_friction", o->building_friction);
+  o->lamp_spacing = config_get_float(&config, "lamp_spacing", o->lamp_spacing);
   if (config_defaulted_count(&config) > 0)
     LOG_WARN("generate", "%s: %zu settings missing, defaults used", path,
              config_defaulted_count(&config));
@@ -64,12 +66,12 @@ bool city_generator_options_load(city_generator_options_t* o,
 uint64_t city_generator_options_hash(const city_generator_options_t* o) {
   /* FNV-1a over a textual rendering so padding bytes do not matter. */
   char text[512];
-  snprintf(text, sizeof(text), "%g %g %d %g %g %g %g %g %d %g %g %g %g %g",
+  snprintf(text, sizeof(text), "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g",
            o->chunk_size, o->road_height, o->pavements, o->pavement_width,
            o->kerb_height, o->road_texture_length, o->window_width,
            o->storey_height, o->facade_variants, o->ground_uv_scale,
            o->road_friction, o->pavement_friction, o->ground_friction,
-           o->building_friction);
+           o->building_friction, o->lamp_spacing);
   uint64_t hash = 1469598103934665603ull;
   for (const char* c = text; *c; c++)
     hash = (hash ^ (uint8_t)*c) * 1099511628211ull;
@@ -470,6 +472,81 @@ static bool generate_junction(layout_t* layout, const city_model_t* model,
   return true;
 }
 
+/* ---- street furniture ---- */
+
+/* Position `distance` metres along a polyline and the segment it lies on. */
+static local_point_t along_polyline(const local_point_t* points, size_t count,
+                                    double distance, size_t* segment) {
+  double walked = 0;
+  for (size_t i = 1; i < count; i++) {
+    double step =
+        hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
+    if (walked + step >= distance || i == count - 1) {
+      double t = step > 1e-12 ? (distance - walked) / step : 0;
+      if (t < 0) t = 0;
+      if (t > 1) t = 1;
+      local_point_t p = {points[i - 1].x + (points[i].x - points[i - 1].x) * t,
+                         points[i - 1].z + (points[i].z - points[i - 1].z) * t};
+      *segment = i;
+      return p;
+    }
+    walked += step;
+  }
+  *segment = count - 1;
+  return points[count - 1];
+}
+
+/* Lamp posts on the pavement, alternating sides, every lamp_spacing
+ * metres along the road: a post, an arm over the road and a head, with
+ * a collider so the car can hit them. */
+static bool generate_lamps(layout_t* layout, const city_road_t* road,
+                           const local_point_t* points, const vec2_t* laterals,
+                           size_t count, road_fit_t fit,
+                           city_generator_stats_t* stats) {
+  const city_generator_options_t* o = layout->options;
+  double length = polyline_length(points, count);
+  if (length < o->lamp_spacing * 0.6) return true;
+  city_chunk_t* chunk = chunk_at(layout, centroid(points, count));
+  city_part_t* part = city_chunk_add_part(chunk, "lamp", PART_COLLIDER_MESH,
+                                          COLLISION_LAYER_PROP, 0.5f,
+                                          (uint64_t)road->source_id);
+  if (!part) return false;
+  const float height = 4.5f;
+  int side = 1;
+  for (double along = o->lamp_spacing * 0.5; along < length;
+       along += o->lamp_spacing, side = -side) {
+    size_t segment;
+    local_point_t on_line = along_polyline(points, count, along, &segment);
+    vec2_t lateral = v2_normalize(laterals[segment > 0 ? segment - 1 : 0]);
+    double post_offset = side * (fit.half_width + fit.pavement * 0.5);
+    local_point_t base = offset(on_line, lateral, post_offset);
+    local_point_t head = offset(on_line, lateral, post_offset - side * 0.9);
+    float y0 = o->kerb_height;
+    if (!mesh_data_add_box(
+            &part->mesh, vec3((float)base.x, y0 + height * 0.5f, (float)base.z),
+            vec3(0.07f, height * 0.5f, 0.07f)))
+      return false;
+    vec3_t arm_centre = vec3((float)((base.x + head.x) * 0.5), y0 + height,
+                             (float)((base.z + head.z) * 0.5));
+    vec3_t arm_half = vec3((float)fabs(head.x - base.x) * 0.5f + 0.06f, 0.06f,
+                           (float)fabs(head.z - base.z) * 0.5f + 0.06f);
+    if (!mesh_data_add_box(&part->mesh, arm_centre, arm_half)) return false;
+    if (!mesh_data_add_box(
+            &part->mesh,
+            vec3((float)head.x, y0 + height - 0.12f, (float)head.z),
+            vec3(0.22f, 0.1f, 0.22f)))
+      return false;
+    stats->lamps++;
+  }
+  if (part->mesh.vertex_count == 0) {
+    mesh_data_free(&part->mesh);
+    chunk->part_count--;
+    return true;
+  }
+  finish_part(chunk, part);
+  return true;
+}
+
 /* ---- roads ---- */
 
 static bool generate_road(layout_t* layout, const city_road_t* road,
@@ -519,6 +596,8 @@ static bool generate_road(layout_t* layout, const city_road_t* road,
       finish_part(chunk, kerb);
       stats->pavements++;
     }
+    if (ok && o->lamp_spacing > 0)
+      ok = generate_lamps(layout, road, points, laterals, count, fit, stats);
   }
   free(points);
   free(laterals);
@@ -763,10 +842,9 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   choose_spawn(package, model, options);
   LOG_INFO("generate",
            "%d x %d chunks, %zu roads, %zu junction patches, %zu pavements, "
-           "%zu buildings "
-           "(%zu approximated), %zu triangles",
+           "%zu lamps, %zu buildings (%zu approximated), %zu triangles",
            layout.columns, layout.rows, stats->roads, stats->junction_patches,
-           stats->pavements, stats->buildings, stats->buildings_unclean,
-           city_package_triangle_count(package));
+           stats->pavements, stats->lamps, stats->buildings,
+           stats->buildings_unclean, city_package_triangle_count(package));
   return true;
 }

@@ -97,6 +97,16 @@ mat4_t renderer_view_projection(const renderer_t* r) {
   return r->view_projection;
 }
 render_stats_t renderer_stats(const renderer_t* r) { return r->stats; }
+int renderer_read_shadow_map(renderer_t* r, float* d, size_t n) {
+  (void)r;
+  (void)d;
+  (void)n;
+  return 0;
+}
+float renderer_shadow_coverage(renderer_t* r) {
+  (void)r;
+  return 0;
+}
 bool renderer_read_pixels(renderer_t* r, uint8_t* rgba, size_t size) {
   (void)r;
   (void)rgba;

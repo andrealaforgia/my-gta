@@ -149,13 +149,33 @@ static void roads_narrow_to_fit_between_buildings(void) {
   city_package_free(&package);
 }
 
+static void lamp_posts_stand_on_the_pavements(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  assert(stats.lamps > 10);
+  size_t lamp_parts = count_material(&package, "lamp");
+  assert(lamp_parts > 0 && lamp_parts <= stats.roads);
+  const city_part_t* lamps = part_for(&package, "lamp", 103);
+  assert(lamps && lamps->collider == PART_COLLIDER_MESH && lamps->layer == 8);
+  aabb_t bounds = mesh_data_bounds(&lamps->mesh);
+  assert(near_to(bounds.min.y, 0.18f, 0.01f)); /* standing on the pavement */
+  assert(bounds.max.y > 4.5f && bounds.max.y < 5.0f);
+  /* Road 103 runs east-west, 6 m wide with 2 m pavements: posts stand
+   * about 4 m either side of the centre line. */
+  assert(bounds.max.z - bounds.min.z > 7.0f &&
+         bounds.max.z - bounds.min.z < 9.5f);
+  city_package_free(&package);
+}
+
 static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
   for (size_t c = 0; c < package.chunk_count; c++) {
     for (size_t p = 0; p < package.chunks[c].part_count; p++) {
       const city_part_t* part = &package.chunks[c].parts[p];
-      if (strcmp(part->material, "kerb") == 0) continue;
+      if (strcmp(part->material, "kerb") == 0 ||
+          strcmp(part->material, "lamp") == 0)
+        continue;
       bool flat = strncmp(part->material, "facade", 6) != 0;
       for (size_t i = 0; i + 2 < part->mesh.index_count; i += 3) {
         vec3_t a = part->mesh.vertices[part->mesh.indices[i]].position;
@@ -239,6 +259,7 @@ void run_generator_tests(void) {
   RUN(every_road_junction_and_building_becomes_geometry);
   RUN(road_ribbons_have_their_width_and_roofs_their_height);
   RUN(roads_narrow_to_fit_between_buildings);
+  RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);
   RUN(the_package_round_trips_and_validates);
   RUN(generation_is_deterministic);

@@ -49,6 +49,7 @@ typedef struct {
   vec3_t sky_color;
   float fog_start;
   float fog_end;
+  float shadow_radius; /* metres around the camera target; 0 for no shadows */
 } render_environment_t;
 
 typedef struct {
@@ -87,6 +88,11 @@ void renderer_end_frame(renderer_t* renderer);
 
 mat4_t renderer_view_projection(const renderer_t* renderer);
 render_stats_t renderer_stats(const renderer_t* renderer);
+/* Fraction of the shadow map written last frame, for diagnostics. */
+float renderer_shadow_coverage(renderer_t* renderer);
+/* Copies the shadow map depths (size x size floats); returns the size, 0 if
+ * none. */
+int renderer_read_shadow_map(renderer_t* renderer, float* depths, size_t count);
 /* RGBA8, bottom row first, drawable size. */
 bool renderer_read_pixels(renderer_t* renderer, uint8_t* rgba, size_t size);
 

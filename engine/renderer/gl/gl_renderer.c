@@ -19,6 +19,8 @@
 #define MAX_TEXTURES 256
 #define MAX_LINE_VERTICES (1 << 16)
 #define MAX_TEXT_VERTICES (1 << 17)
+#define MAX_DRAWS (1 << 15)
+#define SHADOW_MAP_SIZE 2048
 
 typedef struct {
   GLuint vao, vbo, ebo;
@@ -36,6 +38,12 @@ typedef struct {
   vec3_t color;
 } text_vertex_t;
 
+typedef struct {
+  uint32_t mesh;
+  material_t material;
+  mat4_t model;
+} draw_t;
+
 struct renderer {
   int width, height;
   GLuint mesh_program, line_program, text_program;
@@ -50,8 +58,16 @@ struct renderer {
   size_t text_count;
   mat4_t view, projection, view_projection;
   vec3_t eye;
+  vec3_t focus;
   render_environment_t environment;
+  draw_t* draws;
+  size_t draw_count;
+  GLuint shadow_program;
+  GLuint shadow_fbo;
+  GLuint shadow_texture;
+  mat4_t light_view_projection;
   render_stats_t stats;
+  render_stats_t last_stats;
   int meshes_uploaded;
 };
 
@@ -62,14 +78,17 @@ static const char* mesh_vertex_source =
     "layout(location = 2) in vec2 in_uv;\n"
     "uniform mat4 u_model;\n"
     "uniform mat4 u_view_projection;\n"
+    "uniform mat4 u_light_view_projection;\n"
     "out vec3 v_world_position;\n"
     "out vec3 v_normal;\n"
     "out vec2 v_uv;\n"
+    "out vec4 v_light_position;\n"
     "void main() {\n"
     "  vec4 world = u_model * vec4(in_position, 1.0);\n"
     "  v_world_position = world.xyz;\n"
     "  v_normal = mat3(u_model) * in_normal;\n"
     "  v_uv = in_uv;\n"
+    "  v_light_position = u_light_view_projection * world;\n"
     "  gl_Position = u_view_projection * world;\n"
     "}\n";
 
@@ -78,6 +97,10 @@ static const char* mesh_fragment_source =
     "in vec3 v_world_position;\n"
     "in vec3 v_normal;\n"
     "in vec2 v_uv;\n"
+    "in vec4 v_light_position;\n"
+    "uniform sampler2DShadow u_shadow_map;\n"
+    "uniform int u_has_shadows;\n"
+    "uniform int u_debug_shadows;\n"
     "uniform vec3 u_base_color;\n"
     "uniform float u_metallic;\n"
     "uniform float u_roughness;\n"
@@ -91,6 +114,20 @@ static const char* mesh_fragment_source =
     "uniform float u_fog_start;\n"
     "uniform float u_fog_end;\n"
     "out vec4 out_color;\n"
+    "float shadow_factor(vec3 n, vec3 l) {\n"
+    "  if (u_has_shadows == 0) return 1.0;\n"
+    "  vec3 p = v_light_position.xyz / v_light_position.w * 0.5 + 0.5;\n"
+    "  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) "
+    "return 1.0;\n"
+    "  float bias = max(0.0006 * (1.0 - dot(n, l)), 0.0002);\n"
+    "  float texel = 1.0 / 2048.0;\n"
+    "  float lit = 0.0;\n"
+    "  for (int x = -1; x <= 1; x++)\n"
+    "    for (int y = -1; y <= 1; y++)\n"
+    "      lit += texture(u_shadow_map, vec3(p.xy + vec2(x, y) * texel, p.z - "
+    "bias));\n"
+    "  return lit / 9.0;\n"
+    "}\n"
     "void main() {\n"
     "  vec3 albedo = u_base_color;\n"
     "  if (u_has_texture == 1) albedo *= texture(u_texture, v_uv).rgb;\n"
@@ -105,13 +142,15 @@ static const char* mesh_fragment_source =
     "  vec3 specular_tint = mix(vec3(0.04), albedo, u_metallic);\n"
     "  vec3 diffuse = albedo * (1.0 - u_metallic);\n"
     "  vec3 hemisphere = mix(albedo * 0.35, albedo, n.y * 0.5 + 0.5);\n"
+    "  float shadow = shadow_factor(n, l);\n"
     "  vec3 color = hemisphere * u_ambient\n"
     "             + (diffuse * n_dot_l + specular_tint * spec * n_dot_l) * "
-    "u_light_color;\n"
+    "u_light_color * shadow;\n"
     "  float distance = length(u_eye - v_world_position);\n"
     "  float fog = clamp((distance - u_fog_start) / (u_fog_end - u_fog_start), "
     "0.0, 1.0);\n"
     "  color = mix(color, u_sky_color, fog);\n"
+    "  if (u_debug_shadows == 1) color = vec3(shadow);\n"
     "  out_color = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);\n"
     "}\n";
 
@@ -142,6 +181,18 @@ static const char* text_vertex_source =
     "in_position.y / u_viewport.y * 2.0);\n"
     "  gl_Position = vec4(ndc, 0.0, 1.0);\n"
     "}\n";
+
+static const char* shadow_vertex_source =
+    "#version 410 core\n"
+    "layout(location = 0) in vec3 in_position;\n"
+    "uniform mat4 u_model;\n"
+    "uniform mat4 u_light_view_projection;\n"
+    "void main() { gl_Position = u_light_view_projection * u_model * "
+    "vec4(in_position, 1.0); }\n";
+
+static const char* shadow_fragment_source =
+    "#version 410 core\n"
+    "void main() {}\n";
 
 static GLuint compile_shader(GLenum type, const char* source,
                              const char* name) {
@@ -198,13 +249,40 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
       link_program(line_vertex_source, line_fragment_source, "line");
   r->text_program =
       link_program(text_vertex_source, line_fragment_source, "text");
+  r->shadow_program =
+      link_program(shadow_vertex_source, shadow_fragment_source, "shadow");
   r->line_vertices = malloc(MAX_LINE_VERTICES * sizeof(line_vertex_t));
   r->text_vertices = malloc(MAX_TEXT_VERTICES * sizeof(text_vertex_t));
+  r->draws = malloc(MAX_DRAWS * sizeof(draw_t));
   if (!r->mesh_program || !r->line_program || !r->text_program ||
-      !r->line_vertices || !r->text_vertices) {
+      !r->shadow_program || !r->line_vertices || !r->text_vertices ||
+      !r->draws) {
     renderer_destroy(r);
     return NULL;
   }
+  glGenTextures(1, &r->shadow_texture);
+  glBindTexture(GL_TEXTURE_2D, r->shadow_texture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, SHADOW_MAP_SIZE,
+               SHADOW_MAP_SIZE, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE,
+                  GL_COMPARE_REF_TO_TEXTURE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+  glGenFramebuffers(1, &r->shadow_fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, r->shadow_fbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                         r->shadow_texture, 0);
+  glDrawBuffer(GL_NONE);
+  glReadBuffer(GL_NONE);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    LOG_ERROR("renderer", "shadow framebuffer is incomplete; shadows disabled");
+    glDeleteFramebuffers(1, &r->shadow_fbo);
+    r->shadow_fbo = 0;
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glGenVertexArrays(1, &r->line_vao);
   glGenBuffers(1, &r->line_vbo);
   glBindVertexArray(r->line_vao);
@@ -245,8 +323,10 @@ renderer_t* renderer_create(int drawable_width, int drawable_height) {
   glCullFace(GL_BACK);
   renderer_resize(r, drawable_width, drawable_height);
   check_gl("renderer_create");
-  LOG_INFO("renderer", "OpenGL %s on %s", (const char*)glGetString(GL_VERSION),
-           (const char*)glGetString(GL_RENDERER));
+  LOG_INFO("renderer", "OpenGL %s on %s, shadow map %s",
+           (const char*)glGetString(GL_VERSION),
+           (const char*)glGetString(GL_RENDERER),
+           r->shadow_fbo ? "ready" : "unavailable");
   return r;
 }
 
@@ -261,6 +341,10 @@ void renderer_destroy(renderer_t* r) {
     if (r->textures[i]) renderer_release_texture(r, handle);
   }
   if (r->white_texture) glDeleteTextures(1, &r->white_texture);
+  if (r->shadow_texture) glDeleteTextures(1, &r->shadow_texture);
+  if (r->shadow_fbo) glDeleteFramebuffers(1, &r->shadow_fbo);
+  if (r->shadow_program) glDeleteProgram(r->shadow_program);
+  free(r->draws);
   if (r->line_vbo) glDeleteBuffers(1, &r->line_vbo);
   if (r->line_vao) glDeleteVertexArrays(1, &r->line_vao);
   if (r->text_vbo) glDeleteBuffers(1, &r->text_vbo);
@@ -381,6 +465,7 @@ void renderer_begin_frame(renderer_t* r, render_camera_t camera,
                           render_environment_t env) {
   r->environment = env;
   r->eye = camera.eye;
+  r->focus = camera.target;
   r->view = mat4_look_at(camera.eye, camera.target, camera.up);
   float aspect = (float)r->width / (float)r->height;
   r->projection = mat4_perspective(camera.fov_y, aspect, camera.near_plane,
@@ -388,55 +473,121 @@ void renderer_begin_frame(renderer_t* r, render_camera_t camera,
   r->view_projection = mat4_multiply(r->projection, r->view);
   r->line_count = 0;
   r->text_count = 0;
+  r->draw_count = 0;
   memset(&r->stats, 0, sizeof(r->stats));
   r->stats.meshes_uploaded = r->meshes_uploaded;
+}
 
-  vec3_t sky = env.sky_color;
+static bool shadows_enabled(const renderer_t* r) {
+  return r->shadow_fbo != 0 && r->environment.shadow_radius > 0;
+}
+
+/* An orthographic light box around the camera's focus, its centre snapped
+ * to shadow-map texels so the shadows do not shimmer as the car moves. */
+static mat4_t light_matrix(const renderer_t* r) {
+  float radius = r->environment.shadow_radius;
+  vec3_t direction = vec3_normalize(r->environment.direction);
+  vec3_t up = fabsf(direction.y) > 0.99f ? vec3(0, 0, -1) : vec3(0, 1, 0);
+  mat4_t view = mat4_look_at(
+      vec3_add_scaled(r->focus, direction, radius * 2.0f), r->focus, up);
+  vec3_t centre = mat4_transform_point(view, r->focus);
+  float texel = radius * 2.0f / (float)SHADOW_MAP_SIZE;
+  float snap_x = floorf(centre.x / texel) * texel - centre.x;
+  float snap_y = floorf(centre.y / texel) * texel - centre.y;
+  mat4_t projection =
+      mat4_orthographic(-radius + snap_x, radius + snap_x, -radius + snap_y,
+                        radius + snap_y, 0.1f, radius * 4.0f);
+  return mat4_multiply(projection, view);
+}
+
+static void draw_list(renderer_t* r, GLuint program, bool bind_materials) {
+  for (size_t i = 0; i < r->draw_count; i++) {
+    const draw_t* draw = &r->draws[i];
+    gl_mesh_t* m = &r->meshes[draw->mesh];
+    glUniformMatrix4fv(glGetUniformLocation(program, "u_model"), 1, GL_FALSE,
+                       draw->model.m);
+    if (bind_materials) {
+      const material_t* material = &draw->material;
+      set_vec3(program, "u_base_color", material->base_color);
+      glUniform1f(glGetUniformLocation(program, "u_metallic"),
+                  material->metallic);
+      glUniform1f(glGetUniformLocation(program, "u_roughness"),
+                  material->roughness);
+      bool textured = material->texture.id != 0 &&
+                      material->texture.id < MAX_TEXTURES &&
+                      r->textures[material->texture.id] != 0;
+      glUniform1i(glGetUniformLocation(program, "u_has_texture"),
+                  textured ? 1 : 0);
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, textured ? r->textures[material->texture.id]
+                                            : r->white_texture);
+    }
+    glBindVertexArray(m->vao);
+    glDrawElements(GL_TRIANGLES, m->index_count, GL_UNSIGNED_INT, 0);
+    r->stats.draw_calls++;
+    if (bind_materials) r->stats.triangles += m->index_count / 3;
+  }
+}
+
+static void shadow_pass(renderer_t* r) {
+  r->light_view_projection = light_matrix(r);
+  glBindFramebuffer(GL_FRAMEBUFFER, r->shadow_fbo);
+  glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+  glClear(GL_DEPTH_BUFFER_BIT);
+  glEnable(GL_DEPTH_TEST);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_FRONT); /* back faces in the map: less acne on lit faces */
+  glUseProgram(r->shadow_program);
+  glUniformMatrix4fv(
+      glGetUniformLocation(r->shadow_program, "u_light_view_projection"), 1,
+      GL_FALSE, r->light_view_projection.m);
+  draw_list(r, r->shadow_program, false);
+  glCullFace(GL_BACK);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glViewport(0, 0, r->width, r->height);
+}
+
+static void main_pass(renderer_t* r) {
+  const render_environment_t* env = &r->environment;
+  vec3_t sky = env->sky_color;
   glClearColor(powf(sky.x, 1.0f / 2.2f), powf(sky.y, 1.0f / 2.2f),
                powf(sky.z, 1.0f / 2.2f), 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_CULL_FACE);
-
-  glUseProgram(r->mesh_program);
-  glUniformMatrix4fv(glGetUniformLocation(r->mesh_program, "u_view_projection"),
-                     1, GL_FALSE, r->view_projection.m);
-  set_vec3(r->mesh_program, "u_light_direction", vec3_normalize(env.direction));
-  set_vec3(r->mesh_program, "u_light_color", env.color);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_ambient"), env.ambient);
-  set_vec3(r->mesh_program, "u_eye", camera.eye);
-  set_vec3(r->mesh_program, "u_sky_color", env.sky_color);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_fog_start"),
-              env.fog_start);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_fog_end"), env.fog_end);
-  glUniform1i(glGetUniformLocation(r->mesh_program, "u_texture"), 0);
+  GLuint program = r->mesh_program;
+  glUseProgram(program);
+  glUniformMatrix4fv(glGetUniformLocation(program, "u_view_projection"), 1,
+                     GL_FALSE, r->view_projection.m);
+  glUniformMatrix4fv(glGetUniformLocation(program, "u_light_view_projection"),
+                     1, GL_FALSE, r->light_view_projection.m);
+  set_vec3(program, "u_light_direction", vec3_normalize(env->direction));
+  set_vec3(program, "u_light_color", env->color);
+  glUniform1f(glGetUniformLocation(program, "u_ambient"), env->ambient);
+  set_vec3(program, "u_eye", r->eye);
+  set_vec3(program, "u_sky_color", env->sky_color);
+  glUniform1f(glGetUniformLocation(program, "u_fog_start"), env->fog_start);
+  glUniform1f(glGetUniformLocation(program, "u_fog_end"), env->fog_end);
+  glUniform1i(glGetUniformLocation(program, "u_texture"), 0);
+  glUniform1i(glGetUniformLocation(program, "u_shadow_map"), 1);
+  glUniform1i(glGetUniformLocation(program, "u_has_shadows"),
+              shadows_enabled(r) ? 1 : 0);
+  glUniform1i(glGetUniformLocation(program, "u_debug_shadows"),
+              getenv("GTA_DEBUG_SHADOWS") ? 1 : 0);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, r->shadow_texture);
+  draw_list(r, program, true);
 }
 
 void renderer_draw_mesh(renderer_t* r, mesh_handle_t handle,
                         material_t material, mat4_t model) {
   if (handle.id == 0 || handle.id >= MAX_MESHES || !r->meshes[handle.id].used)
     return;
-  gl_mesh_t* m = &r->meshes[handle.id];
-  glUseProgram(r->mesh_program);
-  glUniformMatrix4fv(glGetUniformLocation(r->mesh_program, "u_model"), 1,
-                     GL_FALSE, model.m);
-  set_vec3(r->mesh_program, "u_base_color", material.base_color);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_metallic"),
-              material.metallic);
-  glUniform1f(glGetUniformLocation(r->mesh_program, "u_roughness"),
-              material.roughness);
-  bool textured = material.texture.id != 0 &&
-                  material.texture.id < MAX_TEXTURES &&
-                  r->textures[material.texture.id] != 0;
-  glUniform1i(glGetUniformLocation(r->mesh_program, "u_has_texture"),
-              textured ? 1 : 0);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D,
-                textured ? r->textures[material.texture.id] : r->white_texture);
-  glBindVertexArray(m->vao);
-  glDrawElements(GL_TRIANGLES, m->index_count, GL_UNSIGNED_INT, 0);
-  r->stats.draw_calls++;
-  r->stats.triangles += m->index_count / 3;
+  if (r->draw_count >= MAX_DRAWS) return;
+  draw_t* draw = &r->draws[r->draw_count++];
+  draw->mesh = handle.id;
+  draw->material = material;
+  draw->model = model;
 }
 
 void renderer_draw_line(renderer_t* r, vec3_t a, vec3_t b, vec3_t color) {
@@ -493,6 +644,11 @@ void renderer_draw_text(renderer_t* r, float x, float y, float scale,
 }
 
 void renderer_end_frame(renderer_t* r) {
+  if (shadows_enabled(r))
+    shadow_pass(r);
+  else
+    r->light_view_projection = mat4_identity();
+  main_pass(r);
   if (r->line_count > 0) {
     glUseProgram(r->line_program);
     glUniformMatrix4fv(
@@ -522,6 +678,7 @@ void renderer_end_frame(renderer_t* r) {
     r->stats.draw_calls++;
   }
   glBindVertexArray(0);
+  r->last_stats = r->stats;
   check_gl("renderer_end_frame");
 }
 
@@ -529,7 +686,36 @@ mat4_t renderer_view_projection(const renderer_t* r) {
   return r->view_projection;
 }
 
-render_stats_t renderer_stats(const renderer_t* r) { return r->stats; }
+render_stats_t renderer_stats(const renderer_t* r) { return r->last_stats; }
+
+int renderer_read_shadow_map(renderer_t* r, float* depths, size_t count) {
+  if (!r->shadow_fbo || count < (size_t)SHADOW_MAP_SIZE * SHADOW_MAP_SIZE)
+    return 0;
+  glBindTexture(GL_TEXTURE_2D, r->shadow_texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+  glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, depths);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE,
+                  GL_COMPARE_REF_TO_TEXTURE);
+  return SHADOW_MAP_SIZE;
+}
+
+float renderer_shadow_coverage(renderer_t* r) {
+  if (!r->shadow_fbo) return 0;
+  size_t count = (size_t)SHADOW_MAP_SIZE * SHADOW_MAP_SIZE;
+  float* depths = malloc(count * sizeof(float));
+  if (!depths) return 0;
+  glBindTexture(GL_TEXTURE_2D, r->shadow_texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+  glGetTexImage(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, GL_FLOAT, depths);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE,
+                  GL_COMPARE_REF_TO_TEXTURE);
+  size_t written = 0;
+  for (size_t i = 0; i < count; i++)
+    if (depths[i] < 0.9999f) written++;
+  free(depths);
+  check_gl("renderer_shadow_coverage");
+  return (float)written / (float)count;
+}
 
 bool renderer_read_pixels(renderer_t* r, uint8_t* rgba, size_t size) {
   if (size < (size_t)r->width * (size_t)r->height * 4) return false;

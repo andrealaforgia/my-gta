@@ -29,6 +29,7 @@ typedef struct {
   float pavement_friction;
   float ground_friction;
   float building_friction;
+  float lamp_spacing; /* metres between lamp posts, 0 for none */
 } city_generator_options_t;
 
 typedef struct {
@@ -38,6 +39,7 @@ typedef struct {
   size_t buildings_unclean; /* roofs that needed the fan fallback */
   size_t pavements;
   size_t ground_tiles;
+  size_t lamps;
 } city_generator_stats_t;
 
 city_generator_options_t city_generator_default_options(void);
