@@ -793,6 +793,25 @@ static size_t densify(const local_point_t* in, size_t count, double step,
   return n;
 }
 
+/* True where a point lies on the carriageway or pavement of a road that
+ * cars drive on, other than `self`. Footpaths are not drawn there. */
+static bool on_a_street(const city_model_t* model, const city_road_t* self,
+                        local_point_t p, double pavement_width) {
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* other = &model->roads[r];
+    if (other == self || other->class == ROAD_CLASS_PATH ||
+        other->class == ROAD_CLASS_WATERWAY ||
+        other->class == ROAD_CLASS_PEDESTRIAN)
+      continue;
+    double reach = other->width * 0.5 + pavement_width;
+    for (size_t k = 1; k < other->point_count; k++)
+      if (point_segment_distance(p, other->points[k - 1], other->points[k]) <
+          reach)
+        return true;
+  }
+  return false;
+}
+
 static bool generate_road(layout_t* layout, const city_model_t* model,
                           const city_road_t* road, road_fit_t fit,
                           road_cuts_t cuts, city_generator_stats_t* stats) {
@@ -801,7 +820,7 @@ static bool generate_road(layout_t* layout, const city_model_t* model,
   size_t cut_count = cut ? polyline_cut(road->points, road->point_count,
                                         cuts.start, cuts.end, cut)
                          : 0;
-  const double step = 8.0;
+  const double step = road->class == ROAD_CLASS_PATH ? 2.0 : 8.0;
   size_t capacity = road->point_count + 2 +
                     (size_t)(cut ? polyline_length(cut, cut_count) / step : 0);
   local_point_t* points = malloc(capacity * sizeof(local_point_t));
@@ -843,9 +862,34 @@ static bool generate_road(layout_t* layout, const city_model_t* model,
       o->road_friction, (uint64_t)road->source_id);
   for (size_t i = 0; i < count; i++)
     inner[i] = -halves[i], outer[i] = halves[i];
-  ok = part && add_strip(&part->mesh, points, laterals, count, inner, outer,
-                         height, for_people ? 3.0f : o->road_texture_length);
-  if (ok) finish_part(chunk, part);
+  if (road->class == ROAD_CLASS_PATH) {
+    /* Only the stretches that are not on a street: runs of consecutive
+     * points off the asphalt and pavements, each its own strip. */
+    size_t run_start = 0;
+    bool in_run = false;
+    ok = part != NULL;
+    for (size_t i = 0; ok && i <= count; i++) {
+      bool outside =
+          i < count && !on_a_street(model, road, points[i], o->pavement_width);
+      if (outside && !in_run) run_start = i, in_run = true;
+      if (!outside && in_run) {
+        in_run = false;
+        if (i - run_start >= 2)
+          ok = add_strip(&part->mesh, points + run_start, laterals + run_start,
+                         i - run_start, inner + run_start, outer + run_start,
+                         height, 3.0f);
+      }
+    }
+    if (ok && part->mesh.vertex_count == 0) {
+      mesh_data_free(&part->mesh); /* a path entirely on streets */
+      chunk->part_count--;
+      part = NULL;
+    }
+  } else {
+    ok = part && add_strip(&part->mesh, points, laterals, count, inner, outer,
+                           height, for_people ? 3.0f : o->road_texture_length);
+  }
+  if (ok && part) finish_part(chunk, part);
   stats->roads++;
 
   if (ok && fit.pavement > 0) {

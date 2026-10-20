@@ -496,6 +496,43 @@ static void everything_follows_the_terrain(void) {
   city_model_free(&model);
 }
 
+static void footpaths_stop_at_the_pavement_instead_of_crossing_the_road(void) {
+  /* A residential street with a footway running straight across it with
+   * no shared node: the footway is drawn on either side but not over the
+   * asphalt and its pavements. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.001\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0003\" lon=\"12.0010\"/>"
+      "<node id=\"4\" lat=\"44.9997\" lon=\"12.0010\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"footway\"/></way>"
+      "</osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* road = part_for(&package, "road", 10);
+  const city_part_t* path = part_for(&package, "paving", 11);
+  assert(road && path);
+  aabb_t road_bounds = mesh_data_bounds(&road->mesh);
+  float road_z = 0.5f * (road_bounds.min.z + road_bounds.max.z);
+  size_t north = 0, south = 0;
+  for (size_t v = 0; v < path->mesh.vertex_count; v++) {
+    float dz = path->mesh.vertices[v].position.z - road_z;
+    assert(fabsf(dz) > 4.5f); /* 3 m of road and 2 m of pavement, less slack */
+    if (dz < 0)
+      north++;
+    else
+      south++;
+  }
+  assert(north > 0 && south > 0); /* it is still there on both sides */
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -642,6 +679,7 @@ void run_generator_tests(void) {
   RUN(narrow_terraces_get_gabled_roofs);
   RUN(irregular_buildings_get_ridge_roofs_and_tall_ones_stay_flat);
   RUN(everything_follows_the_terrain);
+  RUN(footpaths_stop_at_the_pavement_instead_of_crossing_the_road);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

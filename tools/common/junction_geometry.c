@@ -161,6 +161,9 @@ bool junction_layout(local_point_t centre, const junction_arm_t* arms,
     double cosine =
         a->direction.x * b->direction.x + a->direction.z * b->direction.z;
     if (sine <= PARALLEL_SINE && cosine < 0) continue; /* opposite arms */
+    /* Arms under sixty degrees apart leave a wedge too narrow for a pavement
+     * corner: its fill would lie across the carriageways. */
+    if (cosine > 0.5) continue;
     corner_t outer = corner_between(centre, *a, a->half_width + a->pavement, *b,
                                     b->half_width + b->pavement);
     pavement_corner_t* fill = &out->corners[out->corner_count];

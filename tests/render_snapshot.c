@@ -50,9 +50,17 @@ int main(int argc, char* argv[]) {
 
   const char* centre = getenv("SNAPSHOT_CENTRE");
   if (centre) {
-    float cx = 0, cz = 0;
-    sscanf(centre, "%f,%f", &cx, &cz);
-    vehicle_set_spawn(&stage.vehicle, vec3(cx, 1.0f, cz), quat_identity());
+    float cx = 0, cz = 0, yaw_degrees = 0;
+    sscanf(centre, "%f,%f,%f", &cx, &cz, &yaw_degrees);
+    /* Drop the car onto whatever ground is there, hills included. */
+    ray_t down = {vec3(cx, 300.0f, cz), vec3(0, -1, 0)};
+    ray_cast_result_t hit;
+    float y = 1.0f;
+    if (physics_ray_cast(stage.physics, down, 600.0f, COLLISION_LAYER_ALL,
+                         &hit))
+      y = hit.hit.point.y + 1.0f;
+    vehicle_set_spawn(&stage.vehicle, vec3(cx, y, cz),
+                      quat_from_yaw(yaw_degrees * (float)M_PI / 180.0f));
     vehicle_reset(&stage.vehicle, stage.physics);
   }
   driving_input_t input = {1.0f, 0.0f, steering, false};

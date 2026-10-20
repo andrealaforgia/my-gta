@@ -117,6 +117,30 @@ static void a_fork_is_cut_back_until_the_ribbons_separate(void) {
   assert(!inside(layout.polygon, layout.polygon_count, 10.0, -8.0));
 }
 
+static void sharp_wedges_get_no_pavement_corner_over_the_road(void) {
+  /* A road leaving 40 degrees off another, as at the foot of a slip road:
+   * the pavement wedge between them would lie across the road, so none
+   * is laid, and no corner covers any part of an arm's carriageway. */
+  double a = 40.0 * M_PI / 180.0;
+  junction_arm_t arms[3] = {arm(1, 0, 3, 2), arm(cos(a), -sin(a), 3, 2),
+                            arm(-1, 0, 3, 2)};
+  junction_layout_t layout;
+  assert(junction_layout(origin(), arms, 3, 0.2, &layout));
+  for (size_t c = 0; c < layout.corner_count; c++) {
+    for (double along = layout.cut[0] + 0.5; along < layout.cut[0] + 8.0;
+         along += 1.0)
+      for (double across = -2.5; across <= 2.5; across += 1.0)
+        assert(!inside(layout.corners[c].polygon, layout.corners[c].count,
+                       along, across));
+    for (double along = layout.cut[1] + 0.5; along < layout.cut[1] + 8.0;
+         along += 1.0)
+      for (double across = -2.5; across <= 2.5; across += 1.0)
+        assert(!inside(layout.corners[c].polygon, layout.corners[c].count,
+                       along * cos(a) + across * sin(a),
+                       -along * sin(a) + across * cos(a)));
+  }
+}
+
 static void different_widths_meet_cleanly(void) {
   junction_arm_t arms[3] = {arm(1, 0, 5, 2), arm(0, -1, 2, 1),
                             arm(-1, 0, 5, 2)};
@@ -153,6 +177,7 @@ void run_junction_tests(void) {
   RUN(a_straight_continuation_needs_no_patch);
   RUN(a_shallow_bend_is_bevelled_not_spiked);
   RUN(a_fork_is_cut_back_until_the_ribbons_separate);
+  RUN(sharp_wedges_get_no_pavement_corner_over_the_road);
   RUN(different_widths_meet_cleanly);
   RUN(polylines_cut_from_both_ends_across_vertices);
 }
