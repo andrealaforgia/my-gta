@@ -456,7 +456,7 @@ static void the_package_round_trips_and_validates(void) {
   assert(strcmp(loaded.source, "tests/fixtures/district.osm") == 0);
   city_validation_t report;
   assert(city_validate(&loaded, &report));
-  assert(report.roads == 14 && report.buildings == 8 && report.issues == 0);
+  assert(report.roads == 13 && report.buildings == 8 && report.issues == 0);
   /* Corrupt an index and the validator must object. */
   loaded.chunks[0].parts[0].mesh.indices[0] = 999999;
   assert(!city_validate(&loaded, &report));

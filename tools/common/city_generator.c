@@ -333,10 +333,9 @@ static double corridor_to_roads(const city_model_t* model,
       continue;
     if (focus.reach > 0) {
       bool near = false;
-      for (size_t k = 0; k < other->point_count && !near; k++)
-        near = hypot(other->points[k].x - focus.point.x,
-                     other->points[k].z - focus.point.z) <
-               focus.reach + reach + 60.0;
+      for (size_t k = 1; k < other->point_count && !near; k++)
+        near = point_segment_distance(focus.point, other->points[k - 1],
+                                      other->points[k]) < focus.reach + reach;
       if (!near) continue;
     }
     bool shares_node = false;
