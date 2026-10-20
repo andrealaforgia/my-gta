@@ -487,15 +487,16 @@ void driving_stage_render(driving_stage_t* stage) {
   for (size_t i = 0; i < stage->world.capacity; i++) {
     entity_t* entity = &stage->world.entities[i];
     if (!entity->used) continue;
-    if (strncmp(entity->label, "lamp_light", 10) == 0)
+    if (strncmp(entity->label, "lamp_light", 10) == 0) {
       entity->material.emissive = 2.4f * night;
-    else if (is_a_road_surface(entity->label)) {
+    } else if (is_a_road_surface(entity->label)) {
       /* Wet tarmac: smoother, a little shine, reflecting the sky. */
       entity->material.roughness = 0.95f - 0.72f * stage->rain;
       entity->material.metallic = 0.4f * stage->rain;
     } else if (strncmp(entity->label, "facade", 6) == 0 ||
-               strncmp(entity->label, "shopfront", 9) == 0)
+               strncmp(entity->label, "shopfront", 9) == 0) {
       entity->material.window_glow = night;
+    }
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
