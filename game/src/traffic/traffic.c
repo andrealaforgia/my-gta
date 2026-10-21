@@ -25,6 +25,12 @@ typedef struct {
   int indicator; /* -1 turning left, +1 right, 0 straight on */
   float lateral; /* metres to the right of its lane, easing to lateral_goal */
   float lateral_goal;
+  /* The pose is the lane's plus an error that fades: a corner or a bend in
+   * the lane is a jump in the lane's pose, which the error absorbs so the car
+   * follows a curve instead. */
+  float raw_x, raw_z, raw_yaw;
+  float error_x, error_z, error_yaw;
+  bool changed_lane;
   float dwell;   /* seconds stood at a bus stop */
   int stop_done; /* 1 + the bus stop it has just served, 0 for none */
   vec3_t position;
@@ -76,16 +82,42 @@ static float lane_offset(const lane_t* lane) {
   return offset > 1.9f ? 1.9f : offset;
 }
 
-static void pose(const traffic_t* t, car_t* car) {
+/* Puts the car on its lane. With `snap` it lands exactly; otherwise it eases
+ * from where it was towards the lane, so that corners, junctions and bends
+ * in the road become curves the car follows rather than jumps in heading. */
+static void pose(const traffic_t* t, car_t* car, bool snap, float dt) {
   const lane_t* lane = &t->lanes[car->route];
   float x, z, dx, dz, ground;
   sample(lane, car->s, car->direction, &x, &z, &dx, &dz, &ground);
   /* Right of the direction of travel: (-dz, dx) in our x, z frame with z
    * south: right of east is south (+z), so right = (-dz, dx). */
   float offset = lane_offset(lane) + car->lateral;
-  car->position.x = x - dz * offset;
-  car->position.z = z + dx * offset;
-  car->yaw = atan2f(-dx, -dz);
+  float target_x = x - dz * offset, target_z = z + dx * offset;
+  float target_yaw = atan2f(-dx, -dz);
+  if (snap) {
+    car->error_x = car->error_z = car->error_yaw = 0;
+  } else {
+    float turn = car->raw_yaw - target_yaw;
+    turn -= 6.2831853f * floorf(turn / 6.2831853f + 0.5f);
+    car->error_yaw += turn;
+    if (car->changed_lane) {
+      car->error_x += car->raw_x - target_x;
+      car->error_z += car->raw_z - target_z;
+    }
+    /* It fades over about six metres of travel, and a little with time so
+     * that a stopped car still settles. */
+    float keep = expf(-(car->speed * dt / 6.0f + 0.5f * dt));
+    car->error_x *= keep;
+    car->error_z *= keep;
+    car->error_yaw *= keep;
+  }
+  car->changed_lane = false;
+  car->raw_x = target_x;
+  car->raw_z = target_z;
+  car->raw_yaw = target_yaw;
+  car->position.x = target_x + car->error_x;
+  car->position.z = target_z + car->error_z;
+  car->yaw = target_yaw + car->error_yaw;
   car->position.y = ground + t->fleet->visuals[car->variant].ride_height;
 }
 
@@ -157,7 +189,7 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
     car->paint = (int)(next_random(t) % 1000);
     car->responding =
         fleet->visuals[car->variant].emergency && next_random(t) % 100 < 30;
-    pose(t, car);
+    pose(t, car, true, 0);
     car->collider = physics_add_static_box(
         physics, transform_at(car->position, quat_from_yaw(car->yaw)),
         fleet->visuals[car->variant].half_extents, COLLISION_LAYER_PROP, 0.5f,
@@ -198,23 +230,30 @@ void traffic_set_focus(traffic_t* t, vec3_t focus) {
   t->has_focus = true;
 }
 
-/* Moves a car that has been left far behind to a road near the focus. */
+/* Moves a car that has been left far behind to a road near the focus, at a
+ * spot beyond the distance cars are drawn at and clear of other cars, so
+ * nobody sees one appear. */
 static void recycle(traffic_t* t, car_t* car) {
-  for (int attempt = 0; attempt < 48; attempt++) {
+  for (int attempt = 0; attempt < 64; attempt++) {
     size_t r = next_random(t) % t->lane_count;
     const lane_t* lane = &t->lanes[r];
     if (!lane->route->drivable || lane->length <= 12.0f ||
         lane->route->point_count < 2)
       continue;
-    size_t mid = lane->route->point_count / 2;
-    float dx = lane->route->points[2 * mid] - t->focus.x;
-    float dz = lane->route->points[2 * mid + 1] - t->focus.z;
-    float d = sqrtf(dx * dx + dz * dz);
-    if (d < 150.0f || d > 650.0f) continue;
+    float s = 6.0f +
+              (float)(next_random(t) % 1000) / 1000.0f * (lane->length - 12.0f);
+    float x, z, dx, dz, ground;
+    sample(lane, s, 1, &x, &z, &dx, &dz, &ground);
+    float d = hypotf(x - t->focus.x, z - t->focus.z);
+    if (d < 260.0f || d > 650.0f) continue;
+    bool crowded = false;
+    for (size_t j = 0; j < t->car_count && !crowded; j++)
+      crowded = &t->cars[j] != car && hypotf(t->cars[j].position.x - x,
+                                             t->cars[j].position.z - z) < 14.0f;
+    if (crowded) continue;
     car->route = (int)r;
     car->direction = lane->route->oneway || (next_random(t) & 1) ? 1 : -1;
-    car->s = 6.0f +
-             (float)(next_random(t) % 1000) / 1000.0f * (lane->length - 12.0f);
+    car->s = s;
     car->speed = 0;
     car->planned_route = -1;
     car->indicator = 0;
@@ -267,7 +306,7 @@ void traffic_car_place(traffic_t* t, size_t index, int route, int direction,
   car->speed = 0;
   car->planned_route = -1;
   car->indicator = 0;
-  pose(t, car);
+  pose(t, car, true, 0);
 }
 
 /* Where a car at the end of its lane could go next: the lanes that start or
@@ -322,6 +361,7 @@ static void choose_next(traffic_t* t, car_t* car) {
      * start of the one-way. */
     if (!here->route->oneway) car->direction = -car->direction;
     car->s = 0;
+    car->changed_lane = true;
     if (!here->route->oneway) car->speed *= 0.3f;
     return;
   }
@@ -330,6 +370,7 @@ static void choose_next(traffic_t* t, car_t* car) {
   car->planned_route = -1;
   car->indicator = 0;
   car->s = 0;
+  car->changed_lane = true;
 }
 
 static float curve_speed(const lane_t* lane, float s, int direction) {
@@ -353,7 +394,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
             fz0 = car->position.z - t->focus.z;
       if (fx0 * fx0 + fz0 * fz0 > 900.0f * 900.0f) {
         recycle(t, car);
-        pose(t, car);
+        pose(t, car, true, 0);
       }
     }
     const lane_t* lane = &t->lanes[car->route];
@@ -537,7 +578,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       choose_next(t, car);
       car->s += overshoot;
     }
-    pose(t, car);
+    pose(t, car, false, dt);
     move_collider(t, physics, car);
   }
 }

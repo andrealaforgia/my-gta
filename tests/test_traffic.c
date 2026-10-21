@@ -639,6 +639,39 @@ static void a_car_signals_before_it_turns_and_stops_once_round(void) {
   renderer_destroy(renderer);
 }
 
+static void a_car_follows_the_curve_through_a_corner_without_jumping(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[2] = {route(west, 1, 2, 1), route(south, 2, 4, 1)};
+  traffic_t* traffic = traffic_create(routes, 2, world, &fleet, 1, 3);
+  traffic_car_place(traffic, 0, 0, 1, 40.0f);
+  traffic_car_t before = traffic_car(traffic, 0);
+  float worst_turn = 0, worst_step = 0, turned = 0;
+  for (int step = 0; step < 120 * 14; step++) {
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    traffic_car_t car = traffic_car(traffic, 0);
+    float turn = car.yaw - before.yaw;
+    turn -= 6.2831853f * floorf(turn / 6.2831853f + 0.5f);
+    float moved = hypotf(car.position.x - before.position.x,
+                         car.position.z - before.position.z);
+    if (fabsf(turn) > worst_turn) worst_turn = fabsf(turn);
+    if (moved > worst_step) worst_step = moved;
+    turned += turn;
+    before = car;
+  }
+  /* A quarter turn, made gradually and with no teleporting. */
+  assert(fabsf(fabsf(turned) - 1.5708f) < 0.2f);
+  assert(worst_turn < 0.02f);
+  assert(worst_step < 0.15f);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -715,7 +748,7 @@ static void cars_and_people_left_far_behind_turn_up_near_the_player(void) {
   static float far_road[4] = {5000, 0, 5100, 0};
   city_route_t routes[2] = {route(near_road, 1, 2, 0),
                             route(far_road, 3, 4, 0)};
-  traffic_t* traffic = traffic_create(routes, 2, world, &fleet, 12, 5);
+  traffic_t* traffic = traffic_create(routes, 2, world, &fleet, 5, 5);
   for (size_t i = 0; i < traffic_car_count(traffic); i++)
     traffic_car_place(traffic, i, 1, 1, 20.0f); /* all on the far road */
   traffic_set_focus(traffic, vec3(0, 2, 0));
@@ -790,6 +823,7 @@ void run_traffic_tests(void) {
   RUN(a_bus_halts_at_a_bus_stop_for_a_while_and_goes_on);
   RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
+  RUN(a_car_follows_the_curve_through_a_corner_without_jumping);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);
   RUN(sliding_wheels_leave_marks_that_overwrite_the_oldest);

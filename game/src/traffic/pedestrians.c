@@ -110,19 +110,19 @@ static void recycle_person(pedestrians_t* p, person_t* person) {
     size_t r = next_random(p) % p->path_count;
     const route_path_t* path = &p->paths[r];
     if (!walkable(path->route) || path->length <= 12.0f) continue;
-    size_t mid = path->route->point_count / 2;
-    float dx = path->route->points[2 * mid] - p->focus.x;
-    float dz = path->route->points[2 * mid + 1] - p->focus.z;
-    float d = sqrtf(dx * dx + dz * dz);
-    if (d < 100.0f || d > 450.0f) continue;
     float first = p->margin_start[r] + 1.0f;
     float last = path->length - p->margin_end[r] - 1.0f;
     if (last < first) continue;
+    float u = first + (last - first) * (float)(next_random(p) % 1000) / 1000.0f;
+    /* Beyond the distance people are drawn at, so nobody sees one appear. */
+    float x, z, dx, dz, ground;
+    route_path_sample(path, u, 1, &x, &z, &dx, &dz, &ground);
+    float d = hypotf(x - p->focus.x, z - p->focus.z);
+    if (d < 170.0f || d > 450.0f) continue;
     person->route = (int)r;
     person->side = (next_random(p) & 1) ? 1 : -1;
     person->direction = (next_random(p) & 1) ? 1 : -1;
-    person->u =
-        first + (last - first) * (float)(next_random(p) % 1000) / 1000.0f;
+    person->u = u;
     person->cross = 0;
     person->cooldown = 0;
     person->decided = -1;
