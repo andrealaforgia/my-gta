@@ -137,7 +137,7 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
              pick * (t->lanes[chosen].length - 12.0f) / t->lanes[chosen].length;
     car->speed = 0;
     int style = (int)(next_random(t) % 1000);
-    car->variant = fleet_variant_for(style);
+    car->variant = fleet_traffic_variant_for(style);
     car->paint = (int)(next_random(t) % 1000);
     pose(t, car);
     car->collider = physics_add_static_box(
@@ -240,10 +240,18 @@ static float curve_speed(const lane_t* lane, float s, int direction) {
 void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
                   vec3_t player_velocity, float dt) {
   (void)player_velocity;
+  t->ground_clock += dt;
   for (size_t i = 0; i < t->car_count; i++) {
     car_t* car = &t->cars[i];
     const lane_t* lane = &t->lanes[car->route];
-    float target = lane->cruise;
+    const car_visual_t* own_visual = &t->fleet->visuals[car->variant];
+    float own_half_length = own_visual->half_extents.z;
+    float own_half_width = own_visual->half_extents.x;
+    /* Lorries and buses are slower; the emergency services are not. */
+    float target =
+        lane->cruise * (own_visual->emergency
+                            ? 1.35f
+                            : (own_half_length > 3.0f ? 0.85f : 1.0f));
     float to_end = lane->length - car->s;
     if (to_end < 14.0f) target = fminf(target, 4.5f + to_end * 0.2f);
     target = fminf(target, curve_speed(lane, car->s, car->direction));
@@ -255,6 +263,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     for (size_t j = 0; j <= t->car_count; j++) {
       vec3_t other;
       float other_speed = 0;
+      float other_half_length = 2.2f, other_half_width = 0.9f;
       if (j == t->car_count) {
         other = player;
       } else if (j == i) {
@@ -262,11 +271,19 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       } else {
         other = t->cars[j].position;
         other_speed = t->cars[j].speed;
+        const car_visual_t* other_visual =
+            &t->fleet->visuals[t->cars[j].variant];
+        other_half_length = other_visual->half_extents.z;
+        other_half_width = other_visual->half_extents.x;
       }
       float rx = other.x - car->position.x, rz = other.z - car->position.z;
       float ahead = rx * fx + rz * fz;
       float side = fabsf(rx * -fz + rz * fx);
-      if (ahead < 1.0f || ahead > LOOKAHEAD || side > 2.1f) continue;
+      float side_limit = fmaxf(2.1f, own_half_width + other_half_width + 0.3f);
+      if (ahead < 1.0f ||
+          ahead > LOOKAHEAD + own_half_length + other_half_length ||
+          side > side_limit)
+        continue;
       /* Of two cars facing each other, only one yields, so they cannot
        * deadlock; the player always has right of way. */
       if (j < t->car_count && j < i) {
@@ -274,7 +291,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
         if (ofx * fx + ofz * fz < -0.2f && t->cars[j].speed > 0.5f) continue;
         if (fabsf(ofx * fx + ofz * fz) < 0.5f && ahead > 7.0f) continue;
       }
-      float gap = ahead - 5.0f;
+      float gap = ahead - (own_half_length + other_half_length + 0.6f);
       if (gap < gap_to_stop) gap_to_stop = gap;
       /* Follow at the leader's pace when there is room. */
       if (gap > 4.0f)
@@ -285,7 +302,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     }
     /* Junctions: wait outside while another car is in them, or is closer
      * to them and also coming in (the lower index goes first). */
-    if (to_end < 22.0f) {
+    if (to_end < 22.0f + own_half_length) {
       float px, pz, pdx, pdz, pg;
       sample(lane, lane->length, car->direction, &px, &pz, &pdx, &pdz, &pg);
       bool blocked = false;
@@ -304,7 +321,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
         }
       }
       if (blocked) {
-        float room = to_end - 7.6f;
+        float room = to_end - (5.4f + own_half_length);
         limit =
             fminf(limit, room > 0 ? sqrtf(2.0f * BRAKING * 0.6f * room) : 0.0f);
       }
@@ -365,7 +382,8 @@ int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
     car_visual_draw_still(&fleet->visuals[car->variant], renderer,
                           transform_at(car->position, quat_from_yaw(car->yaw)),
                           fleet_paint(car->paint), lights_on,
-                          car->braking ? 1.0f : 0.0f, car->wheel_turn);
+                          car->braking ? 1.0f : 0.0f, car->wheel_turn,
+                          t->ground_clock + 0.37f * (float)i);
     drawn++;
   }
   return drawn;

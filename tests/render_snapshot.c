@@ -56,6 +56,12 @@ int main(int argc, char* argv[]) {
   if (!driving_stage_init(&stage, &window, renderer, NULL, stage_options))
     return EXIT_FAILURE;
 
+  /* SNAPSHOT_VEHICLE=n swaps to the nth vehicle in the fleet, as V does. */
+  for (int v = getenv("SNAPSHOT_VEHICLE") ? atoi(getenv("SNAPSHOT_VEHICLE"))
+                                          : 0;
+       v > 0; v--)
+    driving_stage_next_vehicle(&stage);
+
   const char* centre = getenv("SNAPSHOT_CENTRE");
   if (centre) {
     float cx = 0, cz = 0, yaw_degrees = 0;

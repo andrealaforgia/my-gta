@@ -68,7 +68,7 @@ typedef struct {
   traffic_t* traffic;
   pedestrians_t* people;
   pedestrian_meshes_t people_meshes;
-  bool horn;         /* the horn is being held */
+  bool horn; /* the horn is being held */
   int vehicle_index;
   int view_mode; /* 0 chase, 1 bonnet, 2 cockpit */
   bool map_open; /* M: the city map over a paused game */

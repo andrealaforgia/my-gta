@@ -8,6 +8,7 @@
 
 #include "renderer.h"
 #include "vehicle.h"
+#include "vehicle_bodies.h"
 
 typedef struct {
   mesh_handle_t chassis;
@@ -30,6 +31,16 @@ typedef struct {
   mesh_handle_t dashboard, wheel_rim, wheel_hub; /* the inside */
   mesh_handle_t smoke_puff;
   material_t dash_material;
+  /* Beyond a plain car: the body style, a fixed livery, the accent colour
+   * parts, flashing beacons and tandem rear wheels. */
+  body_style_t style;
+  bool own_paint;
+  vec3_t own_colour;
+  mesh_handle_t accent, beacon_a, beacon_b;
+  material_t accent_material, beacon_a_material, beacon_b_material;
+  vec3_t extra_wheel_centres[4];
+  int extra_wheel_count;
+  bool emergency; /* has beacons: police, ambulance, fire engine */
 } car_visual_t;
 
 car_visual_t car_visual_create(renderer_t* renderer,
@@ -37,14 +48,15 @@ car_visual_t car_visual_create(renderer_t* renderer,
 void car_visual_destroy(car_visual_t* visual, renderer_t* renderer);
 void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
                      const vehicle_t* vehicle, transform_t chassis,
-                     float lights_on /* 0 by day .. 1 at night */);
+                     float lights_on /* 0 by day .. 1 at night */,
+                     float clock /* seconds: the beacons flash on it */);
 
 /* Draws a car standing or rolling with no suspension state: the body in the
  * given paint, wheels at rest, lights as asked (brake lights light up
  * brightly). Used for parked and passing cars. */
 void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, vec3_t paint, float lights_on,
-                           float brake, float wheel_turn);
+                           float brake, float wheel_turn, float clock);
 
 /* The driver's view of the inside: a dashboard across the base of the
  * windscreen and a steering wheel turned by `wheel_angle` radians. */

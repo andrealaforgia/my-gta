@@ -1,8 +1,17 @@
 #include "fleet.h"
 
 static const char* files[FLEET_VARIANTS] = {
-    "assets/vehicles/hatchback.cfg", "assets/vehicles/sedan.cfg",
-    "assets/vehicles/van.cfg", "assets/vehicles/mini.cfg"};
+    "assets/vehicles/hatchback.cfg",   "assets/vehicles/sedan.cfg",
+    "assets/vehicles/van.cfg",         "assets/vehicles/mini.cfg",
+    "assets/vehicles/police.cfg",      "assets/vehicles/ambulance.cfg",
+    "assets/vehicles/fire_engine.cfg", "assets/vehicles/bus.cfg",
+    "assets/vehicles/box_truck.cfg",   "assets/vehicles/tanker.cfg",
+    "assets/vehicles/flatbed.cfg",     "assets/vehicles/refuse.cfg",
+    "assets/vehicles/pickup.cfg",      "assets/vehicles/mixer.cfg"};
+
+const char* fleet_vehicle_file(int variant) {
+  return files[((variant % FLEET_VARIANTS) + FLEET_VARIANTS) % FLEET_VARIANTS];
+}
 
 bool fleet_create(fleet_t* fleet, renderer_t* renderer) {
   for (int i = 0; i < FLEET_VARIANTS; i++) {
@@ -40,4 +49,15 @@ vec3_t fleet_paint(int pick) {
   const float* p =
       paints[((pick / 7) % FLEET_PAINTS + FLEET_PAINTS) % FLEET_PAINTS];
   return vec3(p[0], p[1], p[2]);
+}
+
+int fleet_traffic_variant_for(int pick) {
+  /* Per hundred: 70 cars, then police 3, ambulance 2, fire engine 1, bus 6,
+   * box lorry 5, tanker 2, flatbed 3, refuse 2, pickup 4, mixer 2. */
+  static const int tail[30] = {4,  4,  4,  5,  5,  6,  7,  7,  7,  7,
+                               7,  7,  8,  8,  8,  8,  8,  9,  9,  10,
+                               10, 10, 11, 11, 12, 12, 12, 12, 13, 13};
+  int n = ((pick % 100) + 100) % 100;
+  if (n < 70) return fleet_variant_for(n * 7 + pick / 100);
+  return tail[n - 70];
 }

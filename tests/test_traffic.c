@@ -38,8 +38,52 @@ static void the_fleet_has_four_bodies_and_a_palette(void) {
   int variants_seen[FLEET_VARIANTS] = {0};
   for (int pick = 0; pick < 100; pick++)
     variants_seen[fleet_variant_for(pick)]++;
-  for (int i = 0; i < FLEET_VARIANTS; i++) assert(variants_seen[i] > 0);
+  for (int i = 0; i < FLEET_CAR_VARIANTS; i++) assert(variants_seen[i] > 0);
+  for (int i = FLEET_CAR_VARIANTS; i < FLEET_VARIANTS; i++)
+    assert(variants_seen[i] == 0); /* parked cars are only cars */
   assert(vec3_distance(fleet_paint(0), fleet_paint(7)) > 0.05f);
+  fleet_destroy(&fleet, renderer);
+  renderer_destroy(renderer);
+}
+
+static void the_road_carries_buses_lorries_and_the_emergency_services(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  int seen[FLEET_VARIANTS] = {0}, cars = 0;
+  for (int pick = 0; pick < 1000; pick++) {
+    int v = fleet_traffic_variant_for(pick);
+    assert(v >= 0 && v < FLEET_VARIANTS);
+    seen[v]++;
+    if (v < FLEET_CAR_VARIANTS) cars++;
+  }
+  for (int i = 0; i < FLEET_VARIANTS; i++) assert(seen[i] > 0);
+  assert(cars > 600 && cars < 800); /* about seven in ten are cars */
+  /* Styles and sizes: the bus is the longest, the police car and the
+   * ambulance flash, an ordinary car does not. */
+  float longest = 0;
+  int longest_variant = 0;
+  for (int i = 0; i < FLEET_VARIANTS; i++) {
+    const car_visual_t* v = &fleet.visuals[i];
+    assert(v->chassis.id != 0 || v->cabin.id != 0 || v->accent.id != 0);
+    assert(v->ride_height > 0.3f);
+    if (v->half_extents.z > longest)
+      longest = v->half_extents.z, longest_variant = i;
+  }
+  assert(fleet.visuals[longest_variant].style == BODY_BUS);
+  assert(longest > 5.0f);
+  assert(fleet.visuals[0].style == BODY_CAR && !fleet.visuals[0].emergency);
+  int emergency = 0;
+  for (int i = 0; i < FLEET_VARIANTS; i++)
+    emergency += fleet.visuals[i].emergency;
+  assert(emergency == 3); /* police, ambulance, fire engine */
+  /* Lorries on tandem axles show extra wheels. */
+  int tandems = 0;
+  for (int i = 0; i < FLEET_VARIANTS; i++)
+    tandems += fleet.visuals[i].extra_wheel_count > 0;
+  assert(tandems >= 3);
+  /* Emergency vehicles keep their own livery whatever paint is picked. */
+  assert(fleet.visuals[4].own_paint && !fleet.visuals[0].own_paint);
   fleet_destroy(&fleet, renderer);
   renderer_destroy(renderer);
 }
@@ -421,6 +465,7 @@ void run_traffic_tests(void) {
   RUN(a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk);
   RUN(people_are_drawn_only_when_near);
   RUN(the_fleet_has_four_bodies_and_a_palette);
+  RUN(the_road_carries_buses_lorries_and_the_emergency_services);
   RUN(parked_cars_stand_on_the_ground_and_are_solid);
   RUN(cars_follow_the_roads_on_the_right_at_a_sensible_speed);
   RUN(cars_turn_at_junctions_onto_every_road_and_keep_apart);

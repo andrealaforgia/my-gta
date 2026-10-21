@@ -20,6 +20,7 @@ vehicle_params_t vehicle_params_default(void) {
   vehicle_params_t p;
   memset(&p, 0, sizeof(p));
   snprintf(p.name, sizeof(p.name), "default");
+  snprintf(p.body, sizeof(p.body), "car");
   p.mass = 1200;
   p.chassis_half_extents = vec3(0.85f, 0.28f, 1.95f);
   p.track_width = 1.5f;
@@ -105,6 +106,8 @@ bool vehicle_params_load(vehicle_params_t* params, const char* path) {
   vehicle_params_t* p = params;
   snprintf(p->name, sizeof(p->name), "%s",
            config_get_string(&config, "name", p->name));
+  snprintf(p->body, sizeof(p->body), "%s",
+           config_get_string(&config, "body", p->body));
   p->mass = config_get_float(&config, "mass", p->mass);
   p->chassis_half_extents.x = config_get_float(&config, "chassis_half_width",
                                                p->chassis_half_extents.x);

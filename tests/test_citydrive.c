@@ -227,8 +227,9 @@ static void v_swaps_the_car_for_the_next_one_where_it_stands(void) {
   vec3_t before = car(&run)->position;
   drive(&run, throttle, 3.0f);
   assert(vec3_distance(car(&run)->position, before) > 4.0f);
-  /* All four in turn, and back to the first. */
-  for (int i = 0; i < 3; i++) driving_stage_next_vehicle(&run.stage);
+  /* All of them in turn, and back to the first. */
+  for (int i = 0; i < FLEET_VARIANTS - 1; i++)
+    driving_stage_next_vehicle(&run.stage);
   assert(strcmp(run.stage.vehicle.params.name, first) == 0);
   stop(&run);
 }
@@ -402,6 +403,27 @@ static void everything_the_generator_builds_is_drawn(void) {
   city_package_free(&package);
 }
 
+static void every_vehicle_pulls_away_and_stays_on_its_wheels(void) {
+  city_run_t run;
+  start(&run);
+  driving_input_t throttle = {1, 0, 0, false};
+  for (int i = 0; i < FLEET_VARIANTS; i++) {
+    run.stage.vehicle.damage = 0;
+    vec3_t before = car(&run)->position;
+    drive(&run, throttle, 5.0f);
+    assert(vec3_distance(car(&run)->position, before) > 3.0f);
+    vec3_t up = quat_rotate(car(&run)->rotation, vec3(0, 1, 0));
+    assert(up.y > 0.8f);
+    assert(vehicle_speed_kmh(&run.stage.vehicle) > 4.0f ||
+           vehicle_speed_kmh(&run.stage.vehicle) < -4.0f ||
+           vec3_distance(car(&run)->position, before) > 3.0f);
+    driving_stage_next_vehicle(&run.stage);
+    vehicle_reset(&run.stage.vehicle,
+                  run.stage.physics); /* back at the spawn */
+  }
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -434,5 +456,6 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_smokes_and_looks_scuffed);
   RUN(walls_are_grubbier_at_the_foot_but_roads_are_not);
   RUN(everything_the_generator_builds_is_drawn);
+  RUN(every_vehicle_pulls_away_and_stays_on_its_wheels);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

@@ -13,6 +13,17 @@
 #define IMPACT_THRESHOLD 400.0f
 #define IMPACT_FULL 6000.0f
 
+/* The chase camera sits further back and higher behind a long vehicle. */
+static chase_camera_params_t chase_camera_params_for(
+    const vehicle_params_t* params) {
+  chase_camera_params_t camera = chase_camera_default_params();
+  float extra = fmaxf(0.0f, params->chassis_half_extents.z - 2.4f);
+  camera.distance += extra * 1.7f;
+  camera.height += extra * 0.45f;
+  camera.look_height += extra * 0.15f;
+  return camera;
+}
+
 bool driving_stage_init(driving_stage_t* stage, window_t* window,
                         renderer_t* renderer, audio_device_t* audio,
                         stage_options_t options) {
@@ -42,7 +53,7 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
                       stage->scene.spawn_position, stage->scene.spawn_rotation))
     return false;
   stage->car_visual = car_visual_create(renderer, &params);
-  stage->camera = chase_camera_create(chase_camera_default_params());
+  stage->camera = chase_camera_create(chase_camera_params_for(&params));
   chase_camera_reset(&stage->camera, transform_at(stage->scene.spawn_position,
                                                   stage->scene.spawn_rotation));
   stage->clock = frame_clock_create(PHYSICS_STEP, MAX_CATCH_UP);
@@ -466,12 +477,9 @@ void driving_stage_set_rain(driving_stage_t* stage, float rain) {
 }
 
 void driving_stage_next_vehicle(driving_stage_t* stage) {
-  static const char* files[4] = {
-      "assets/vehicles/hatchback.cfg", "assets/vehicles/sedan.cfg",
-      "assets/vehicles/van.cfg", "assets/vehicles/mini.cfg"};
-  int next = (stage->vehicle_index + 1) % 4;
+  int next = (stage->vehicle_index + 1) % FLEET_VARIANTS;
   vehicle_params_t params;
-  if (!vehicle_params_load(&params, files[next])) return;
+  if (!vehicle_params_load(&params, fleet_vehicle_file(next))) return;
   const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);
   vec3_t position = vec3_add(body->position, vec3(0, 0.3f, 0));
   quat_t rotation = body->rotation;
@@ -484,6 +492,7 @@ void driving_stage_next_vehicle(driving_stage_t* stage) {
   vehicle_set_spawn(&stage->vehicle, spawn, spawn_rotation);
   car_visual_destroy(&stage->car_visual, stage->renderer);
   stage->car_visual = car_visual_create(stage->renderer, &params);
+  stage->camera.params = chase_camera_params_for(&params);
   stage->vehicle_index = next;
 }
 
@@ -571,7 +580,8 @@ void driving_stage_render(driving_stage_t* stage) {
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
-  car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night);
+  car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night,
+                  stage->rain_clock);
   car_visual_draw_smoke(&stage->car_visual, r, chassis, stage->vehicle.damage,
                         stage->rain_clock);
   if (stage->view_mode == 2)

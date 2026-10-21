@@ -37,6 +37,7 @@ typedef struct {
 
 typedef struct {
   char name[VEHICLE_NAME_LENGTH];
+  char body[VEHICLE_NAME_LENGTH]; /* body style: car, bus, tanker... */
   float mass;
   vec3_t chassis_half_extents;
   float track_width;

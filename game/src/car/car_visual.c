@@ -54,6 +54,21 @@ static mesh_handle_t upload(renderer_t* renderer, mesh_data_t* mesh) {
   return handle;
 }
 
+/* Meshes a body style may leave empty upload as "none". */
+static mesh_handle_t upload_optional(renderer_t* renderer, mesh_data_t* mesh) {
+  mesh_handle_t none = {0};
+  if (mesh->vertex_count == 0) {
+    mesh_data_free(mesh);
+    return none;
+  }
+  return upload(renderer, mesh);
+}
+
+static void draw_optional(renderer_t* renderer, mesh_handle_t mesh,
+                          material_t material, mat4_t model) {
+  if (mesh.id != 0) renderer_draw_mesh(renderer, mesh, material, model);
+}
+
 /* A flat ring in the xy plane about the origin, facing +z, between two
  * radii and `half_z` thick each way. */
 static void add_ring(mesh_data_t* mesh, float outer, float inner, float half_z,
@@ -145,6 +160,30 @@ car_visual_t car_visual_create(renderer_t* renderer,
   mesh_data_add_box(&trim_mesh, vec3(0, floor + 0.1f * h.y, L),
                     vec3(w * 0.9f, h.y * 0.12f, 0.06f));
 
+  /* Police cars are saloons with livery and a light bar; everything else
+   * that is not a plain car replaces the saloon body with its own. */
+  body_style_t style = body_style_from_name(p->body);
+  body_build_t build;
+  body_build_init(&build);
+  if (style == BODY_POLICE) {
+    vehicle_body_add_police(&build, h, floor, roof, -L * 0.08f, L * 0.42f);
+  } else if (style != BODY_CAR && vehicle_body_build(style, h, &build)) {
+    mesh_data_free(&body_mesh);
+    mesh_data_free(&cabin_mesh);
+    mesh_data_free(&glass_mesh);
+    mesh_data_free(&lights_mesh);
+    mesh_data_free(&rear_mesh);
+    mesh_data_free(&trim_mesh);
+    body_mesh = build.body, build.body = mesh_data_create();
+    cabin_mesh = build.cabin, build.cabin = mesh_data_create();
+    glass_mesh = build.glass, build.glass = mesh_data_create();
+    lights_mesh = build.lights, build.lights = mesh_data_create();
+    rear_mesh = build.rear, build.rear = mesh_data_create();
+    trim_mesh = build.trim, build.trim = mesh_data_create();
+  } else {
+    style = BODY_CAR;
+  }
+
   mesh_data_t wheel = mesh_data_create();
   mesh_data_add_cylinder_x(&wheel, vec3_zero(), p->wheel_radius, p->wheel_width,
                            24);
@@ -195,14 +234,33 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.wheel_rim = upload(renderer, &rim_mesh);
   visual.wheel_hub = upload(renderer, &hub_mesh);
   visual.dash_material = material_rough(vec3(0.1f, 0.1f, 0.11f), 0.8f);
-  visual.chassis = upload(renderer, &body_mesh);
-  visual.cabin = upload(renderer, &cabin_mesh);
-  visual.glass = upload(renderer, &glass_mesh);
-  visual.lights = upload(renderer, &lights_mesh);
-  visual.rear_lights = upload(renderer, &rear_mesh);
-  visual.trim = upload(renderer, &trim_mesh);
+  visual.chassis = upload_optional(renderer, &body_mesh);
+  visual.cabin = upload_optional(renderer, &cabin_mesh);
+  visual.glass = upload_optional(renderer, &glass_mesh);
+  visual.lights = upload_optional(renderer, &lights_mesh);
+  visual.rear_lights = upload_optional(renderer, &rear_mesh);
+  visual.trim = upload_optional(renderer, &trim_mesh);
+  visual.style = style;
+  visual.own_paint = build.own_paint;
+  visual.own_colour = build.paint;
+  visual.emergency =
+      build.beacon_a.vertex_count > 0 || build.beacon_b.vertex_count > 0;
+  visual.accent = upload_optional(renderer, &build.accent);
+  visual.beacon_a = upload_optional(renderer, &build.beacon_a);
+  visual.beacon_b = upload_optional(renderer, &build.beacon_b);
+  visual.accent_material = material_rough(build.accent_colour, 0.55f);
+  visual.beacon_a_material = material_rough(build.beacon_a_colour, 0.3f);
+  visual.beacon_b_material = material_rough(build.beacon_b_colour, 0.3f);
+  visual.extra_wheel_count = 0;
+  for (int axle = 0; axle < build.extra_axles && axle < 2; axle++)
+    for (int side = -1; side <= 1; side += 2)
+      visual.extra_wheel_centres[visual.extra_wheel_count++] =
+          vec3(side * p->track_width * 0.5f, rest_hub_y,
+               p->wheelbase * 0.5f + build.extra_axle_z * (float)(axle + 1));
+  body_build_free(&build);
   visual.wheel = upload(renderer, &wheel);
   visual.paint = material_plain(vec3(0.72f, 0.1f, 0.08f));
+  if (visual.own_paint) visual.paint.base_color = visual.own_colour;
   visual.paint.metallic = 0.35f;
   visual.paint.roughness = 0.3f;
   visual.glass_material = material_rough(vec3(0.12f, 0.16f, 0.22f), 0.1f);
@@ -215,12 +273,12 @@ car_visual_t car_visual_create(renderer_t* renderer,
 }
 
 void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
-  renderer_release_mesh(renderer, visual->chassis);
-  renderer_release_mesh(renderer, visual->cabin);
-  renderer_release_mesh(renderer, visual->glass);
-  renderer_release_mesh(renderer, visual->lights);
-  renderer_release_mesh(renderer, visual->rear_lights);
-  renderer_release_mesh(renderer, visual->trim);
+  mesh_handle_t optional[] = {
+      visual->chassis, visual->cabin,       visual->glass,
+      visual->lights,  visual->rear_lights, visual->trim,
+      visual->accent,  visual->beacon_a,    visual->beacon_b};
+  for (size_t i = 0; i < sizeof(optional) / sizeof(optional[0]); i++)
+    if (optional[i].id != 0) renderer_release_mesh(renderer, optional[i]);
   renderer_release_mesh(renderer, visual->wheel);
   renderer_release_mesh(renderer, visual->smoke_puff);
   renderer_release_mesh(renderer, visual->dashboard);
@@ -228,9 +286,31 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
   renderer_release_mesh(renderer, visual->wheel_hub);
 }
 
+/* The shared body parts: paint, glass, lamps, trim, and for lorries and
+ * emergency vehicles the accent colour and flashing beacons. */
+static void draw_body(const car_visual_t* visual, renderer_t* renderer,
+                      mat4_t model, material_t paint, material_t headlights,
+                      material_t tail_lights, float clock) {
+  draw_optional(renderer, visual->chassis, paint, model);
+  draw_optional(renderer, visual->cabin, paint, model);
+  draw_optional(renderer, visual->glass, visual->glass_material, model);
+  draw_optional(renderer, visual->lights, headlights, model);
+  draw_optional(renderer, visual->rear_lights, tail_lights, model);
+  draw_optional(renderer, visual->trim, visual->trim_material, model);
+  draw_optional(renderer, visual->accent, visual->accent_material, model);
+  if (visual->emergency) {
+    bool first = fmodf(clock * 3.0f, 1.0f) < 0.5f;
+    material_t a = visual->beacon_a_material, b = visual->beacon_b_material;
+    a.emissive = first ? 3.0f : 0.1f;
+    b.emissive = first ? 0.1f : 3.0f;
+    draw_optional(renderer, visual->beacon_a, a, model);
+    draw_optional(renderer, visual->beacon_b, b, model);
+  }
+}
+
 void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
                      const vehicle_t* vehicle, transform_t chassis,
-                     float lights_on) {
+                     float lights_on, float clock) {
   mat4_t model = transform_to_matrix(chassis);
   material_t headlights = visual->light_material;
   headlights.emissive = 0.15f + 1.6f * lights_on;
@@ -244,39 +324,41 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
       vec3_add(vec3_scale(paint.base_color, tint),
                vec3_scale(vec3(grey, grey, grey), (1.0f - tint) * 0.6f));
   paint.roughness = fminf(paint.roughness + (1.0f - tint) * 0.5f, 1.0f);
-  renderer_draw_mesh(renderer, visual->chassis, paint, model);
-  renderer_draw_mesh(renderer, visual->cabin, paint, model);
-  renderer_draw_mesh(renderer, visual->glass, visual->glass_material, model);
-  renderer_draw_mesh(renderer, visual->lights, headlights, model);
-  renderer_draw_mesh(renderer, visual->rear_lights, tail_lights, model);
-  renderer_draw_mesh(renderer, visual->trim, visual->trim_material, model);
+  draw_body(visual, renderer, model, paint, headlights, tail_lights, clock);
   for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
     transform_t wheel = vehicle_wheel_transform(vehicle, chassis, i);
     renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
                        transform_to_matrix(wheel));
+    if (i >= 2) {
+      /* Tandem axles turn with the driven one. */
+      for (int k = i % 2; k < visual->extra_wheel_count; k += 2) {
+        transform_t extra = wheel;
+        extra.position =
+            transform_point(chassis, visual->extra_wheel_centres[k]);
+        renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
+                           transform_to_matrix(extra));
+      }
+    }
   }
 }
 
 void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, vec3_t paint, float lights_on,
-                           float brake, float wheel_turn) {
+                           float brake, float wheel_turn, float clock) {
   mat4_t model = transform_to_matrix(chassis);
   material_t body = visual->paint;
-  body.base_color = paint;
+  body.base_color = visual->own_paint ? visual->own_colour : paint;
   material_t headlights = visual->light_material;
   headlights.emissive = 0.15f + 1.6f * lights_on;
   material_t tail_lights = visual->rear_light_material;
   tail_lights.emissive = 0.1f + 0.9f * lights_on + 1.2f * brake;
-  renderer_draw_mesh(renderer, visual->chassis, body, model);
-  renderer_draw_mesh(renderer, visual->cabin, body, model);
-  renderer_draw_mesh(renderer, visual->glass, visual->glass_material, model);
-  renderer_draw_mesh(renderer, visual->lights, headlights, model);
-  renderer_draw_mesh(renderer, visual->rear_lights, tail_lights, model);
-  renderer_draw_mesh(renderer, visual->trim, visual->trim_material, model);
+  draw_body(visual, renderer, model, body, headlights, tail_lights, clock);
   quat_t spin = quat_from_axis_angle(vec3(1, 0, 0), -wheel_turn);
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 4 + visual->extra_wheel_count; i++) {
     transform_t wheel = transform_identity();
-    wheel.position = transform_point(chassis, visual->wheel_centres[i]);
+    wheel.position =
+        transform_point(chassis, i < 4 ? visual->wheel_centres[i]
+                                       : visual->extra_wheel_centres[i - 4]);
     wheel.rotation = quat_multiply(chassis.rotation, spin);
     renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
                        transform_to_matrix(wheel));
