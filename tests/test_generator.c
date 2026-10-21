@@ -1097,6 +1097,52 @@ static void a_footbridge_rises_over_what_it_crosses_with_ramps_and_railings(
   city_model_free(&model);
 }
 
+static void street_facing_walls_get_doors_at_the_pavement(void) {
+  /* A 24 x 10 m house 8 m from a residential street, and one 300 m away. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.995\" minlon=\"11.999\" maxlat=\"45.003\" "
+      "maxlon=\"12.005\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0040\"/>"
+      "<node id=\"11\" lat=\"45.00010\" lon=\"12.0010\"/>"
+      "<node id=\"12\" lat=\"45.00010\" lon=\"12.00131\"/>"
+      "<node id=\"13\" lat=\"45.00019\" lon=\"12.00131\"/>"
+      "<node id=\"14\" lat=\"45.00019\" lon=\"12.0010\"/>"
+      "<node id=\"21\" lat=\"44.9970\" lon=\"12.0010\"/>"
+      "<node id=\"22\" lat=\"44.9970\" lon=\"12.00131\"/>"
+      "<node id=\"23\" lat=\"44.99709\" lon=\"12.00131\"/>"
+      "<node id=\"24\" lat=\"44.99709\" lon=\"12.0010\"/>"
+      "<way id=\"9\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"20\"><nd ref=\"11\"/><nd ref=\"12\"/><nd ref=\"13\"/><nd "
+      "ref=\"14\"/><nd ref=\"11\"/><tag k=\"building\" v=\"house\"/><tag "
+      "k=\"height\" v=\"7\"/></way>"
+      "<way id=\"21\"><nd ref=\"21\"/><nd ref=\"22\"/><nd ref=\"23\"/><nd "
+      "ref=\"24\"/><nd ref=\"21\"/><tag k=\"building\" v=\"house\"/><tag "
+      "k=\"height\" v=\"7\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* doors = part_for(&package, "door", 20);
+  /* Seven in ten buildings have doors, picked by id; this id is one. */
+  assert(doors && mesh_data_triangle_count(&doors->mesh) % 2 == 0);
+  {
+    aabb_t b = mesh_data_bounds(&doors->mesh);
+    assert(b.min.y > -0.01f && b.min.y < 0.3f);
+    assert(b.max.y > 2.0f && b.max.y < 2.8f);
+    /* The 24 m wall is long enough for two doors, 1.2 m wide each, at
+     * about a third and two thirds of its length. */
+    assert(mesh_data_triangle_count(&doors->mesh) == 4);
+    assert(b.max.x - b.min.x > 8.0f && b.max.x - b.min.x < 12.0f);
+    /* On the wall that faces the street (the south wall, z largest). */
+    const city_part_t* walls = facade_for(&package, 20);
+    float wall_z = mesh_data_bounds(&walls->mesh).max.z;
+    assert(fabsf(b.max.z - wall_z) < 0.12f && fabsf(b.min.z - wall_z) < 0.12f);
+  }
+  assert(part_for(&package, "door", 21) == NULL); /* far from any street */
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void junctions_get_stop_lines_and_zebra_crossings(void) {
   city_generator_stats_t stats;
   city_package_t package = generate_fixture(&stats);
@@ -1153,6 +1199,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
       if (strcmp(part->material, "kerb") == 0 ||
           strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "manhole") == 0 ||
+          strcmp(part->material, "door") == 0 ||
           strcmp(part->material, "rail") == 0 ||
           strcmp(part->material, "chimney") == 0 ||
           strcmp(part->material, "furniture") == 0 ||
@@ -1284,6 +1331,7 @@ void run_generator_tests(void) {
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(pitched_roofs_sprout_chimneys_above_the_ridge);
   RUN(a_footbridge_rises_over_what_it_crosses_with_ramps_and_railings);
+  RUN(street_facing_walls_get_doors_at_the_pavement);
   RUN(junctions_get_stop_lines_and_zebra_crossings);
   RUN(lamp_posts_stand_on_the_pavements);
   RUN(faces_point_up_or_outward_and_the_spawn_sits_on_a_road);

@@ -360,6 +360,64 @@ uint8_t* texture_shopfront(unsigned seed) {
   return pixels;
 }
 
+/* Stone flags in rows 32 pixels high, each row offset by a different
+ * amount, each stone its own shade of grey-buff, with dark joints. */
+uint8_t* texture_paving(unsigned seed) {
+  uint8_t* pixels = grainy(seed, 0.6f, 0.57f, 0.52f, 0.2f, 0.15f);
+  if (!pixels) return NULL;
+  for (int y = 0; y < TEXTURE_SIZE; y++) {
+    int row = y / 32;
+    int stone_w = 48 + (int)(hash((unsigned)row, 1, seed) % 3) * 16;
+    int offset = (int)(hash((unsigned)row, 2, seed) % 64);
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      int along = (x + offset) % TEXTURE_SIZE;
+      int stone = along / stone_w;
+      bool joint = (y % 32) < 2 || (along % stone_w) < 2;
+      uint8_t* q = pixels + (y * TEXTURE_SIZE + x) * 4;
+      float shade =
+          0.82f + 0.36f * noise((unsigned)stone, (unsigned)row, seed + 41);
+      float tint =
+          (noise((unsigned)stone, (unsigned)row, seed + 43) - 0.5f) * 0.1f;
+      if (joint)
+        put(pixels, x, y, 0.3f, 0.28f, 0.26f);
+      else
+        put(pixels, x, y, q[0] / 255.0f * shade + tint, q[1] / 255.0f * shade,
+            q[2] / 255.0f * shade - tint);
+    }
+  }
+  return pixels;
+}
+
+/* A street door: a stone frame, a dark wood leaf with four raised panels, a
+ * brass handle on the right and a lintel over it. */
+uint8_t* texture_door(unsigned seed) {
+  uint8_t* pixels = grainy(seed, 0.72f, 0.68f, 0.6f, 0.15f, 0.08f);
+  if (!pixels) return NULL;
+  static const float woods[][3] = {{0.22f, 0.13f, 0.08f},
+                                   {0.16f, 0.2f, 0.14f},
+                                   {0.28f, 0.1f, 0.08f},
+                                   {0.12f, 0.14f, 0.2f}};
+  const float* wood = woods[seed % 4];
+  for (int y = 0; y < TEXTURE_SIZE; y++) {
+    for (int x = 0; x < TEXTURE_SIZE; x++) {
+      float fx = (float)x / TEXTURE_SIZE, fy = (float)y / TEXTURE_SIZE;
+      /* y runs down the texture: the lintel at the top, the sill below. */
+      bool leaf = fx > 0.12f && fx < 0.88f && fy > 0.1f && fy < 0.99f;
+      if (!leaf) continue;
+      float grain =
+          0.85f + 0.3f * noise((unsigned)(x / 3), (unsigned)(y / 40), seed);
+      bool panel = ((fx > 0.2f && fx < 0.46f) || (fx > 0.54f && fx < 0.8f)) &&
+                   ((fy > 0.17f && fy < 0.45f) || (fy > 0.53f && fy < 0.93f));
+      float lift = panel ? 1.25f : 0.9f;
+      put(pixels, x, y, wood[0] * grain * lift, wood[1] * grain * lift,
+          wood[2] * grain * lift);
+      float dx = fx - 0.7f, dy = fy - 0.52f;
+      if (dx * dx + dy * dy < 0.0016f) put(pixels, x, y, 0.85f, 0.7f, 0.25f);
+    }
+  }
+  return pixels;
+}
+
 uint8_t* texture_roof_slate(unsigned seed) {
   uint8_t* pixels = grainy(seed, 0.34f, 0.35f, 0.38f, 0.2f, 0.1f);
   if (!pixels) return NULL;
@@ -429,6 +487,8 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.roof = upload(renderer, texture_roof(6));
   set.facade_fresco = upload(renderer, texture_facade_fresco(5));
   set.facade_brick = upload(renderer, texture_facade_brick(23));
+  set.paving = upload(renderer, texture_paving(53));
+  set.door = upload(renderer, texture_door(59));
   set.shopfront = upload(renderer, texture_shopfront(31));
   set.roof_slate = upload(renderer, texture_roof_slate(8));
   set.roof_flat = upload(renderer, texture_roof_flat(9));

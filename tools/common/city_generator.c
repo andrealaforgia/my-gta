@@ -2366,6 +2366,67 @@ static bool add_chimney(layout_t* layout, const city_building_t* building,
   return true;
 }
 
+/* Street doors: on the walls that face a street at pavement distance, a
+ * door a metre and a quarter wide, one in the middle of a short wall and two
+ * on a long one. About seven buildings in ten. */
+static bool add_doors(layout_t* layout, const city_building_t* building,
+                      city_chunk_t* chunk, const bool* skip) {
+  unsigned hash = (unsigned)((uint64_t)building->source_id * 2654435761u >> 11);
+  if (hash % 100 >= 70) return true;
+  const city_model_t* model = layout->model;
+  city_part_t* part = NULL;
+  size_t count = building->point_count;
+  float lift = 0;
+  if (layout->terrain && layout->terrain->cols > 0) {
+    local_point_t c = centroid(building->points, count);
+    lift = (float)terrain_at(layout, c.x, c.z);
+  }
+  for (size_t i = 0; i < count; i++) {
+    if (skip && skip[i]) continue;
+    local_point_t a = building->points[i],
+                  b = building->points[(i + 1) % count];
+    double length = hypot(b.x - a.x, b.z - a.z);
+    if (length < 5.5) continue;
+    local_point_t middle = {(a.x + b.x) * 0.5, (a.z + b.z) * 0.5};
+    vec2_t direction = v2_normalize(v2_sub(b, a));
+    vec2_t out =
+        v2(-direction.z, direction.x); /* outward, as the walls' normals */
+    local_point_t ahead = offset(middle, out, 3.0);
+    double distance = 1e30;
+    for (size_t r = 0; r < model->road_count; r++) {
+      const city_road_t* road = &model->roads[r];
+      if (road->class == ROAD_CLASS_WATERWAY ||
+          road->class == ROAD_CLASS_MOTORWAY)
+        continue;
+      for (size_t k = 1; k < road->point_count; k++)
+        distance =
+            fmin(distance, point_segment_distance(ahead, road->points[k - 1],
+                                                  road->points[k]));
+    }
+    if (distance > 11.0) continue;
+    int doors = length > 15.0 ? 2 : 1;
+    for (int d = 0; d < doors; d++) {
+      double centre = doors == 1 ? length * 0.5 : length * (d == 0 ? 0.3 : 0.7);
+      double shift = ((double)((hash >> (d * 4)) % 5) - 2.0) * 0.25;
+      local_point_t at = offset(a, direction, centre + shift);
+      if (!part) {
+        part = city_chunk_add_part(chunk, "door", PART_COLLIDER_NONE, 0, 0,
+                                   (uint64_t)building->source_id);
+        if (!part) return false;
+      }
+      local_point_t p = offset(offset(at, out, 0.025), direction, -0.6);
+      local_point_t q = offset(offset(at, out, 0.025), direction, 0.6);
+      vec3_t normal = vec3((float)out.x, 0, (float)out.z);
+      if (!add_wall_quad(part, p, q, lift + 0.0f, lift + 2.4f, normal, 0, 1, 1,
+                         0))
+        return false;
+    }
+  }
+  if (!part) return true;
+  finish_part(chunk, part);
+  return true;
+}
+
 /* Finishes the building's parts, with its landmark tower and clock. */
 static bool finish_landmark_building(layout_t* layout,
                                      const city_building_t* building,
@@ -2380,6 +2441,8 @@ static bool finish_landmark_building(layout_t* layout,
                     &axis, &clock_height))
     return false;
   finish_building(layout, building, chunk, walls, roof);
+  if (landmark == LANDMARK_NONE && !add_doors(layout, building, chunk, NULL))
+    return false;
   if (landmark == LANDMARK_NONE) {
     roof_shape_t shape = roof_shape(building);
     if ((shape == ROOF_HIPPED || shape == ROOF_GABLED) &&

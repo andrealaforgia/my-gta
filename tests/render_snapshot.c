@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
     ray_t down = {vec3(cx, 300.0f, cz), vec3(0, -1, 0)};
     ray_cast_result_t hit;
     float y = 1.0f;
-    if (physics_ray_cast(stage.physics, down, 600.0f, COLLISION_LAYER_ALL,
+    if (physics_ray_cast(stage.physics, down, 600.0f, COLLISION_LAYER_GROUND,
                          &hit))
       y = hit.hit.point.y + 1.0f;
     vehicle_set_spawn(&stage.vehicle, vec3(cx, y, cz),
