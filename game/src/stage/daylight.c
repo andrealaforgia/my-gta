@@ -71,6 +71,7 @@ render_environment_t daylight_environment(float hour) {
   e.zenith_color = zenith;
   e.star_level = 1.0f - smooth(-0.15f, 0.05f, height);
   e.sun_disc = smooth(-0.08f, 0.02f, height);
+  e.moon_disc = 1.0f - smooth(-0.2f, -0.02f, height);
   e.spot_position = vec3(0, 0, 0);
   e.spot_direction = vec3(0, 0, -1);
   e.spot_intensity = 0;
@@ -108,6 +109,7 @@ void daylight_apply_weather(render_environment_t* e, float rain) {
   e->fog_end = e->fog_end * (1.0f - 0.65f * rain) + 60.0f * rain;
   e->star_level *= 1.0f - clamp01(rain * 2.0f);
   e->sun_disc *= 1.0f - clamp01(rain * 2.0f);
+  e->moon_disc *= 1.0f - clamp01(rain * 2.0f);
   e->shadow_radius *= 1.0f - 0.5f * rain;
   e->cloud_cover = e->cloud_cover + (1.0f - e->cloud_cover) * rain;
 }

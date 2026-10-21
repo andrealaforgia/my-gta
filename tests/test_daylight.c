@@ -14,6 +14,7 @@ static void noon_is_bright_with_the_sun_overhead(void) {
   assert(vec3_normalize(e.direction).y > 0.9f);
   assert(e.ambient > 0.25f);
   assert(e.star_level < 0.01f && e.sun_disc > 0.9f);
+  assert(e.moon_disc < 0.01f);
   assert(luminance(e.sky_color) > 0.5f);
   assert(daylight_lamp_glow(12.0f) < 0.01f);
 }
@@ -26,6 +27,8 @@ static void midnight_is_dark_with_stars_and_lit_lamps(void) {
   assert(luminance(e.zenith_color) < 0.06f);
   assert(daylight_lamp_glow(0.0f) > 0.9f);
   assert(e.sun_disc < 0.1f);
+  /* The moon is up where the sun was, and the sun is not. */
+  assert(e.moon_disc > 0.9f);
   /* The light still points down from above: the moon. */
   assert(vec3_normalize(e.direction).y > 0.3f);
 }
@@ -102,6 +105,7 @@ static void rain_greys_the_day_closes_the_fog_and_hides_the_stars(void) {
   assert(night.star_level > 0.9f);
   daylight_apply_weather(&night, 1.0f);
   assert(night.star_level < 0.05f);
+  assert(night.moon_disc < 0.05f);
   /* In between is in between. */
   render_environment_t half = clear;
   daylight_apply_weather(&half, 0.5f);

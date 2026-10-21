@@ -63,6 +63,7 @@ typedef struct {
   vec3_t zenith_color;
   float star_level;
   float sun_disc;
+  float moon_disc; /* 0..1: the moon, where the light points at night */
   /* One headlight cone for the player's car: position, the way it points,
    * and how strong; 0 is off. */
   vec3_t spot_position;

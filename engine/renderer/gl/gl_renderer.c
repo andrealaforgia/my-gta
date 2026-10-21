@@ -286,6 +286,7 @@ static const char* sky_fragment_source =
     "uniform vec3 u_sun_color;\n"
     "uniform float u_stars;\n"
     "uniform float u_sun_disc;\n"
+    "uniform float u_moon_disc;\n"
     "uniform float u_cloud_cover;\n"
     "uniform float u_cloud_time;\n"
     "uniform float u_cloud_light;\n"
@@ -324,6 +325,16 @@ static const char* sky_fragment_source =
     "0.25) * u_sun_disc;\n"
     "  color += u_sun_color * smoothstep(0.9995, 0.9999, along) * 6.0 * "
     "u_sun_disc;\n"
+    "  if (u_moon_disc > 0.0) {\n"
+    "    float m = dot(dir, sun);\n"
+    "    float edge = smoothstep(0.99978, 0.99984, m);\n"
+    "    vec2 face = (dir - sun * m).xz * 700.0;\n"
+    "    float maria = 0.55 + 0.45 * smoothstep(0.35, 0.7, fbm(face * 0.35));\n"
+    "    vec3 moon = vec3(0.95, 0.93, 0.85) * maria * 0.95;\n"
+    "    color += moon * edge * u_moon_disc;\n"
+    "    color += vec3(0.5, 0.58, 0.8) * pow(max(m, 0.0), 220.0) * 0.18 * "
+    "u_moon_disc;\n"
+    "  }\n"
     "  if (dir.y > 0.0 && u_stars > 0.0) {\n"
     "    vec3 scaled = dir * 260.0;\n"
     "    vec3 cell = floor(scaled);\n"
@@ -759,6 +770,8 @@ static void draw_sky(renderer_t* r) {
   glUniform1f(glGetUniformLocation(r->sky_program, "u_stars"), env->star_level);
   glUniform1f(glGetUniformLocation(r->sky_program, "u_sun_disc"),
               env->sun_disc);
+  glUniform1f(glGetUniformLocation(r->sky_program, "u_moon_disc"),
+              env->moon_disc);
   glUniform1f(glGetUniformLocation(r->sky_program, "u_cloud_cover"),
               env->cloud_cover);
   glUniform1f(glGetUniformLocation(r->sky_program, "u_cloud_time"),
