@@ -150,10 +150,11 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
 static void send_audio_state(driving_stage_t* stage) {
   if (!stage->audio) return;
   audio_device_set_state(stage->audio, driving_stage_audio_state(stage));
-  if (!stage->paused && !stage->map_open &&
-      stage->vehicle.impact_impulse > IMPACT_THRESHOLD)
-    audio_device_trigger_impact(stage->audio,
-                                stage->vehicle.impact_impulse / IMPACT_FULL);
+  /* The impact sound goes by how hard the hit was for this vehicle. */
+  float felt = stage->vehicle.impact_impulse /
+               fmaxf(stage->vehicle.params.mass / 1200.0f, 1.0f);
+  if (!stage->paused && !stage->map_open && felt > IMPACT_THRESHOLD)
+    audio_device_trigger_impact(stage->audio, felt / IMPACT_FULL);
 }
 
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,

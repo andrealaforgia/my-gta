@@ -510,7 +510,11 @@ void vehicle_update(vehicle_t* vehicle, physics_world_t* world,
   }
   /* A hard impact dents it; a scrape or a bump does not. Roughly a third of
    * a wreck for a crash at forty kilometres an hour into a wall. */
-  const float dent_floor = 1500.0f, dent_scale = 12000.0f;
+  /* Impulse grows with mass, so the thresholds are for a 1200 kg car and
+   * scale up for a lorry: the same crash dents it as much. */
+  const float mass_scale = fmaxf(p->mass / 1200.0f, 1.0f);
+  const float dent_floor = 1500.0f * mass_scale,
+              dent_scale = 12000.0f * mass_scale;
   if (vehicle->impact_impulse > dent_floor) {
     vehicle->damage += (vehicle->impact_impulse - dent_floor) / dent_scale;
     if (vehicle->damage > 1.0f) vehicle->damage = 1.0f;
