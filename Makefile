@@ -115,9 +115,13 @@ CITY_CONFIG ?= $(if $(wildcard assets/city/$(CITY).cfg),assets/city/$(CITY).cfg,
 # A lattice of elevations beside the extract (see scripts/fetch_elevation.py)
 # makes the city hilly: data/<city>.elevation.txt
 ELEVATION = $(wildcard $(basename $(EXTRACT)).elevation.txt)
+# Airborne laser grids (ESRI ASCII, UTM 33N) in data/lidar/<city>/: dtm*.asc
+# for the ground, dsm*.asc for the tops of buildings and trees.
+DTM = $(wildcard data/lidar/$(CITY)/dtm*.asc)
+DSM = $(wildcard data/lidar/$(CITY)/dsm*.asc)
 
 city: tools
-	./$(CITY_IMPORT) --input $(EXTRACT) --output data/intermediate/$(CITY) $(if $(ELEVATION),--elevation $(ELEVATION))
+	./$(CITY_IMPORT) --input $(EXTRACT) --output data/intermediate/$(CITY) $(if $(ELEVATION),--elevation $(ELEVATION)) $(foreach f,$(DTM),--dtm $(f)) $(foreach f,$(DSM),--dsm $(f))
 	./$(CITY_GENERATE) --input data/intermediate/$(CITY) --config $(CITY_CONFIG) --output assets_cooked/cities/$(CITY)
 	./$(CITY_VALIDATE) assets_cooked/cities/$(CITY)
 

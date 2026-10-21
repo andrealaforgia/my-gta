@@ -27,6 +27,7 @@ static const test_group_t groups[] = {
     {"daylight", run_daylight_tests},
     {"traffic", run_traffic_tests},
     {"textures", run_textures_tests},
+    {"lidar", run_lidar_tests},
 };
 
 int main(int argc, char* argv[]) {

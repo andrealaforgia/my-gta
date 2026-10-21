@@ -33,6 +33,7 @@ GROUPS = (
     "daylight",
     "traffic",
     "textures",
+    "lidar",
 )
 
 

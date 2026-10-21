@@ -126,3 +126,38 @@ falls 21 m from the north west to the river in the south east. Footways tagged `
 along a smooth ramp from each end to 0.25 m plus 4 cm per metre of its
 length (at most 4.5 m), with a parapet and a slab underneath. Bridges for cars
 stay at ground level.
+
+## Airborne laser heights (LiDAR)
+
+The 25 m elevation lattice makes the hills right and nothing else. The
+Regione Friuli Venezia Giulia publishes laser surveys (2017 to 2020) as
+terrain (DTM) and surface (DSM) models at 0.5 m, 20 cm accurate, as ASCII
+grids in RDN2008 / UTM zone 33N. `city-import` reads them:
+
+    city-import --input data/pordenone.osm --output data/intermediate/pordenone \
+      --dtm data/lidar/pordenone/dtm_1.asc [--dtm ...] \
+      --dsm data/lidar/pordenone/dsm_1.asc [--dsm ...]
+
+`make city` picks up `data/lidar/<name>/dtm*.asc` and `dsm*.asc` by itself.
+Only the part of a grid that covers the extract (plus 80 m) is read, so a
+tile of many square kilometres is fine.
+
+- The terrain model replaces the lattice: sampled every 3 m over the city and
+  a 40 m margin, relative to its lowest point, holes filled from their
+  neighbours. Because UTM north is not local north (about 1.6 degrees at
+  Pordenone) points go through latitude and longitude, not a rotation.
+- The surface model minus the terrain model gives building heights. Only
+  buildings with no `height` or `building:levels` tag are changed, using the
+  lower quartile of the heights inside the footprint, a metre and a half
+  from the walls, which is the eaves of a pitched roof and the roof of a
+  flat one. They are marked `HEIGHT_FROM_LIDAR` in the model.
+
+To get the grids: open the regional Eagle.fvg portal
+(`https://eaglefvg.regione.fvg.it/eagle/main.aspx?configuration=guest`), use
+"download cartographic bases", choose the LiDAR 2017 to 2020 DTM and DSM
+(last return) for the Pordenone tiles in ASCII grid format and save them as
+above. The catalogue entry (IRDAT dataset 11826) states no licence, and an
+older regional notice cites the Italian Open Data Licence v2.0, so confirm
+the terms in the current metadata and record them in
+`data/pordenone.PROVENANCE.md` before committing anything derived from them.
+`data/` is not committed: keep the grids out of the repository.

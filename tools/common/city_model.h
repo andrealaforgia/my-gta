@@ -53,6 +53,7 @@ typedef enum {
   HEIGHT_DEFAULT,         /* a deterministic guess, nothing better known */
   HEIGHT_FROM_CATEGORY,   /* houses and huts have typical heights */
   HEIGHT_FROM_NEIGHBOURS, /* the median of tagged buildings nearby */
+  HEIGHT_FROM_LIDAR,      /* surface model minus terrain model */
 } height_source_t;
 
 typedef struct {
