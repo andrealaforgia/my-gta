@@ -30,7 +30,7 @@ static void print_help(void) {
       "  --time=H                 start at hour H (0-24), default 10\n"
       "  --traffic=N              moving cars in the city (default 36, 0 for "
       "none)\n"
-      "  --pedestrians=N          people on the pavements (default 70)\n"
+      "  --pedestrians=N          people on the pavements (default 180)\n"
       "  --rain                   start in the rain (T toggles it)\n"
       "  --hour-seconds=S         real seconds per game hour, 0 freezes time\n"
       "  --debug                  start with the debug overlay on\n"
@@ -51,7 +51,7 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
   options->stage.start_hour = 10.0f;
   options->stage.hour_seconds = 30.0f;
   options->stage.traffic_cars = 36;
-  options->stage.pedestrians = 70;
+  options->stage.pedestrians = 180;
   options->stage.rain = 0.0f;
   for (int i = 1; i < argc; i++) {
     const char* argument = argv[i];

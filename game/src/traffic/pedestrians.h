@@ -3,8 +3,10 @@
  * @brief People walking the pavements. They follow both sides of every
  * road that has a pavement, and the middle of pedestrian streets and
  * paths, pick a way at each junction, turn back at dead ends, and stop
- * when the player's car is close. They are drawn as simple figures with
- * swinging arms and legs; they are not solid.
+ * when the player's car is close. Adults, children, elders and joggers
+ * differ in size and pace, some walk in pairs, and they are drawn as
+ * simple figures with swinging arms and legs, hair, skirts, bags and caps;
+ * they are not solid.
  */
 #ifndef GAME_SRC_TRAFFIC_PEDESTRIANS_H_
 #define GAME_SRC_TRAFFIC_PEDESTRIANS_H_
@@ -26,8 +28,20 @@ typedef struct {
   int route;
 } pedestrian_t;
 
+typedef enum {
+  PERSON_ADULT,
+  PERSON_CHILD, /* smaller, a little quicker */
+  PERSON_ELDER, /* slower, in a cap */
+  PERSON_JOGGER /* fast, arms pumping */
+} person_kind_t;
+
+/* What sort of person an outfit number makes, and how tall (1 is an adult). */
+person_kind_t pedestrian_kind(int outfit);
+float pedestrian_scale(int outfit);
+
 typedef struct {
-  mesh_handle_t torso, head, leg, arm;
+  mesh_handle_t torso, head, leg, arm, skirt, hair_short, hair_long, bag,
+      backpack, cap;
 } pedestrian_meshes_t;
 
 pedestrians_t* pedestrians_create(const city_route_t* routes,

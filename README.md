@@ -72,7 +72,7 @@ the triggers, A handbrake, Y reset, Start pause.
 
 Command line: `--time=H` starts the clock at hour H (default 10), `--hour-seconds=S`
 sets real seconds per game hour (default 30, 0 freezes it), `--traffic=N` and
-`--pedestrians=N` set how many cars and people there are (36 and 70), `--rain` starts in the rain.
+`--pedestrians=N` set how many cars and people there are (36 and 180), `--rain` starts in the rain.
 
 ## Layout
 

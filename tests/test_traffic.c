@@ -315,7 +315,7 @@ static void people_walk_on_the_pavements_at_a_walking_pace(void) {
         d = fmin(
             d, distance_to_line(routes[r].points, p.position.x, p.position.z));
       assert(d > 2.5 && d < 5.2);
-      assert(p.speed >= 0.0f && p.speed < 1.9f);
+      assert(p.speed >= 0.0f && p.speed < 3.3f);
       assert(p.position.y > 1.9f &&
              p.position.y < 2.1f); /* on the ground (at 2) */
     }
@@ -363,6 +363,47 @@ a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk(void) {
     pedestrians_step(people, near_by, 1.0f / 120.0f);
   pedestrian_t waiting = pedestrians_get(people, 0);
   assert(waiting.speed < 0.05f);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void people_come_in_sizes_and_paces_and_some_walk_in_pairs(void) {
+  /* Adults, children, elders and joggers all occur; children are smaller,
+   * elders slower than adults and joggers fastest. */
+  int count[4] = {0, 0, 0, 0};
+  float smallest_adult = 9, tallest_child = 0;
+  for (int outfit = 0; outfit < 1000; outfit++) {
+    person_kind_t kind = pedestrian_kind(outfit);
+    count[kind]++;
+    float s = pedestrian_scale(outfit);
+    assert(s > 0.55f && s < 1.12f);
+    if (kind == PERSON_CHILD) tallest_child = fmaxf(tallest_child, s);
+    if (kind == PERSON_ADULT) smallest_adult = fminf(smallest_adult, s);
+  }
+  assert(count[PERSON_ADULT] > 600 && count[PERSON_CHILD] > 60 &&
+         count[PERSON_ELDER] > 20 && count[PERSON_JOGGER] > 20);
+  assert(tallest_child < smallest_adult);
+  physics_world_t* world = ground_world();
+  city_route_t routes[3] = {route(west, 1, 2, 0), route(east, 2, 3, 0),
+                            route(south, 2, 4, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 3, world, 300, 5);
+  float slowest = 9, fastest = 0;
+  int pairs = 0;
+  for (size_t i = 0; i < pedestrians_count(people); i++) {
+    pedestrian_t a = pedestrians_get(people, i);
+    float v = a.speed;
+    person_kind_t kind = pedestrian_kind(a.outfit);
+    if (kind == PERSON_ELDER) slowest = fminf(slowest, v);
+    if (kind == PERSON_JOGGER) fastest = fmaxf(fastest, v);
+    if (i % 5 == 4) {
+      pedestrian_t mate = pedestrians_get(people, i - 1);
+      if (mate.route == a.route &&
+          vec3_distance(mate.position, a.position) < 1.0f)
+        pairs++;
+    }
+  }
+  assert(slowest < 1.15f && fastest > 2.3f);
+  assert(pairs > 20); /* most of the fifths walk beside the one before */
   pedestrians_destroy(people);
   physics_world_destroy(world);
 }
@@ -463,6 +504,7 @@ void run_traffic_tests(void) {
   RUN(people_walk_on_the_pavements_at_a_walking_pace);
   RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);
   RUN(a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk);
+  RUN(people_come_in_sizes_and_paces_and_some_walk_in_pairs);
   RUN(people_are_drawn_only_when_near);
   RUN(the_fleet_has_four_bodies_and_a_palette);
   RUN(the_road_carries_buses_lorries_and_the_emergency_services);
