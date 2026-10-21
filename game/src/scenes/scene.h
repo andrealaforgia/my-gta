@@ -28,7 +28,7 @@ typedef struct {
   size_t label_count;
   city_route_t* routes; /* owned: the roads as cars and people use them */
   size_t route_count;
-  float* signals; /* owned: x, z of traffic signals */
+  city_signal_t* signals; /* owned: the traffic signal heads */
   size_t signal_count;
   city_parking_t* parked; /* owned: places where cars stand at the kerb */
   size_t parked_count;

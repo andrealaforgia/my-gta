@@ -65,6 +65,15 @@ typedef struct {
   int variant; /* picks a colour and a body */
 } city_parking_t;
 
+/* A traffic signal head: where it stands, the way the traffic it controls
+ * is heading (a unit vector; 0, 0 for any), and which of the two phases it
+ * keeps: group 0 is green while group 1 is red, and the other way round. */
+typedef struct {
+  float x, z;
+  float heading_x, heading_z;
+  int group;
+} city_signal_t;
+
 typedef struct {
   char name[CITY_PACKAGE_TEXT];
   char source[256];
@@ -87,7 +96,7 @@ typedef struct {
   size_t route_count;
   city_parking_t* parked;
   size_t parked_count;
-  float* signals; /* x, z pairs of traffic signals */
+  city_signal_t* signals;
   size_t signal_count;
 } city_package_t;
 
@@ -95,7 +104,7 @@ city_package_t city_package_create(void);
 void city_package_free(city_package_t* package);
 /* Takes ownership of the route's points. */
 bool city_package_add_route(city_package_t* package, const city_route_t* route);
-bool city_package_add_signal(city_package_t* package, float x, float z);
+bool city_package_add_signal(city_package_t* package, city_signal_t signal);
 bool city_package_add_parking(city_package_t* package, city_parking_t spot);
 city_chunk_t* city_package_chunk(city_package_t* package, int column, int row);
 city_part_t* city_chunk_add_part(city_chunk_t* chunk, const char* material,

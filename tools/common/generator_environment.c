@@ -221,6 +221,61 @@ bool generate_crossings(layout_t* layout, const city_model_t* model,
   return true;
 }
 
+/* A traffic signal on a pole: the pole and head are solid, the three lenses
+ * are parts of their own that the game lights in turn. `along` is the way
+ * the head faces (both ways when `both_faces`); group 1 uses the second set
+ * of lens materials so the two phases light independently. */
+bool gen_add_signal_head(layout_t* layout, vec3_t c, vec2_t along,
+                         bool both_faces, int group, uint64_t source_id) {
+  local_point_t at = {c.x, c.z};
+  city_chunk_t* chunk = gen_chunk_at(layout, at);
+  static const char* names[2][3] = {
+      {"signal_red", "signal_amber", "signal_green"},
+      {"signal_r2", "signal_a2", "signal_g2"}};
+  const char* const* lens_names = names[group ? 1 : 0];
+  city_part_t* head =
+      city_chunk_add_part(chunk, "furniture", PART_COLLIDER_MESH,
+                          COLLISION_LAYER_PROP, 0.5f, source_id);
+  if (!head) return false;
+  for (int i = 0; i < 3; i++)
+    if (!city_chunk_add_part(chunk, lens_names[i], PART_COLLIDER_NONE, 0, 0,
+                             source_id))
+      return false;
+  size_t first = chunk->part_count - 4;
+  head = &chunk->parts[first];
+  city_part_t* lens[3] = {&chunk->parts[first + 1], &chunk->parts[first + 2],
+                          &chunk->parts[first + 3]};
+  if (!mesh_data_add_cylinder_y(&head->mesh, c, 0.06f, 3.4f, 6) ||
+      !add_oriented_box(&head->mesh, vec3_add(c, vec3(0, 3.1f, 0)),
+                        vec3(0.17f, 0.45f, 0.17f), along))
+    return false;
+  /* Three lenses on each face looking along the road. */
+  for (int face = both_faces ? -1 : 1; face <= 1; face += 2) {
+    vec3_t out =
+        vec3(face * (float)along.x * 0.19f, 0, face * (float)along.z * 0.19f);
+    vec3_t size = vec3(0.11f * (float)(fabs(along.z) + 0.2), 0.11f,
+                       0.11f * (float)(fabs(along.x) + 0.2));
+    const float heights[3] = {3.35f, 3.1f, 2.85f};
+    for (int i = 0; i < 3; i++)
+      if (!mesh_data_add_box(&lens[i]->mesh,
+                             vec3_add(vec3_add(c, vec3(0, heights[i], 0)), out),
+                             size))
+        return false;
+  }
+  gen_finish_part(chunk, lens[0]);
+  gen_finish_part(chunk, lens[1]);
+  gen_finish_part(chunk, lens[2]);
+  gen_finish_part(chunk, head);
+  return true;
+}
+
+bool gen_register_signal(layout_t* layout, local_point_t at, vec2_t heading,
+                         int group) {
+  city_signal_t signal = {(float)at.x, (float)at.z, (float)heading.x,
+                          (float)heading.z, group};
+  return city_package_add_signal(layout->package, signal);
+}
+
 bool generate_furniture(layout_t* layout, const city_model_t* model,
                         city_generator_stats_t* stats) {
   (void)stats;
@@ -230,6 +285,18 @@ bool generate_furniture(layout_t* layout, const city_model_t* model,
     if (kind == OSM_FURNITURE_CROSSING) continue; /* painted, not built */
     double road_distance;
     vec2_t along = nearest_road_direction(model, p, &road_distance);
+    if (kind == OSM_FURNITURE_SIGNALS) {
+      /* A mapped head on a road faces both ways along it. */
+      int group = fabs(along.x) >= fabs(along.z) ? 0 : 1;
+      if (!gen_add_signal_head(
+              layout,
+              vec3((float)p.x, layout->options->kerb_height, (float)p.z), along,
+              true, group, 0) ||
+          !gen_register_signal(layout, p, along, group) ||
+          !gen_register_signal(layout, p, gen_v2(-along.x, -along.z), group))
+        return false;
+      continue;
+    }
     city_chunk_t* chunk = gen_chunk_at(layout, p);
     city_part_t* part = city_chunk_add_part(
         chunk, "furniture", PART_COLLIDER_MESH, COLLISION_LAYER_PROP, 0.5f, 0);
@@ -258,46 +325,6 @@ bool generate_furniture(layout_t* layout, const city_model_t* model,
                                     0.04f, 2.5f, 6);
     } else if (kind == OSM_FURNITURE_BOLLARD) {
       ok = mesh_data_add_cylinder_y(&part->mesh, c, 0.1f, 0.85f, 8);
-    } else if (kind == OSM_FURNITURE_SIGNALS) {
-      ok = mesh_data_add_cylinder_y(&part->mesh, c, 0.06f, 3.4f, 6) &&
-           add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 3.1f, 0)),
-                            vec3(0.17f, 0.45f, 0.17f), along);
-      city_part_t* red = ok ? city_chunk_add_part(chunk, "signal_red",
-                                                  PART_COLLIDER_NONE, 0, 0, 0)
-                            : NULL;
-      city_part_t* amber =
-          red ? city_chunk_add_part(chunk, "signal_amber", PART_COLLIDER_NONE,
-                                    0, 0, 0)
-              : NULL;
-      city_part_t* green =
-          amber ? city_chunk_add_part(chunk, "signal_green", PART_COLLIDER_NONE,
-                                      0, 0, 0)
-                : NULL;
-      if (!green) return false;
-      red = &chunk->parts[chunk->part_count - 3];
-      amber = &chunk->parts[chunk->part_count - 2];
-      green = &chunk->parts[chunk->part_count - 1];
-      part = &chunk->parts[chunk->part_count - 4];
-      /* Three lenses on each of the two faces looking along the road. */
-      for (int face = -1; face <= 1; face += 2) {
-        vec3_t out = vec3(face * (float)along.x * 0.19f, 0,
-                          face * (float)along.z * 0.19f);
-        vec3_t lens = vec3(0.11f * (float)(fabs(along.z) + 0.2), 0.11f,
-                           0.11f * (float)(fabs(along.x) + 0.2));
-        if (!mesh_data_add_box(&red->mesh,
-                               vec3_add(vec3_add(c, vec3(0, 3.35f, 0)), out),
-                               lens) ||
-            !mesh_data_add_box(&amber->mesh,
-                               vec3_add(vec3_add(c, vec3(0, 3.1f, 0)), out),
-                               lens) ||
-            !mesh_data_add_box(&green->mesh,
-                               vec3_add(vec3_add(c, vec3(0, 2.85f, 0)), out),
-                               lens))
-          return false;
-      }
-      gen_finish_part(chunk, red);
-      gen_finish_part(chunk, amber);
-      gen_finish_part(chunk, green);
     }
     if (!ok) return false;
     gen_finish_part(chunk, part);

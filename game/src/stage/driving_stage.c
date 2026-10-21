@@ -161,7 +161,9 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
     skid_marks_wheel(&stage->skid_marks, i, wheel->contact_point,
                      wheel->grounded && wheel->skidding);
   }
+  stage->signal_clock += dt;
   if (stage->traffic) {
+    traffic_set_signal_time(stage->traffic, stage->signal_clock);
     const rigid_body_t* player =
         physics_body(stage->physics, stage->vehicle.body);
     traffic_step(stage->traffic, stage->physics, player->position,
@@ -196,10 +198,6 @@ void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
     else
       stage->rain = fmaxf(stage->rain_target, stage->rain - step);
     stage->rain_clock += (float)frame_seconds;
-    stage->signal_clock += (float)frame_seconds;
-    if (stage->traffic)
-      traffic_set_signals_go(stage->traffic,
-                             traffic_signals_open(stage->signal_clock));
   }
   if (!stage->paused && !stage->map_open && stage->hour_seconds > 0) {
     float before = stage->hour;
@@ -561,7 +559,8 @@ void driving_stage_render(driving_stage_t* stage) {
     if (strncmp(entity->label, "lamp_light", 10) == 0) {
       entity->material.emissive = 2.4f * night;
     } else if (strncmp(entity->label, "signal_", 7) == 0) {
-      float phase = fmodf(stage->signal_clock, 48.0f);
+      int group = entity->label[8] == '2' ? 1 : 0;
+      float phase = fmodf(stage->signal_clock + 24.0f * (float)group, 48.0f);
       bool red = phase < 24.0f,
            amber = (phase >= 21.0f && phase < 24.0f) || phase >= 45.0f,
            green = phase >= 24.0f && phase < 45.0f;

@@ -461,6 +461,36 @@ static void sliding_wheels_leave_marks_that_overwrite_the_oldest(void) {
   renderer_destroy(renderer);
 }
 
+static void a_signal_stops_only_the_traffic_it_faces_and_its_own_group(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[1] = {route(west, 1, 2, 1)}; /* one way, east */
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 3);
+  /* Time 0: group 0 is red, group 1 green. Three heads ahead of the car: one
+   * for southbound traffic, one for group 1, and one for any heading. */
+  city_signal_t crossing = {-40.0f, 0.0f, 0.0f, 1.0f, 0};
+  city_signal_t other_group = {-40.0f, 0.0f, 1.0f, 0.0f, 1};
+  traffic_set_signals(traffic, &crossing, 1);
+  traffic_set_signal_time(traffic, 0.0f);
+  traffic_car_place(traffic, 0, 0, 1, 10.0f);
+  for (int step = 0; step < 120 * 9; step++)
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+  assert(traffic_car(traffic, 0).position.x > -41.0f); /* drove straight on */
+  traffic_set_signals(traffic, &other_group, 1);
+  traffic_car_place(traffic, 0, 0, 1, 10.0f);
+  for (int step = 0; step < 120 * 9; step++)
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+  assert(traffic_car(traffic, 0).position.x > -41.0f);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -468,17 +498,18 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   assert(fleet_create(&fleet, renderer));
   city_route_t routes[1] = {route(west, 1, 2, 1)}; /* one way, east */
   traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 3);
-  float signal[2] = {-40.0f, 0.0f};
-  traffic_set_signals(traffic, signal, 1);
+  /* A head for eastbound traffic, in group 0: red at time 0. */
+  city_signal_t signal = {-40.0f, 0.0f, 1.0f, 0.0f, 0};
+  traffic_set_signals(traffic, &signal, 1);
   traffic_car_place(traffic, 0, 0, 1, 10.0f);
-  traffic_set_signals_go(traffic, false);
+  traffic_set_signal_time(traffic, 0.0f);
   for (int step = 0; step < 120 * 25; step++)
     traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
                  1.0f / 120.0f);
   traffic_car_t waiting = traffic_car(traffic, 0);
   assert(waiting.speed < 0.2f);
   assert(waiting.position.x > -52.0f && waiting.position.x < -44.0f);
-  traffic_set_signals_go(traffic, true);
+  traffic_set_signal_time(traffic, 30.0f);
   float furthest = -1e9f;
   for (int step = 0; step < 120 * 12; step++) {
     traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
@@ -492,6 +523,10 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   assert(traffic_signals_open(30.0f) && !traffic_signals_open(46.0f));
   assert(!traffic_signals_open(48.0f + 5.0f) &&
          traffic_signals_open(48.0f + 30.0f));
+  /* The crossing street's group is green while this one is red. */
+  assert(traffic_signal_open(5.0f, 1) && !traffic_signal_open(30.0f, 1));
+  for (float t = 0; t < 96.0f; t += 0.5f)
+    assert(!(traffic_signal_open(t, 0) && traffic_signal_open(t, 1)));
   traffic_destroy(traffic, world);
   fleet_destroy(&fleet, renderer);
   physics_world_destroy(world);
@@ -500,6 +535,7 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
 
 void run_traffic_tests(void) {
   RUN(cars_wait_at_a_red_signal_and_go_on_green);
+  RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);
   RUN(sliding_wheels_leave_marks_that_overwrite_the_oldest);
   RUN(people_walk_on_the_pavements_at_a_walking_pace);
   RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);

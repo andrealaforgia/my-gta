@@ -398,10 +398,6 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   }
   choose_spawn(package, model, options);
   choose_labels(package, model);
-  for (size_t f = 0; f < model->furniture_count; f++)
-    if (model->furniture[f].kind == OSM_FURNITURE_SIGNALS)
-      city_package_add_signal(package, (float)model->furniture[f].x,
-                              (float)model->furniture[f].z);
   /* The car starts on an empty road. */
   size_t kept = 0;
   for (size_t i = 0; i < package->parked_count; i++) {

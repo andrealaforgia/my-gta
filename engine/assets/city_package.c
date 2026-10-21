@@ -40,14 +40,12 @@ bool city_package_add_route(city_package_t* package,
   return true;
 }
 
-bool city_package_add_signal(city_package_t* package, float x, float z) {
-  float* grown = realloc(package->signals,
-                         (package->signal_count + 1) * 2 * sizeof(float));
+bool city_package_add_signal(city_package_t* package, city_signal_t signal) {
+  city_signal_t* grown = realloc(
+      package->signals, (package->signal_count + 1) * sizeof(city_signal_t));
   if (!grown) return false;
   package->signals = grown;
-  package->signals[2 * package->signal_count] = x;
-  package->signals[2 * package->signal_count + 1] = z;
-  package->signal_count++;
+  package->signals[package->signal_count++] = signal;
   return true;
 }
 
@@ -190,8 +188,9 @@ bool city_package_write(const city_package_t* package, const char* directory) {
               route->points[2 * k + 1]);
   }
   for (size_t i = 0; i < package->signal_count; i++)
-    fprintf(file, "signal %.3f %.3f\n", package->signals[2 * i],
-            package->signals[2 * i + 1]);
+    fprintf(file, "signal %.3f %.3f %.3f %.3f %d\n", package->signals[i].x,
+            package->signals[i].z, package->signals[i].heading_x,
+            package->signals[i].heading_z, package->signals[i].group);
   for (size_t i = 0; i < package->parked_count; i++)
     fprintf(file, "park %.3f %.3f %.4f %d\n", package->parked[i].x,
             package->parked[i].z, package->parked[i].yaw,
@@ -318,9 +317,11 @@ bool city_package_read(city_package_t* package, const char* directory) {
         if (!ok) free(route.points);
       }
     } else if (strncmp(line, "signal ", 7) == 0) {
-      float x, z;
-      ok = sscanf(line, "signal %f %f", &x, &z) == 2 &&
-           city_package_add_signal(package, x, z);
+      /* Older packages give only x and z: a signal for any heading. */
+      city_signal_t signal = {0, 0, 0, 0, 0};
+      ok = sscanf(line, "signal %f %f %f %f %d", &signal.x, &signal.z,
+                  &signal.heading_x, &signal.heading_z, &signal.group) >= 2 &&
+           city_package_add_signal(package, signal);
     } else if (strncmp(line, "park ", 5) == 0) {
       city_parking_t spot;
       ok = sscanf(line, "park %f %f %f %d", &spot.x, &spot.z, &spot.yaw,

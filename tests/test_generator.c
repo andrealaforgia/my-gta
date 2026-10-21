@@ -939,7 +939,10 @@ static void benches_bus_stops_bollards_and_signals_stand_where_mapped(void) {
   assert(part_for(&package, "signal_red", 0) != NULL);
   assert(part_for(&package, "signal_amber", 0) != NULL);
   assert(part_for(&package, "signal_green", 0) != NULL);
-  assert(package.signal_count == 1);
+  assert(package.signal_count == 2); /* one for each way along the road */
+  assert(package.signals[0].group == package.signals[1].group);
+  assert(near_to(package.signals[0].heading_x, -package.signals[1].heading_x,
+                 1e-3));
   city_package_free(&package);
   city_model_free(&model);
 }
@@ -987,6 +990,67 @@ static void walls_stand_where_mapped_but_never_across_a_street(void) {
   assert(north && south);
   assert(top > 1.5f && top < 2.5f);
   assert(mesh_data_bounds(&fence->mesh).max.y < top);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
+static city_package_t cross_of(const char* highway, city_model_t* model) {
+  char xml[2048];
+  snprintf(xml, sizeof(xml),
+           "<osm><bounds minlat=\"44.998\" minlon=\"11.998\" "
+           "maxlat=\"45.002\" maxlon=\"12.002\"/>"
+           "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+           "<node id=\"2\" lat=\"45.0000\" lon=\"12.0015\"/>"
+           "<node id=\"3\" lat=\"45.0000\" lon=\"11.9985\"/>"
+           "<node id=\"4\" lat=\"45.0010\" lon=\"12.0000\"/>"
+           "<node id=\"5\" lat=\"44.9990\" lon=\"12.0000\"/>"
+           "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+           "v=\"%s\"/></way>"
+           "<way id=\"11\"><nd ref=\"1\"/><nd ref=\"3\"/><tag k=\"highway\" "
+           "v=\"%s\"/></way>"
+           "<way id=\"12\"><nd ref=\"1\"/><nd ref=\"4\"/><tag k=\"highway\" "
+           "v=\"%s\"/></way>"
+           "<way id=\"13\"><nd ref=\"1\"/><nd ref=\"5\"/><tag k=\"highway\" "
+           "v=\"%s\"/></way></osm>",
+           highway, highway, highway, highway);
+  return generate_inline(xml, model);
+}
+
+static void busy_crossings_get_traffic_lights_in_two_phases(void) {
+  city_model_t model;
+  city_package_t package = cross_of("tertiary", &model);
+  /* One head at the entry of each of the four streets, east-west streets in
+   * group 0 and north-south in group 1, each governing traffic heading into
+   * the junction. */
+  assert(package.signal_count == 4);
+  int groups[2] = {0, 0};
+  for (size_t i = 0; i < package.signal_count; i++) {
+    const city_signal_t* signal = &package.signals[i];
+    groups[signal->group]++;
+    /* Heading points at the junction (the origin) from where it stands. */
+    float to_x = -signal->x, to_z = -signal->z;
+    float length = hypotf(to_x, to_z);
+    assert(length > 3.0f && length < 25.0f);
+    assert((to_x * signal->heading_x + to_z * signal->heading_z) / length >
+           0.6f);
+    assert(near_to(signal->heading_x * signal->heading_x +
+                       signal->heading_z * signal->heading_z,
+                   1.0, 1e-3));
+    /* A head on the east-west street governs east-west traffic. */
+    bool east_west = fabsf(signal->heading_x) > fabsf(signal->heading_z);
+    assert(signal->group == (east_west ? 0 : 1));
+  }
+  assert(groups[0] == 2 && groups[1] == 2);
+  /* Heads are built with lenses for both phases. */
+  assert(part_for(&package, "signal_red",
+                  (uint64_t)model.junctions[0].node_id) != NULL ||
+         part_for(&package, "signal_r2",
+                  (uint64_t)model.junctions[0].node_id) != NULL);
+  city_package_free(&package);
+  city_model_free(&model);
+  /* Quiet residential streets keep the stop signs and get no lights. */
+  package = cross_of("residential", &model);
+  assert(package.signal_count == 0);
   city_package_free(&package);
   city_model_free(&model);
 }
@@ -1253,6 +1317,12 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
           strcmp(part->material, "signal_red") == 0 ||
           strcmp(part->material, "signal_amber") == 0 ||
           strcmp(part->material, "signal_green") == 0 ||
+          strcmp(part->material, "signal_r2") == 0 ||
+          strcmp(part->material, "signal_a2") == 0 ||
+          strcmp(part->material, "signal_g2") == 0 ||
+          strcmp(part->material, "wall") == 0 ||
+          strcmp(part->material, "fence") == 0 ||
+          strcmp(part->material, "hedge") == 0 ||
           strcmp(part->material, "sign_red") == 0 ||
           strcmp(part->material, "sign_pole") == 0 ||
           strcmp(part->material, "lamp") == 0 ||
@@ -1375,6 +1445,7 @@ void run_generator_tests(void) {
   RUN(roads_have_manhole_covers_here_and_there);
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
   RUN(walls_stand_where_mapped_but_never_across_a_street);
+  RUN(busy_crossings_get_traffic_lights_in_two_phases);
   RUN(a_package_with_crossings_has_no_empty_parts);
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(pitched_roofs_sprout_chimneys_above_the_ridge);

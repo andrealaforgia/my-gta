@@ -340,6 +340,62 @@ static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
   return true;
 }
 
+/* Whether a junction gets traffic lights: where three or more streets of
+ * tertiary rank or better meet, or where a fourth street joins two of them.
+ * A main road with a side street keeps its stop sign; a junction with a
+ * mapped signal nearby keeps that instead. */
+static bool junction_is_signalised(const city_model_t* model,
+                                   const city_junction_t* junction,
+                                   const arm_source_t* sources,
+                                   size_t arm_count) {
+  if (arm_count < 3) return false;
+  int big = 0;
+  for (size_t a = 0; a < arm_count; a++) {
+    road_class_t c = model->roads[sources[a].road].class;
+    if (c == ROAD_CLASS_PEDESTRIAN) continue;
+    int rank = road_rank(c);
+    if (rank <= 3) big++;
+  }
+  if (!(big >= 3 || (arm_count >= 4 && big >= 2))) return false;
+  for (size_t f = 0; f < model->furniture_count; f++)
+    if (model->furniture[f].kind == OSM_FURNITURE_SIGNALS &&
+        hypot(model->furniture[f].x - junction->position.x,
+              model->furniture[f].z - junction->position.z) < 30.0)
+      return false;
+  return true;
+}
+
+/* A signal head on the pavement at the entry of each street, facing the
+ * traffic that comes in, in the phase group of its axis: streets running
+ * east-west keep group 0, north-south group 1, so crossing streets take
+ * turns. The traffic is told where each stands and which way it governs. */
+static bool generate_junction_signals(
+    layout_t* layout, const city_model_t* model,
+    const city_junction_t* junction, const junction_arm_t* arms,
+    const arm_source_t* sources, size_t arm_count,
+    const junction_layout_t* shape, const road_fit_t* fits) {
+  for (size_t a = 0; a < arm_count; a++) {
+    const city_road_t* road = &model->roads[sources[a].road];
+    if (road->class == ROAD_CLASS_PEDESTRIAN ||
+        polyline_length(road->points, road->point_count) < 12.0)
+      continue;
+    vec2_t d = {arms[a].direction.x, arms[a].direction.z};
+    vec2_t right = gen_v2(d.z, -d.x);
+    double half = fits[sources[a].road].half_width;
+    local_point_t foot =
+        gen_offset(gen_offset(junction->position, d, shape->cut[a] + 1.2),
+                   right, half + 0.8);
+    int group = fabs(d.x) >= fabs(d.z) ? 0 : 1;
+    if (!gen_add_signal_head(
+            layout,
+            vec3((float)foot.x, layout->options->kerb_height, (float)foot.z), d,
+            false, group, (uint64_t)junction->node_id) ||
+        !gen_register_signal(layout, foot, gen_v2(-d.x, -d.z), group))
+      return false;
+  }
+  return true;
+}
+
 static bool generate_markings(layout_t* layout, const city_model_t* model,
                               const city_junction_t* junction,
                               const junction_arm_t* arms,
@@ -383,6 +439,9 @@ static bool generate_markings(layout_t* layout, const city_model_t* model,
   } else {
     gen_finish_part(chunk, part);
   }
+  if (junction_is_signalised(model, junction, sources, arm_count))
+    return generate_junction_signals(layout, model, junction, arms, sources,
+                                     arm_count, shape, fits);
   return generate_stop_signs(layout, model, junction, arms, sources, arm_count,
                              shape, fits);
 }
