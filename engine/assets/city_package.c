@@ -207,6 +207,7 @@ bool city_package_write(const city_package_t* package, const char* directory) {
             route->oneway, route->width, route->pavement,
             (long long)route->start_node, (long long)route->end_node,
             route->point_count);
+    if (route->name[0]) fprintf(file, "rn %s\n", route->name);
     for (size_t k = 0; k < route->point_count; k++)
       fprintf(file, "rp %.3f %.3f\n", route->points[2 * k],
               route->points[2 * k + 1]);
@@ -339,9 +340,14 @@ bool city_package_read(city_package_t* package, const char* directory) {
         ok = route.points != NULL;
         for (unsigned long k = 0; ok && k < count; k++) {
           char point_line[128];
-          ok = fgets(point_line, sizeof(point_line), file) &&
-               sscanf(point_line, "rp %f %f", &route.points[2 * k],
-                      &route.points[2 * k + 1]) == 2;
+          ok = fgets(point_line, sizeof(point_line), file) != NULL;
+          /* An optional name line comes first. */
+          if (ok && strncmp(point_line, "rn ", 3) == 0) {
+            sscanf(point_line, "rn %47s", route.name);
+            ok = fgets(point_line, sizeof(point_line), file) != NULL;
+          }
+          ok = ok && sscanf(point_line, "rp %f %f", &route.points[2 * k],
+                            &route.points[2 * k + 1]) == 2;
         }
         if (ok) ok = city_package_add_route(package, &route);
         if (!ok) free(route.points);

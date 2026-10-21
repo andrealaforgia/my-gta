@@ -13,6 +13,7 @@
 #include "driving_stage.h"
 #include "osm_reader.h"
 #include "poles.h"
+#include "street_name.h"
 #include "test_groups.h"
 #include "test_support.h"
 
@@ -235,6 +236,42 @@ static void a_big_city_is_streamed_in_and_out_around_the_car(void) {
   assert(loaded_chunks(scene) == chunks);
   assert(world_count(&run.stage.world) == everything);
   assert(physics_collider_count(run.stage.physics) == all_colliders);
+  stop(&run);
+}
+
+static void the_street_under_the_car_is_named_on_the_screen(void) {
+  city_run_t run;
+  start(&run);
+  scene_t* scene = &run.stage.scene;
+  /* The first named street in the package: on its middle the name comes
+   * out in capitals with spaces; far from every street there is none. */
+  const city_route_t* named = NULL;
+  for (size_t r = 0; r < scene->route_count && !named; r++)
+    if (scene->routes[r].name[0]) named = &scene->routes[r];
+  assert(named);
+  float x = (named->points[0] + named->points[2]) * 0.5f;
+  float z = (named->points[1] + named->points[3]) * 0.5f;
+  char name[48];
+  assert(street_name_at(scene->routes, scene->route_count, x, z, name,
+                        sizeof(name)));
+  assert(strlen(name) > 2 && strchr(name, '_') == NULL);
+  for (const char* c = name; *c; c++)
+    assert(*c == ' ' || !(*c >= 'a' && *c <= 'z'));
+  assert(!street_name_at(scene->routes, scene->route_count, 9000.0f, 9000.0f,
+                         name, sizeof(name)));
+  assert(name[0] == '\0');
+  /* The stage keeps it up to date as the car moves. */
+  physics_body_teleport(run.stage.physics, run.stage.vehicle.body,
+                        vec3(x, 1.0f, z), quat_identity());
+  driving_input_t coast = {0, 0, 0, false};
+  for (int i = 0; i < 120; i++)
+    driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
+  assert(run.stage.street[0] != '\0');
+  physics_body_teleport(run.stage.physics, run.stage.vehicle.body,
+                        vec3(9000.0f, 50.0f, 9000.0f), quat_identity());
+  for (int i = 0; i < 120; i++)
+    driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
+  assert(run.stage.street[0] == '\0');
   stop(&run);
 }
 
@@ -616,6 +653,7 @@ void run_citydrive_tests(void) {
   RUN(buildings_stop_the_car);
   RUN(a_hard_crash_jolts_the_view_and_it_settles);
   RUN(a_big_city_is_streamed_in_and_out_around_the_car);
+  RUN(the_street_under_the_car_is_named_on_the_screen);
   RUN(the_tyres_stay_quiet_on_an_ordinary_drive);
   RUN(the_car_follows_the_hills);
   RUN(the_town_sounds_follow_the_time_of_day);

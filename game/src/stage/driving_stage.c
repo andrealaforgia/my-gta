@@ -8,6 +8,7 @@
 #include "daylight.h"
 #include "log.h"
 #include "poles.h"
+#include "street_name.h"
 
 #define PHYSICS_STEP (1.0 / 120.0)
 #define MAX_CATCH_UP 0.25
@@ -207,6 +208,14 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
              after.z + (velocity_before.z - after.z) * 0.6f);
   }
   poles_step(&stage->scene, &stage->world, dt);
+  /* The name of the street under the car, looked up four times a second. */
+  stage->street_clock += dt;
+  if (stage->street_clock >= 0.25f && stage->scene.route_count > 0) {
+    stage->street_clock = 0;
+    vec3_t at = physics_body(stage->physics, stage->vehicle.body)->position;
+    street_name_at(stage->scene.routes, stage->scene.route_count, at.x, at.z,
+                   stage->street, sizeof(stage->street));
+  }
   /* A big city is streamed: what is near the car is in the world. */
   scene_stream(&stage->scene,
                physics_body(stage->physics, stage->vehicle.body)->position, 1);
@@ -387,6 +396,27 @@ static void draw_map(driving_stage_t* stage) {
                             2 * scale, white);
   renderer_draw_text(r, left + 8 * scale, top + side - 26 * scale, scale, white,
                      "100 M");
+}
+
+/* The name of the street the car is on, at the top in the middle on a dark
+ * plate, so it is easy to read against anything. */
+static void draw_street_name(driving_stage_t* stage) {
+  if (stage->street[0] == '\0') return;
+  renderer_t* r = stage->renderer;
+  float scale = (float)stage->window->drawable_width / 640.0f;
+  if (scale < 2) scale = 2;
+  float text_scale = scale * 1.5f;
+  float width = (float)strlen(stage->street) * 6.0f * text_scale;
+  float x = ((float)stage->window->drawable_width - width) * 0.5f;
+  float y = 10.0f * scale;
+  texture_handle_t none = {0};
+  renderer_draw_screen_image(r, none, x - 6 * scale, y - 4 * scale,
+                             width + 12 * scale, 7 * text_scale + 8 * scale,
+                             vec3(0.04f, 0.05f, 0.07f), 0.7f);
+  renderer_draw_text(r, x + text_scale * 0.4f, y + text_scale * 0.4f,
+                     text_scale, vec3(0, 0, 0), stage->street);
+  renderer_draw_text(r, x, y, text_scale, vec3(1.0f, 0.97f, 0.85f),
+                     stage->street);
 }
 
 /* A small north-up window on the map at the top right, with the car at its
@@ -682,6 +712,7 @@ void driving_stage_render(driving_stage_t* stage) {
   } else {
     draw_hud(stage);
     draw_minimap(stage);
+    draw_street_name(stage);
   }
   renderer_end_frame(r);
 }

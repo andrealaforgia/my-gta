@@ -16,9 +16,9 @@
 #include "triangulate.h"
 
 city_generator_options_t city_generator_default_options(void) {
-  city_generator_options_t o = {150.0f, 0.06f, true,  2.0f,  0.18f, 8.0f,
-                                3.0f,   3.2f,  12,    0.25f, 1.0f,  0.9f,
-                                0.7f,   0.6f,  28.0f, 14.0f, {0},   0.0,   0.0};
+  city_generator_options_t o = {150.0f, 0.06f, true,  2.0f, 0.18f, 8.0f, 3.0f,
+                                3.2f,   12,    0.25f, 1.0f, 0.9f,  0.7f, 0.6f,
+                                28.0f,  14.0f, {0},   0.0,  0.0};
   return o;
 }
 
@@ -78,13 +78,12 @@ uint64_t city_generator_options_hash(const city_generator_options_t* o) {
   char text[512];
   snprintf(text, sizeof(text),
            "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g %g %s %g %g",
-           o->chunk_size,
-           o->road_height, o->pavements, o->pavement_width, o->kerb_height,
-           o->road_texture_length, o->window_width, o->storey_height,
-           o->facade_variants, o->ground_uv_scale, o->road_friction,
-           o->pavement_friction, o->ground_friction, o->building_friction,
-           o->lamp_spacing, o->tree_spacing, o->arcade_streets,
-           o->spawn_latitude, o->spawn_longitude);
+           o->chunk_size, o->road_height, o->pavements, o->pavement_width,
+           o->kerb_height, o->road_texture_length, o->window_width,
+           o->storey_height, o->facade_variants, o->ground_uv_scale,
+           o->road_friction, o->pavement_friction, o->ground_friction,
+           o->building_friction, o->lamp_spacing, o->tree_spacing,
+           o->arcade_streets, o->spawn_latitude, o->spawn_longitude);
   uint64_t hash = 1469598103934665603ull;
   for (const char* c = text; *c; c++)
     hash = (hash ^ (uint8_t)*c) * 1099511628211ull;
@@ -150,9 +149,8 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
   local_point_t a = best->points[longest - 1], b = best->points[longest];
   local_point_t first = best->points[0],
                 last = best->points[best->point_count - 1];
-  bool towards_last =
-      hypot(last.x - centre.x, last.z - centre.z) <=
-      hypot(first.x - centre.x, first.z - centre.z);
+  bool towards_last = hypot(last.x - centre.x, last.z - centre.z) <=
+                      hypot(first.x - centre.x, first.z - centre.z);
   vec2_t direction = towards_last ? gen_v2_normalize(gen_v2_sub(b, a))
                                   : gen_v2_normalize(gen_v2_sub(a, b));
   package->spawn_position =
@@ -241,6 +239,7 @@ static bool add_route_and_parking(city_package_t* package,
   if (route.start_node == 0) route.start_node = 1;
   if (route.end_node == 0) route.end_node = 1;
   route.point_count = road->point_count;
+  snprintf(route.name, sizeof(route.name), "%s", road->name);
   route.points = malloc(road->point_count * 2 * sizeof(float));
   if (!route.points) return false;
   for (size_t i = 0; i < road->point_count; i++) {

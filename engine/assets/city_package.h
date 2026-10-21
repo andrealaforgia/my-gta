@@ -57,6 +57,7 @@ typedef struct {
   int64_t start_node, end_node; /* the junctions it joins, OpenStreetMap ids */
   float* points;                /* x, z pairs */
   size_t point_count;
+  char name[48]; /* the street's name, spaces as underscores; empty if none */
 } city_route_t;
 
 /* A place at the kerb where a car stands, and which way it faces. */

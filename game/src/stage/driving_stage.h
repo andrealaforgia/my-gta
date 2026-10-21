@@ -57,7 +57,9 @@ typedef struct {
   float rain; /* 0..1, eased towards rain_target */
   float rain_target;
   float rain_clock;   /* animates the falling drops */
-  float shake; /* 0..1: the view jolts after a hard impact and settles */
+  char street[48];    /* the street under the car, for the screen */
+  float street_clock; /* seconds since it was last looked up */
+  float shake;        /* 0..1: the view jolts after a hard impact and settles */
   float signal_clock; /* seconds on the traffic signals' cycle */
   float hour;         /* time of day, 0..24 */
   float hour_seconds;
