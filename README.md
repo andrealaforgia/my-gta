@@ -58,7 +58,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | R | reset to the spawn |
 | C | change view: chase, bonnet, cockpit |
 | H | horn (hold) |
-| V | swap to the next car: hatchback, saloon, van, city car |
+| V | swap to the next vehicle: four cars, police car, ambulance, fire engine, bus and six lorries |
 | M | the city map over a paused game, with street names and your position |
 | P | pause |
 | T | rain on or off |
@@ -97,9 +97,9 @@ XML to a validated cooked package, and driving through the generated city:
 real streets with stop lines, zebra crossings, stop signs and manhole covers,
 hills from an elevation model, a day that runs from dawn to night with lit
 windows and street lamps, parked and moving cars that follow the roads and
-give way, people walking the pavements, shop fronts, porticoes with arches and
+give way (buses, lorries, police cars, ambulances and fire engines with sirens among them), people walking the pavements and crossing at zebras, lamp posts, signals and signs that fall when hit, shop fronts, porticoes with arches and
 painted facades along the Corso, a brick town hall with a clock tower,
-campanili, parks, water and trees, benches, bus stops, traffic signals that cars
+campanili, parks, water and trees, benches, bus stops, traffic lights at busy junctions that cars
 obey, a minimap in the corner, rain with wet roads, and the church bell on the hour.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
