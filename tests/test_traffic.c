@@ -592,6 +592,34 @@ static void some_emergency_vehicles_are_on_a_call_and_can_be_heard(void) {
   renderer_destroy(renderer);
 }
 
+static void a_car_signals_before_it_turns_and_stops_once_round(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  /* East along the west road to the junction, then the only way on is the
+   * south road: a turn to the right (z is south). */
+  city_route_t routes[2] = {route(west, 1, 2, 1), route(south, 2, 4, 1)};
+  traffic_t* traffic = traffic_create(routes, 2, world, &fleet, 1, 3);
+  traffic_car_place(traffic, 0, 0, 1, 40.0f);
+  traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(), 1.0f / 120.0f);
+  assert(traffic_car(traffic, 0).indicator == 0); /* far from the corner */
+  bool signalled = false, still_signalling_after = false;
+  for (int step = 0; step < 120 * 14; step++) {
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    traffic_car_t car = traffic_car(traffic, 0);
+    if (car.route == 0 && car.indicator == 1) signalled = true;
+    if (car.route == 1 && car.position.z > 12.0f && car.indicator != 0)
+      still_signalling_after = true;
+  }
+  assert(signalled && !still_signalling_after);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -636,6 +664,7 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
 
 void run_traffic_tests(void) {
   RUN(cars_wait_at_a_red_signal_and_go_on_green);
+  RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);
   RUN(sliding_wheels_leave_marks_that_overwrite_the_oldest);

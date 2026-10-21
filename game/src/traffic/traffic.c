@@ -19,7 +19,10 @@ typedef struct {
   int paint;
   float wheel_turn;
   bool braking;
-  bool responding; /* an emergency vehicle on a call */
+  bool responding;   /* an emergency vehicle on a call */
+  int planned_route; /* where it will go at the end of this lane, or -1 */
+  int planned_direction;
+  int indicator; /* -1 turning left, +1 right, 0 straight on */
   vec3_t position;
   float yaw;
   collider_handle_t collider;
@@ -138,6 +141,7 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
     car->s = 6.0f +
              pick * (t->lanes[chosen].length - 12.0f) / t->lanes[chosen].length;
     car->speed = 0;
+    car->planned_route = -1;
     int style = (int)(next_random(t) % 1000);
     car->variant = fleet_traffic_variant_for(style);
     car->paint = (int)(next_random(t) % 1000);
@@ -191,9 +195,9 @@ size_t traffic_car_count(const traffic_t* t) { return t->car_count; }
 
 traffic_car_t traffic_car(const traffic_t* t, size_t index) {
   const car_t* car = &t->cars[index];
-  traffic_car_t out = {car->position, car->yaw,       car->speed,
-                       car->route,    car->variant,   car->paint,
-                       car->braking,  car->wheel_turn};
+  traffic_car_t out = {car->position, car->yaw,        car->speed,
+                       car->route,    car->variant,    car->paint,
+                       car->braking,  car->wheel_turn, car->indicator};
   return out;
 }
 
@@ -204,15 +208,18 @@ void traffic_car_place(traffic_t* t, size_t index, int route, int direction,
   car->direction = direction;
   car->s = distance;
   car->speed = 0;
+  car->planned_route = -1;
+  car->indicator = 0;
   pose(t, car);
 }
 
-/* After a lane's end: choose where to go. Sets route, direction and s. */
-static void choose_next(traffic_t* t, car_t* car) {
+/* Where a car at the end of its lane could go next: the lanes that start or
+ * end at the same junction. Returns how many, in candidates. */
+static int next_candidates(const traffic_t* t, const car_t* car,
+                           int candidates[16][2]) {
   const lane_t* here = &t->lanes[car->route];
   int64_t node =
       car->direction > 0 ? here->route->end_node : here->route->start_node;
-  int candidates[16][2];
   int count = 0;
   for (size_t r = 0; r < t->lane_count && count < 16; r++) {
     const city_route_t* route = t->lanes[r].route;
@@ -224,22 +231,47 @@ static void choose_next(traffic_t* t, car_t* car) {
       candidates[count][0] = (int)r, candidates[count][1] = -1, count++;
     }
   }
+  return count;
+}
+
+/* Settles where the car goes at the end of its lane, and which way it
+ * signals: -1 left, +1 right, 0 straight on or no choice. */
+static void plan_next(traffic_t* t, car_t* car) {
+  int candidates[16][2];
+  int count = next_candidates(t, car, candidates);
+  car->indicator = 0;
   if (count == 0) {
-    /* A dead end: turn round if the road allows it, else go back to the
-     * start of the one-way. */
-    if (!here->route->oneway) {
-      car->direction = -car->direction;
-    } else {
-      car->s = 0;
-      return;
-    }
-    car->s = 0;
-    car->speed *= 0.3f;
+    car->planned_route = -1;
     return;
   }
   int pick = (int)(next_random(t) % (uint32_t)count);
-  car->route = candidates[pick][0];
-  car->direction = candidates[pick][1];
+  car->planned_route = candidates[pick][0];
+  car->planned_direction = candidates[pick][1];
+  const lane_t* here = &t->lanes[car->route];
+  const lane_t* there = &t->lanes[car->planned_route];
+  float x, z, dx, dz, g, x2, z2, dx2, dz2;
+  sample(here, here->length, car->direction, &x, &z, &dx, &dz, &g);
+  sample(there, 0, car->planned_direction, &x2, &z2, &dx2, &dz2, &g);
+  float turn = dx * dz2 - dz * dx2; /* positive: to the right (z is south) */
+  car->indicator = turn > 0.35f ? 1 : (turn < -0.35f ? -1 : 0);
+}
+
+/* After a lane's end: go where planned, or turn round at a dead end. */
+static void choose_next(traffic_t* t, car_t* car) {
+  const lane_t* here = &t->lanes[car->route];
+  if (car->planned_route < 0) plan_next(t, car);
+  if (car->planned_route < 0) {
+    /* A dead end: turn round if the road allows it, else go back to the
+     * start of the one-way. */
+    if (!here->route->oneway) car->direction = -car->direction;
+    car->s = 0;
+    if (!here->route->oneway) car->speed *= 0.3f;
+    return;
+  }
+  car->route = car->planned_route;
+  car->direction = car->planned_direction;
+  car->planned_route = -1;
+  car->indicator = 0;
   car->s = 0;
 }
 
@@ -269,6 +301,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
                             ? 1.2f
                             : (own_half_length > 3.0f ? 0.85f : 1.0f));
     float to_end = lane->length - car->s;
+    if (to_end < 30.0f && car->planned_route < 0) plan_next(t, car);
     if (to_end < 14.0f) target = fminf(target, 4.5f + to_end * 0.2f);
     target = fminf(target, curve_speed(lane, car->s, car->direction));
     /* The way ahead: a point a few metres in front of the nose. */
@@ -436,7 +469,8 @@ int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
         transform_at(car->position, quat_from_yaw(car->yaw)),
         fleet_paint(car->paint), lights_on, car->braking ? 1.0f : 0.0f,
         car->wheel_turn,
-        car->responding ? t->ground_clock + 0.37f * (float)i : -1.0f);
+        car->responding ? t->ground_clock + 0.37f * (float)i : -1.0f,
+        car->indicator, t->ground_clock);
     drawn++;
   }
   return drawn;

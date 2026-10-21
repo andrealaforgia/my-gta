@@ -50,7 +50,7 @@ int parked_cars_draw(const parked_cars_t* parked, const fleet_t* fleet,
     car_visual_draw_still(&fleet->visuals[car->variant], renderer,
                           transform_at(car->position, quat_from_yaw(car->yaw)),
                           fleet_paint(car->paint), lights_on * 0.0f, 0.0f, 0.0f,
-                          0.0f);
+                          0.0f, 0, 0.0f);
     drawn++;
   }
   return drawn;

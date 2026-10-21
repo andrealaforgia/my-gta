@@ -41,6 +41,8 @@ typedef struct {
   vec3_t extra_wheel_centres[4];
   int extra_wheel_count;
   bool emergency; /* has beacons: police, ambulance, fire engine */
+  mesh_handle_t indicator_left, indicator_right; /* amber corner lamps */
+  material_t indicator_material;
 } car_visual_t;
 
 car_visual_t car_visual_create(renderer_t* renderer,
@@ -56,7 +58,9 @@ void car_visual_draw(
  * brightly). Used for parked and passing cars. */
 void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, vec3_t paint, float lights_on,
-                           float brake, float wheel_turn, float clock);
+                           float brake, float wheel_turn, float clock,
+                           int indicator /* -1 left, +1 right */,
+                           float blink_clock);
 
 /* The driver's view of the inside: a dashboard across the base of the
  * windscreen and a steering wheel turned by `wheel_angle` radians. */

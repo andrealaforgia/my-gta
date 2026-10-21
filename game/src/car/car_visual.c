@@ -240,6 +240,21 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.lights = upload_optional(renderer, &lights_mesh);
   visual.rear_lights = upload_optional(renderer, &rear_mesh);
   visual.trim = upload_optional(renderer, &trim_mesh);
+  /* Amber lamps at the four corners, flashed by a vehicle that turns. */
+  {
+    mesh_data_t left = mesh_data_create(), right = mesh_data_create();
+    bool boxy = style != BODY_CAR && style != BODY_POLICE;
+    float y = boxy ? -h.y * 0.667f + 0.55f : -h.y * 0.55f + 0.5f * h.y;
+    for (int end = -1; end <= 1; end += 2)
+      for (int side = -1; side <= 1; side += 2) {
+        mesh_data_t* target = side < 0 ? &left : &right;
+        mesh_data_add_box(target, vec3(side * w * 0.9f, y, end * (L + 0.01f)),
+                          vec3(0.1f, 0.06f, 0.03f));
+      }
+    visual.indicator_left = upload_optional(renderer, &left);
+    visual.indicator_right = upload_optional(renderer, &right);
+    visual.indicator_material = material_rough(vec3(1.0f, 0.6f, 0.05f), 0.4f);
+  }
   visual.style = style;
   visual.own_paint = build.own_paint;
   visual.own_colour = build.paint;
@@ -345,7 +360,8 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
 
 void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, vec3_t paint, float lights_on,
-                           float brake, float wheel_turn, float clock) {
+                           float brake, float wheel_turn, float clock,
+                           int indicator, float blink_clock) {
   mat4_t model = transform_to_matrix(chassis);
   material_t body = visual->paint;
   body.base_color = visual->own_paint ? visual->own_colour : paint;
@@ -354,6 +370,14 @@ void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
   material_t tail_lights = visual->rear_light_material;
   tail_lights.emissive = 0.1f + 0.9f * lights_on + 1.2f * brake;
   draw_body(visual, renderer, model, body, headlights, tail_lights, clock);
+  if (indicator != 0) {
+    material_t amber = visual->indicator_material;
+    amber.emissive = fmodf(blink_clock * 1.6f, 1.0f) < 0.5f ? 2.5f : 0.1f;
+    draw_optional(
+        renderer,
+        indicator < 0 ? visual->indicator_left : visual->indicator_right, amber,
+        model);
+  }
   quat_t spin = quat_from_axis_angle(vec3(1, 0, 0), -wheel_turn);
   for (int i = 0; i < 4 + visual->extra_wheel_count; i++) {
     transform_t wheel = transform_identity();

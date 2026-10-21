@@ -26,6 +26,7 @@ typedef struct {
   int paint;
   bool braking;
   float wheel_turn;
+  int indicator; /* -1 signalling left, +1 right, 0 none */
 } traffic_car_t;
 
 /* Routes are borrowed: they must outlive the traffic. Puts `car_count` cars
