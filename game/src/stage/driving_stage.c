@@ -200,6 +200,12 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
              after.z + (velocity_before.z - after.z) * 0.6f);
   }
   poles_step(&stage->scene, &stage->world, dt);
+  /* A hard hit jolts the view, scaled to the vehicle as the sound is. */
+  stage->shake = fmaxf(stage->shake - 2.5f * dt, 0.0f);
+  float felt = stage->vehicle.impact_impulse /
+               fmaxf(stage->vehicle.params.mass / 1200.0f, 1.0f);
+  if (felt > IMPACT_THRESHOLD)
+    stage->shake = fmaxf(stage->shake, fminf(felt / IMPACT_FULL, 1.0f));
   stage->simulated_seconds += dt;
 }
 
@@ -534,7 +540,28 @@ float driving_stage_wheel_angle(const driving_stage_t* stage) {
   return stage->vehicle.steering * 3.0f * (float)M_PI * 0.5f;
 }
 
+/* A hard impact jolts the view: a quick tremor that dies away. */
+static render_camera_t shaken(render_camera_t view, float shake, float time) {
+  if (shake < 0.01f) return view;
+  float amount = shake * shake * 0.35f;
+  vec3_t jolt = vec3(sinf(time * 53.0f), sinf(time * 67.0f + 1.0f),
+                     sinf(time * 59.0f + 2.0f));
+  jolt = vec3_scale(jolt, amount);
+  view.eye = vec3_add(view.eye, jolt);
+  view.target = vec3_add(view.target, vec3_scale(jolt, 0.5f));
+  return view;
+}
+
+static render_camera_t driving_stage_camera_steady(
+    const driving_stage_t* stage);
+
 render_camera_t driving_stage_camera(const driving_stage_t* stage) {
+  return shaken(driving_stage_camera_steady(stage), stage->shake,
+                stage->rain_clock);
+}
+
+static render_camera_t driving_stage_camera_steady(
+    const driving_stage_t* stage) {
   if (stage->view_mode == 0) {
     /* The world rushes past: the view opens up a little with speed. */
     render_camera_t view = chase_camera_render(&stage->camera);

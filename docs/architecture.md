@@ -67,7 +67,8 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
   kinematic cars (box colliders moved each step) on `route_path` lanes with
   right-hand lanes, junction right of way and stopping for the player,
   `pedestrians` walks the pavements (adults, children, elders and joggers,
-  some in pairs). The fleet is fourteen vehicles built from vehicle cfg
+  some in pairs, and some crossing at zebra crossings, where cars stop for
+  them). The fleet is fourteen vehicles built from vehicle cfg
   files: four cars for parked and moving traffic, then police, ambulance,
   fire engine, bus and six lorries for moving traffic only. A cfg's `body`
   key picks the shape (`game/src/car/vehicle_bodies.c`); the player can
@@ -84,6 +85,11 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
   entities and a collider of their own. `poles.c` topples one when the car
   hits it above 2.5 m/s: collider gone, the meshes turn about the foot, the
   light goes dark and a signal stops governing traffic.
+- **Sirens**: police, ambulance and fire engine variants are flagged
+  `emergency`; about six in ten of those in traffic are on a call, with
+  flashing beacons, a little more speed and a two-tone siren the mixer
+  swells as the nearest one comes within 150 m. A hard crash jolts the view
+  (`shake`), scaled by vehicle mass like the impact sound and the damage.
 - **Audio** adds the town (rumble, birds, crickets, cars close by) and a
   church bell on the hour; paused and map screens are silent.
 - **Camera views** and a car swap live in the stage; the map is a picture

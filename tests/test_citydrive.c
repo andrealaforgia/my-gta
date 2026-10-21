@@ -153,6 +153,35 @@ static void buildings_stop_the_car(void) {
   stop(&run);
 }
 
+static void a_hard_crash_jolts_the_view_and_it_settles(void) {
+  city_run_t run;
+  start(&run);
+  vehicle_set_spawn(&run.stage.vehicle, vec3(-114.0f, 0.9f, 20.0f),
+                    quat_from_yaw((float)M_PI));
+  vehicle_reset(&run.stage.vehicle, run.stage.physics);
+  assert(run.stage.shake == 0);
+  render_camera_t steady = driving_stage_camera(&run.stage);
+  driving_input_t throttle = {1, 0, 0, false};
+  float most = 0;
+  for (int i = 0; i < 120 * 8; i++) {
+    driving_stage_step(&run.stage, throttle, 1.0f / 120.0f);
+    most = fmaxf(most, run.stage.shake);
+  }
+  assert(most > 0.15f); /* the wall was hit hard */
+  /* While it shakes the eye is not where it would be; afterwards it is. */
+  run.stage.shake = 0.8f;
+  render_camera_t jolted = driving_stage_camera(&run.stage);
+  run.stage.shake = 0;
+  render_camera_t calm = driving_stage_camera(&run.stage);
+  assert(vec3_distance(jolted.eye, calm.eye) > 0.02f);
+  driving_input_t coast = {0, 1, 0, false};
+  for (int i = 0; i < 120 * 3; i++)
+    driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
+  assert(run.stage.shake < 0.01f);
+  (void)steady;
+  stop(&run);
+}
+
 static void the_car_follows_the_hills(void) {
   city_run_t run;
   start_in(&run, hill_directory);
@@ -507,6 +536,7 @@ void run_citydrive_tests(void) {
   RUN(the_city_loads_with_roads_buildings_and_a_spawn_on_a_road);
   RUN(the_car_drives_along_the_spawn_road_and_through_a_junction);
   RUN(buildings_stop_the_car);
+  RUN(a_hard_crash_jolts_the_view_and_it_settles);
   RUN(the_car_follows_the_hills);
   RUN(the_town_sounds_follow_the_time_of_day);
   RUN(the_driver_sees_from_inside_and_from_the_bonnet);
