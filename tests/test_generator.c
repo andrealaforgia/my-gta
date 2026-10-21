@@ -842,6 +842,44 @@ static void buildings_on_main_streets_get_shopfronts_at_street_level(void) {
   city_model_free(&model);
 }
 
+static void some_buildings_on_side_streets_have_a_shop_too(void) {
+  char xml[16384];
+  int length = snprintf(
+      xml, sizeof(xml),
+      "<osm><bounds minlat=\"44.995\" minlon=\"11.999\" maxlat=\"45.003\" "
+      "maxlon=\"12.004\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0060\"/>"
+      "<way id=\"9\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>");
+  const int houses = 24;
+  for (int i = 0; i < houses; i++) {
+    double lon0 = 12.0002 + i * 0.00022, lon1 = lon0 + 0.00017;
+    length += snprintf(
+        xml + length, sizeof(xml) - (size_t)length,
+        "<node id=\"%d\" lat=\"45.00008\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00008\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00020\" lon=\"%.6f\"/>"
+        "<node id=\"%d\" lat=\"45.00020\" lon=\"%.6f\"/>"
+        "<way id=\"%d\"><nd ref=\"%d\"/><nd ref=\"%d\"/><nd ref=\"%d\"/><nd "
+        "ref=\"%d\"/><nd ref=\"%d\"/><tag k=\"building\" v=\"yes\"/><tag "
+        "k=\"height\" v=\"9\"/></way>",
+        10 + 4 * i, lon0, 11 + 4 * i, lon1, 12 + 4 * i, lon1, 13 + 4 * i, lon0,
+        100 + i, 10 + 4 * i, 11 + 4 * i, 12 + 4 * i, 13 + 4 * i, 10 + 4 * i);
+  }
+  length += snprintf(xml + length, sizeof(xml) - (size_t)length, "</osm>");
+  assert((size_t)length < sizeof(xml));
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  int shops = 0;
+  for (int i = 0; i < houses; i++)
+    shops += part_for(&package, "shopfront", 100 + i) != NULL;
+  /* A quiet street has fewer shops than a main one, but some. */
+  assert(shops >= 2 && shops <= houses / 2 + 2);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void side_streets_get_a_stop_sign_at_the_main_road(void) {
   /* A primary road through node 2 and a residential street leaving it
    * south: only the side street gets a sign. */
@@ -1402,6 +1440,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
           strcmp(part->material, "leaves") == 0)
         continue;
       bool flat = strncmp(part->material, "facade", 6) != 0 &&
+                  strncmp(part->material, "shopfront", 9) != 0 &&
                   strncmp(part->material, "roof", 4) != 0; /* eaves face down */
       for (size_t i = 0; i + 2 < part->mesh.index_count; i += 3) {
         vec3_t a = part->mesh.vertices[part->mesh.indices[i]].position;
@@ -1512,6 +1551,7 @@ void run_generator_tests(void) {
   RUN(the_package_carries_routes_and_parking_places);
   RUN(the_town_hall_and_churches_get_towers_and_the_hall_is_brick);
   RUN(buildings_on_main_streets_get_shopfronts_at_street_level);
+  RUN(some_buildings_on_side_streets_have_a_shop_too);
   RUN(side_streets_get_a_stop_sign_at_the_main_road);
   RUN(roads_have_manhole_covers_here_and_there);
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);

@@ -240,7 +240,9 @@ static bool edge_faces_shops(const city_model_t* model,
                              const city_building_t* building, size_t i) {
   if (building->height < 6.0f) return false;
   unsigned hash = (unsigned)((uint64_t)building->source_id * 2654435761u >> 9);
-  if (hash % 100 >= 65) return false;
+  /* Most buildings on a main street have a shop, a third on a quiet one. */
+  unsigned main_share = 65, quiet_share = 33;
+  if (hash % 100 >= main_share) return false;
   local_point_t a = building->points[i];
   local_point_t b = building->points[(i + 1) % building->point_count];
   if (hypot(b.x - a.x, b.z - a.z) < 5.0) return false;
@@ -252,7 +254,9 @@ static bool edge_faces_shops(const city_model_t* model,
                        road->class == ROAD_CLASS_SECONDARY ||
                        road->class == ROAD_CLASS_TERTIARY ||
                        road->class == ROAD_CLASS_PEDESTRIAN;
-    if (!main_street) continue;
+    bool quiet_street = road->class == ROAD_CLASS_RESIDENTIAL ||
+                        road->class == ROAD_CLASS_UNCLASSIFIED;
+    if (!main_street && !(quiet_street && hash % 100 < quiet_share)) continue;
     for (size_t k = 1; k < road->point_count; k++) {
       vec2_t along =
           gen_v2_normalize(gen_v2_sub(road->points[k], road->points[k - 1]));
