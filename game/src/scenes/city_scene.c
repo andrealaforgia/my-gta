@@ -33,6 +33,9 @@ static material_t material_for(const char* name,
       {"signal_green", {0}, vec3(0.15f, 1.0f, 0.3f), 0.4f},
       {"chimney", textures->roof, vec3(0.7f, 0.5f, 0.45f), 0.9f},
       {"rail", {0}, vec3(0.28f, 0.29f, 0.3f), 0.6f},
+      {"wall", {0}, vec3(0.68f, 0.63f, 0.55f), 0.9f},
+      {"fence", {0}, vec3(0.42f, 0.32f, 0.22f), 0.85f},
+      {"hedge", textures->grass, vec3(0.3f, 0.5f, 0.2f), 1.0f},
       {"manhole", {0}, vec3(0.16f, 0.16f, 0.17f), 0.5f},
       {"sign_pole", {0}, vec3(0.45f, 0.46f, 0.48f), 0.5f},
       {"sign_red", {0}, vec3(0.78f, 0.08f, 0.07f), 0.5f},
@@ -132,20 +135,19 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   city_package_t package;
   if (!city_package_read(&package, package_directory)) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
-  static const char* materials[] = {
-      "grass",    "road",       "junction",  "pavement",      "kerb",
-      "roof",     "roof_slate", "roof_flat", "facade_fresco", "facade_brick",
-      "facade0",  "facade1",    "facade2",   "facade3",       "facade4",
-      "facade5",  "facade6",    "facade7",   "facade8",       "facade9",
-      "facade10", "facade11",   "lamp",      "lamp_light",    "paving",
-      "parking",  "park",       "water",     "trunk",         "leaves",
-      "marking",  "ground"};
   int draws = 0, colliders = 0;
   bool ok = true;
   for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {
     const city_chunk_t* chunk = &package.chunks[ch];
-    for (size_t m = 0; ok && m < sizeof(materials) / sizeof(materials[0]); m++)
-      ok = upload_merged(scene, c, chunk, materials[m], &draws);
+    /* Every material the chunk uses, once, in order of first appearance:
+     * a material the generator adds is drawn without being listed here. */
+    for (size_t p = 0; ok && p < chunk->part_count; p++) {
+      bool seen = false;
+      for (size_t q = 0; q < p && !seen; q++)
+        seen = strcmp(chunk->parts[q].material, chunk->parts[p].material) == 0;
+      if (!seen)
+        ok = upload_merged(scene, c, chunk, chunk->parts[p].material, &draws);
+    }
     if (ok) ok = add_colliders(c, chunk, &colliders);
   }
   if (!city_map_build(&scene->map, &package, 1024))

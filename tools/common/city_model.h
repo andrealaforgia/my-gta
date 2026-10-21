@@ -41,6 +41,13 @@ typedef enum {
 } area_kind_t;
 
 typedef enum {
+  BARRIER_WALL,  /* walls and retaining walls: stone */
+  BARRIER_FENCE, /* fences: timber */
+  BARRIER_HEDGE, /* hedges: green */
+  BARRIER_KIND_COUNT
+} barrier_kind_t;
+
+typedef enum {
   HEIGHT_TAGGED,
   HEIGHT_FROM_LEVELS,
   HEIGHT_DEFAULT,         /* a deterministic guess, nothing better known */
@@ -96,6 +103,14 @@ typedef struct {
   size_t point_count;
 } city_area_t;
 
+/* A wall, fence or hedge along a mapped line, as an open polyline. */
+typedef struct {
+  int64_t source_id;
+  barrier_kind_t kind;
+  local_point_t* points;
+  size_t point_count;
+} city_barrier_t;
+
 typedef struct {
   size_t ways_total;
   size_t roads_accepted;
@@ -141,6 +156,8 @@ typedef struct {
   size_t tree_count;
   city_furniture_t* furniture; /* benches, bus stops, bollards, signals */
   size_t furniture_count;
+  city_barrier_t* barriers; /* walls, fences and hedges */
+  size_t barrier_count;
   city_terrain_t terrain;
   projection_t projection;
   osm_bounds_t bounds;
@@ -171,6 +188,9 @@ city_road_t* city_model_add_road(city_model_t* model);
 city_building_t* city_model_add_building(city_model_t* model);
 city_junction_t* city_model_add_junction(city_model_t* model);
 city_area_t* city_model_add_area(city_model_t* model);
+city_barrier_t* city_model_add_barrier(city_model_t* model);
+const char* barrier_kind_name(barrier_kind_t kind);
+bool barrier_kind_from_name(const char* name, barrier_kind_t* kind);
 /* Takes ownership of the points. */
 bool city_building_add_hole(city_building_t* building, local_point_t* points,
                             size_t count);

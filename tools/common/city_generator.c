@@ -386,6 +386,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     ok = generate_building(&layout, &model->buildings[b], stats);
   if (ok) ok = generate_street_trees(&layout, model, stats);
   if (ok) ok = generate_furniture(&layout, model, stats);
+  if (ok) ok = generate_barriers(&layout, model);
   if (ok) ok = generate_crossings(&layout, model, fits);
   free(layout.arcade_edges);
   free(fits);

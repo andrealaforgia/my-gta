@@ -507,6 +507,50 @@ static void street_furniture_is_imported_and_survives_the_model(void) {
   city_model_free(&model);
 }
 
+static void walls_fences_and_hedges_are_imported_and_survive_the_model(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0020\"/>"
+      "<node id=\"3\" lat=\"45.0010\" lon=\"12.0000\"/>"
+      "<node id=\"4\" lat=\"45.0010\" lon=\"12.0006\"/>"
+      "<node id=\"5\" lat=\"45.0012\" lon=\"12.0000\"/>"
+      "<node id=\"6\" lat=\"45.0012\" lon=\"12.0006\"/>"
+      "<node id=\"7\" lat=\"45.0014\" lon=\"12.0000\"/>"
+      "<node id=\"8\" lat=\"45.0014\" lon=\"12.0006\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"barrier\" "
+      "v=\"wall\"/></way>"
+      "<way id=\"12\"><nd ref=\"5\"/><nd ref=\"6\"/><tag k=\"barrier\" "
+      "v=\"fence\"/></way>"
+      "<way id=\"13\"><nd ref=\"7\"/><nd ref=\"8\"/><tag k=\"barrier\" "
+      "v=\"gate\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  /* The gate is not a barrier we build. */
+  assert(model.barrier_count == 2);
+  assert(model.barriers[0].source_id == 11 &&
+         model.barriers[0].kind == BARRIER_WALL);
+  assert(model.barriers[1].source_id == 12 &&
+         model.barriers[1].kind == BARRIER_FENCE);
+  assert(model.barriers[0].point_count == 2);
+  const char* directory = "/tmp/gta-like-test-barrier-model";
+  assert(city_model_write(&model, directory));
+  city_model_t loaded;
+  assert(city_model_read(&loaded, directory));
+  assert(loaded.barrier_count == 2 && loaded.barriers[1].point_count == 2 &&
+         loaded.barriers[1].kind == BARRIER_FENCE);
+  assert(near_to(loaded.barriers[0].points[1].x, model.barriers[0].points[1].x,
+                 1e-3));
+  city_model_free(&loaded);
+  city_model_free(&model);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -549,5 +593,6 @@ void run_city_tests(void) {
   RUN(single_trees_are_imported_and_survive_the_model);
   RUN(building_names_are_kept_and_written);
   RUN(street_furniture_is_imported_and_survives_the_model);
+  RUN(walls_fences_and_hedges_are_imported_and_survive_the_model);
   RUN(the_model_round_trips_through_its_text_format);
 }

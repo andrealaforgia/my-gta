@@ -52,8 +52,8 @@ the routes and `city_generate`. The geometry is in four files that share
 vector helpers), `generator_roads.c` (width fitting, junctions, markings,
 signs, lamps, manholes, footbridges, roads), `generator_buildings.c` (walls,
 roofs, porticoes, landmarks, doors, chimneys, shop fronts) and
-`generator_environment.c` (ground, parks, trees, furniture, crossings,
-terrain). Helpers used across files are exported with a `gen_` prefix.
+`generator_environment.c` (ground, parks, trees, furniture, barriers,
+crossings, terrain). Helpers used across files are exported with a `gen_` prefix.
 
 ## Game systems (2026-10-21)
 

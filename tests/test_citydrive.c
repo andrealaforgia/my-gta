@@ -375,6 +375,33 @@ static void walls_are_grubbier_at_the_foot_but_roads_are_not(void) {
   stop(&run);
 }
 
+static void everything_the_generator_builds_is_drawn(void) {
+  /* A material the generator adds must not need listing in the scene to be
+   * seen: every non-empty part has an entity with its material's label. */
+  city_package_t package;
+  assert(city_package_read(&package, package_directory));
+  city_run_t run;
+  start(&run);
+  size_t checked = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* part = &package.chunks[c].parts[p];
+      if (part->mesh.vertex_count == 0) continue;
+      char label[ENTITY_LABEL_LENGTH];
+      snprintf(label, sizeof(label), "%s %d,%d", part->material,
+               package.chunks[c].column, package.chunks[c].row);
+      bool drawn = false;
+      for (size_t i = 0; i < run.stage.world.capacity && !drawn; i++)
+        drawn = run.stage.world.entities[i].used &&
+                strcmp(run.stage.world.entities[i].label, label) == 0;
+      assert(drawn);
+      checked++;
+    }
+  assert(checked > 10);
+  stop(&run);
+  city_package_free(&package);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -406,5 +433,6 @@ void run_citydrive_tests(void) {
   RUN(the_horn_sounds_only_while_held_and_not_on_the_map);
   RUN(a_wrecked_car_smokes_and_looks_scuffed);
   RUN(walls_are_grubbier_at_the_foot_but_roads_are_not);
+  RUN(everything_the_generator_builds_is_drawn);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

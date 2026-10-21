@@ -13,6 +13,23 @@ static const char* class_names[ROAD_CLASS_COUNT] = {
 static const char* area_names[AREA_KIND_COUNT] = {"water", "park", "parking",
                                                   "square"};
 
+static const char* barrier_names[BARRIER_KIND_COUNT] = {"wall", "fence",
+                                                        "hedge"};
+
+const char* barrier_kind_name(barrier_kind_t kind) {
+  return kind < BARRIER_KIND_COUNT ? barrier_names[kind] : "wall";
+}
+
+bool barrier_kind_from_name(const char* name, barrier_kind_t* kind) {
+  for (int i = 0; i < BARRIER_KIND_COUNT; i++) {
+    if (strcmp(barrier_names[i], name) == 0) {
+      *kind = (barrier_kind_t)i;
+      return true;
+    }
+  }
+  return false;
+}
+
 const char* area_kind_name(area_kind_t kind) {
   return kind < AREA_KIND_COUNT ? area_names[kind] : "park";
 }
@@ -86,6 +103,16 @@ city_area_t* city_model_add_area(city_model_t* model) {
   return area;
 }
 
+city_barrier_t* city_model_add_barrier(city_model_t* model) {
+  void* grown =
+      grow(model->barriers, model->barrier_count, sizeof(city_barrier_t));
+  if (!grown) return NULL;
+  model->barriers = grown;
+  city_barrier_t* barrier = &model->barriers[model->barrier_count++];
+  memset(barrier, 0, sizeof(*barrier));
+  return barrier;
+}
+
 bool city_building_add_hole(city_building_t* building, local_point_t* points,
                             size_t count) {
   city_ring_t* grown = realloc(
@@ -110,6 +137,9 @@ void city_model_free(city_model_t* model) {
     free(model->buildings[i].holes);
   }
   for (size_t i = 0; i < model->area_count; i++) free(model->areas[i].points);
+  for (size_t i = 0; i < model->barrier_count; i++)
+    free(model->barriers[i].points);
+  free(model->barriers);
   free(model->roads);
   free(model->buildings);
   free(model->areas);
@@ -432,6 +462,21 @@ static bool write_areas(const city_model_t* model, const char* directory) {
   return true;
 }
 
+static bool write_barriers(const city_model_t* model, const char* directory) {
+  FILE* file = open_in(directory, "barriers.txt", "w");
+  if (!file) return false;
+  fprintf(file, "# city-barriers 1\n");
+  for (size_t i = 0; i < model->barrier_count; i++) {
+    const city_barrier_t* b = &model->barriers[i];
+    fprintf(file, "barrier %lld %s %zu\n", (long long)b->source_id,
+            barrier_kind_name(b->kind), b->point_count);
+    for (size_t p = 0; p < b->point_count; p++)
+      fprintf(file, "p %.4f %.4f\n", b->points[p].x, b->points[p].z);
+  }
+  fclose(file);
+  return true;
+}
+
 static bool write_manifest(const city_model_t* model, const char* directory) {
   FILE* file = open_in(directory, "manifest.txt", "w");
   if (!file) return false;
@@ -474,7 +519,7 @@ bool city_model_write(const city_model_t* model, const char* directory) {
   return write_roads(model, directory) && write_buildings(model, directory) &&
          write_areas(model, directory) && write_manifest(model, directory) &&
          write_terrain(model, directory) && write_trees(model, directory) &&
-         write_furniture(model, directory);
+         write_furniture(model, directory) && write_barriers(model, directory);
 }
 
 /* ---- reading ---- */
@@ -644,6 +689,50 @@ static bool read_areas(city_model_t* model, const char* directory) {
   return true;
 }
 
+/* Optional: a model written before barriers existed has no such file. */
+static bool read_barriers(city_model_t* model, const char* directory) {
+  char path[1024];
+  snprintf(path, sizeof(path), "%s/barriers.txt", directory);
+  FILE* file = fopen(path, "r");
+  if (!file) return true;
+  char line[256];
+  city_barrier_t* barrier = NULL;
+  size_t expected = 0;
+  bool ok = true;
+  while (ok && fgets(line, sizeof(line), file)) {
+    if (strncmp(line, "barrier ", 8) == 0) {
+      long long id;
+      char kind[CITY_TEXT_LENGTH];
+      size_t count;
+      if (sscanf(line, "barrier %lld %63s %zu", &id, kind, &count) != 3)
+        continue;
+      barrier = city_model_add_barrier(model);
+      if (!barrier) {
+        ok = false;
+        break;
+      }
+      barrier->source_id = id;
+      if (!barrier_kind_from_name(kind, &barrier->kind))
+        barrier->kind = BARRIER_WALL;
+      barrier->points = calloc(count ? count : 1, sizeof(local_point_t));
+      if (!barrier->points) {
+        ok = false;
+        break;
+      }
+      expected = count;
+    } else if (strncmp(line, "p ", 2) == 0 && barrier &&
+               barrier->point_count < expected) {
+      double x, z;
+      if (sscanf(line, "p %lf %lf", &x, &z) != 2) continue;
+      barrier->points[barrier->point_count].x = x;
+      barrier->points[barrier->point_count].z = z;
+      barrier->point_count++;
+    }
+  }
+  fclose(file);
+  return ok;
+}
+
 static bool read_manifest(city_model_t* model, const char* directory) {
   FILE* file = open_in(directory, "manifest.txt", "r");
   if (!file) return false;
@@ -674,5 +763,5 @@ bool city_model_read(city_model_t* model, const char* directory) {
   return read_manifest(model, directory) && read_roads(model, directory) &&
          read_buildings(model, directory) && read_areas(model, directory) &&
          read_terrain(model, directory) && read_trees(model, directory) &&
-         read_furniture(model, directory);
+         read_furniture(model, directory) && read_barriers(model, directory);
 }

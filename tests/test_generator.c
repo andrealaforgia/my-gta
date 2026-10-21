@@ -944,6 +944,53 @@ static void benches_bus_stops_bollards_and_signals_stand_where_mapped(void) {
   city_model_free(&model);
 }
 
+static void walls_stand_where_mapped_but_never_across_a_street(void) {
+  /* A street along z = 0, a wall running north-south across it, and a
+   * fence well to one side. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.998\" minlon=\"11.999\" maxlat=\"45.002\" "
+      "maxlon=\"12.003\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0030\"/>"
+      "<node id=\"3\" lat=\"45.0004\" lon=\"12.0010\"/>"
+      "<node id=\"4\" lat=\"44.9996\" lon=\"12.0010\"/>"
+      "<node id=\"5\" lat=\"45.0010\" lon=\"12.0020\"/>"
+      "<node id=\"6\" lat=\"45.0010\" lon=\"12.0026\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"barrier\" "
+      "v=\"wall\"/></way>"
+      "<way id=\"12\"><nd ref=\"5\"/><nd ref=\"6\"/><tag k=\"barrier\" "
+      "v=\"fence\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  const city_part_t* fence = part_for(&package, "fence", 12);
+  assert(part_for(&package, "wall", 11) != NULL && fence != NULL);
+  /* The wall is there on both sides of the street, in whichever chunks it
+   * crosses, and none of it lies on the carriageway. */
+  bool north = false, south = false;
+  float half = model.roads[0].width * 0.5f, top = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* wall = &package.chunks[c].parts[p];
+      if (strcmp(wall->material, "wall") != 0 || wall->source_id != 11)
+        continue;
+      assert(wall->collider == PART_COLLIDER_MESH);
+      top = fmaxf(top, mesh_data_bounds(&wall->mesh).max.y);
+      for (size_t v = 0; v < wall->mesh.vertex_count; v++) {
+        float z = wall->mesh.vertices[v].position.z;
+        assert(fabsf(z) > half);
+        if (z < 0) north = true;
+        if (z > 0) south = true;
+      }
+    }
+  assert(north && south);
+  assert(top > 1.5f && top < 2.5f);
+  assert(mesh_data_bounds(&fence->mesh).max.y < top);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void a_package_with_crossings_has_no_empty_parts(void) {
   /* Crossing nodes that are not on a street cars use make nothing at all. */
   const char* xml =
@@ -1327,6 +1374,7 @@ void run_generator_tests(void) {
   RUN(side_streets_get_a_stop_sign_at_the_main_road);
   RUN(roads_have_manhole_covers_here_and_there);
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
+  RUN(walls_stand_where_mapped_but_never_across_a_street);
   RUN(a_package_with_crossings_has_no_empty_parts);
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(pitched_roofs_sprout_chimneys_above_the_ridge);

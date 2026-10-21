@@ -305,6 +305,90 @@ bool generate_furniture(layout_t* layout, const city_model_t* model,
   return true;
 }
 
+/* ---- walls, fences and hedges ---- */
+
+/* Whether a point lies on the carriageway of a street, where a barrier
+ * would block it; mapped walls end at gates, which are not built. */
+static bool on_carriageway(const city_model_t* model, local_point_t p) {
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (road->class == ROAD_CLASS_WATERWAY) continue;
+    double reach = road->width * 0.5 + 0.3;
+    for (size_t k = 1; k < road->point_count; k++)
+      if (gen_point_segment_distance(p, road->points[k - 1], road->points[k]) <
+          reach)
+        return true;
+  }
+  return false;
+}
+
+/* One slab from p to q: both faces and the top. */
+static bool add_barrier_piece(city_part_t* part, local_point_t p,
+                              local_point_t q, float y0, float height,
+                              double thickness) {
+  vec2_t side = gen_v2_right(gen_v2_normalize(gen_v2_sub(q, p)));
+  vec3_t normal = vec3((float)side.x, 0, (float)side.z);
+  local_point_t pr = gen_offset(p, side, thickness * 0.5);
+  local_point_t qr = gen_offset(q, side, thickness * 0.5);
+  local_point_t pl = gen_offset(p, side, -thickness * 0.5);
+  local_point_t ql = gen_offset(q, side, -thickness * 0.5);
+  float y1 = y0 + height;
+  float length = (float)gen_v2_length(gen_v2_sub(q, p));
+  if (!gen_add_wall_quad(part, pr, qr, y0, y1, normal, 0, length, 0, height) ||
+      !gen_add_wall_quad(part, ql, pl, y0, y1, vec3_scale(normal, -1), 0,
+                         length, 0, height))
+    return false;
+  uint32_t base = (uint32_t)part->mesh.vertex_count;
+  vec3_t up = vec3(0, 1, 0);
+  return gen_add_vertex(&part->mesh, gen_at(pl, y1), up, 0, 0) &&
+         gen_add_vertex(&part->mesh, gen_at(ql, y1), up, length, 0) &&
+         gen_add_vertex(&part->mesh, gen_at(qr, y1), up, length, 1) &&
+         gen_add_vertex(&part->mesh, gen_at(pr, y1), up, 0, 1) &&
+         gen_add_face(&part->mesh, base, base + 1, base + 2, up) &&
+         gen_add_face(&part->mesh, base, base + 2, base + 3, up);
+}
+
+bool generate_barriers(layout_t* layout, const city_model_t* model) {
+  static const char* materials[BARRIER_KIND_COUNT] = {"wall", "fence", "hedge"};
+  static const float heights[BARRIER_KIND_COUNT] = {1.9f, 1.25f, 1.3f};
+  static const double thicknesses[BARRIER_KIND_COUNT] = {0.3, 0.07, 0.7};
+  const double piece_length = 2.0;
+  for (size_t b = 0; b < model->barrier_count; b++) {
+    const city_barrier_t* barrier = &model->barriers[b];
+    city_part_t* part = NULL;
+    city_chunk_t* part_chunk = NULL;
+    for (size_t k = 1; k < barrier->point_count; k++) {
+      local_point_t a = barrier->points[k - 1], c = barrier->points[k];
+      double length = gen_v2_length(gen_v2_sub(c, a));
+      size_t pieces = (size_t)ceil(length / piece_length);
+      if (pieces == 0) continue;
+      for (size_t i = 0; i < pieces; i++) {
+        double t0 = (double)i / (double)pieces;
+        double t1 = (double)(i + 1) / (double)pieces;
+        local_point_t p = {a.x + (c.x - a.x) * t0, a.z + (c.z - a.z) * t0};
+        local_point_t q = {a.x + (c.x - a.x) * t1, a.z + (c.z - a.z) * t1};
+        local_point_t middle = {(p.x + q.x) * 0.5, (p.z + q.z) * 0.5};
+        if (on_carriageway(model, p) || on_carriageway(model, q) ||
+            on_carriageway(model, middle))
+          continue;
+        city_chunk_t* chunk = gen_chunk_at(layout, middle);
+        if (chunk != part_chunk) {
+          part = city_chunk_add_part(chunk, materials[barrier->kind],
+                                     PART_COLLIDER_MESH, COLLISION_LAYER_PROP,
+                                     0.5f, (uint64_t)barrier->source_id);
+          if (!part) return false;
+          part_chunk = chunk;
+        }
+        if (!add_barrier_piece(part, p, q, layout->options->kerb_height - 0.05f,
+                               heights[barrier->kind],
+                               thicknesses[barrier->kind]))
+          return false;
+      }
+    }
+  }
+  return true;
+}
+
 /* The mapped single trees, each a trunk and a crown like a park's, with a
  * collider on the trunk. They sit on the ground where they were mapped. */
 bool generate_street_trees(layout_t* layout, const city_model_t* model,

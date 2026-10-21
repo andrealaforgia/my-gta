@@ -68,6 +68,12 @@ have a PBF.
   read. Pordenone has 37 trees, 16 benches, 6 bus stops, 5 bollards and 7
   signals. Signals show red, amber and green on a 48 s cycle and cars stop at
   them.
+- Ways tagged `barrier=wall`, `retaining_wall`, `city_wall`, `fence` or
+  `hedge` become low solid slabs (1.9 m of stone, 1.25 m of timber, 1.3 m of
+  hedge) with a collider, written to `barriers.txt` in the intermediate
+  model. Pieces that would lie on a carriageway are left out so a mapped
+  wall never blocks a street; gates and other barrier kinds are ignored.
+  Pordenone has 19 such ways.
 - Interior corners of roads are replaced by arcs (quadratic, up to 8 m
   back from the corner) and two segments meeting end to end at a node
   nothing else uses, with the same class, width and direction rules, are

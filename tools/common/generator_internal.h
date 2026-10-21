@@ -204,6 +204,10 @@ bool generate_building(layout_t* layout, const city_building_t* building,
 bool generate_crossings(layout_t* layout, const city_model_t* model,
                         const road_fit_t* fits);
 
+/* Walls, fences and hedges along their mapped lines, left out where they
+ * would cross a carriageway. */
+bool generate_barriers(layout_t* layout, const city_model_t* model);
+
 bool generate_furniture(layout_t* layout, const city_model_t* model,
                         city_generator_stats_t* stats);
 

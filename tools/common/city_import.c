@@ -946,6 +946,49 @@ static void emit_relation_hole(city_model_t* model,
            (long long)relation->id);
 }
 
+/* ---- barriers ---- */
+
+static bool classify_barrier(const osm_way_t* way, barrier_kind_t* kind) {
+  const char* barrier = osm_tag(way->tags, way->tag_count, "barrier");
+  if (!barrier) return false;
+  if (strcmp(barrier, "wall") == 0 || strcmp(barrier, "retaining_wall") == 0 ||
+      strcmp(barrier, "city_wall") == 0) {
+    *kind = BARRIER_WALL;
+  } else if (strcmp(barrier, "fence") == 0) {
+    *kind = BARRIER_FENCE;
+  } else if (strcmp(barrier, "hedge") == 0) {
+    *kind = BARRIER_HEDGE;
+  } else {
+    return false; /* gates, bollards, kerbs: not drawn as a line */
+  }
+  return true;
+}
+
+static void import_barriers(city_model_t* model, const osm_data_t* osm) {
+  for (size_t i = 0; i < osm->way_count; i++) {
+    const osm_way_t* way = &osm->ways[i];
+    barrier_kind_t kind;
+    if (osm_tag(way->tags, way->tag_count, "building") ||
+        osm_tag(way->tags, way->tag_count, "highway") ||
+        !classify_barrier(way, &kind))
+      continue;
+    cleaned_way_t cleaned = {0};
+    bool kept = clean_way(osm, &model->projection, way, &cleaned) &&
+                cleaned.point_count >= 2 &&
+                polyline_length(cleaned.points, cleaned.point_count) >= 1.5;
+    city_barrier_t* barrier = kept ? city_model_add_barrier(model) : NULL;
+    if (barrier) {
+      barrier->source_id = way->id;
+      barrier->kind = kind;
+      barrier->points = cleaned.points; /* the model owns them now */
+      barrier->point_count = cleaned.point_count;
+    } else {
+      free(cleaned.points);
+    }
+    free(cleaned.node_ids);
+  }
+}
+
 /* ---- areas ---- */
 
 static bool classify_area(const osm_tag_t* tags, size_t tag_count,
@@ -1096,6 +1139,7 @@ bool city_import(city_model_t* model, const osm_data_t* osm,
            gmtime(&now));
   import_roads(model, osm, &options);
   import_buildings_and_areas(model, osm, &options);
+  import_barriers(model, osm);
   for (size_t n = 0; n < osm->node_count; n++) {
     if (osm->nodes[n].furniture != OSM_FURNITURE_NONE) {
       city_furniture_t* grown = realloc(
