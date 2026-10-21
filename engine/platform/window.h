@@ -35,6 +35,15 @@ typedef struct {
   bool toggle_weather;
 } window_events_t;
 
+/* What a menu hears: the arrows, W and S, Return, Esc and the controller. */
+typedef enum {
+  MENU_KEY_NONE,
+  MENU_KEY_UP,
+  MENU_KEY_DOWN,
+  MENU_KEY_SELECT,
+  MENU_KEY_QUIT
+} menu_key_t;
+
 typedef struct {
   SDL_Window* window;
   SDL_GLContext context;
@@ -49,6 +58,8 @@ window_options_t window_default_options(const char* title);
 bool window_open(window_t* window, window_options_t options);
 void window_close(window_t* window);
 window_events_t window_poll(window_t* window);
+/* The next menu key pressed, or MENU_KEY_NONE when the queue is empty. */
+menu_key_t window_poll_menu(window_t* window);
 /* Whether the horn is held: the H key or the controller's B button. */
 bool window_horn_held(const window_t* window);
 driving_input_t window_driving_input(const window_t* window);

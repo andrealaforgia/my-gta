@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "audio_device.h"
+#include "city_list.h"
+#include "city_menu.h"
 #include "driving_stage.h"
 #include "log.h"
 #include "renderer.h"
@@ -13,13 +15,20 @@ typedef struct {
   stage_options_t stage;
   bool help;
   bool no_audio;
+  bool scene_chosen;   /* on the command line, so no menu */
+  char city_path[256]; /* the package for --city=NAME */
 } options_t;
+
+#define CITIES_DIRECTORY "assets_cooked/cities"
 
 static void print_help(void) {
   printf(
       "gta-like: drive a car on a test track or in a generated city.\n\n"
       "  --scene=track            the test track (default)\n"
       "  --scene=city:<package>   a cooked city package directory\n"
+      "  --city=<name>            a cooked city by name, such as pordenone or "
+      "barletta\n"
+      "                           (with no scene given, a menu offers them)\n"
       "  --vehicle=<file>         vehicle parameters "
       "(assets/vehicles/hatchback.cfg)\n"
       "  --width=N --height=N     window size (1280x720)\n"
@@ -85,9 +94,17 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
       options->stage.vehicle_file = argument + 10;
     } else if (strcmp(argument, "--scene=track") == 0) {
       options->stage.scene = SCENE_TEST_TRACK;
+      options->scene_chosen = true;
     } else if (strncmp(argument, "--scene=city:", 13) == 0) {
       options->stage.scene = SCENE_CITY;
       options->stage.city_package = argument + 13;
+      options->scene_chosen = true;
+    } else if (strncmp(argument, "--city=", 7) == 0) {
+      snprintf(options->city_path, sizeof(options->city_path), "%s/%s",
+               CITIES_DIRECTORY, argument + 7);
+      options->stage.scene = SCENE_CITY;
+      options->stage.city_package = options->city_path;
+      options->scene_chosen = true;
     } else {
       fprintf(stderr, "unknown option %s\n", argument);
       return false;
@@ -117,6 +134,22 @@ int main(int argc, char* argv[]) {
   if (!renderer) {
     window_close(&window);
     return EXIT_FAILURE;
+  }
+  city_entry_t cities[CITY_LIST_MAX];
+  if (!options.scene_chosen) {
+    size_t count = city_list(CITIES_DIRECTORY, cities, CITY_LIST_MAX);
+    if (count > 0) {
+      int choice = city_menu_run(&window, renderer, cities, count, 0);
+      if (choice == -2) {
+        renderer_destroy(renderer);
+        window_close(&window);
+        return EXIT_SUCCESS;
+      }
+      if (choice >= 0) {
+        options.stage.scene = SCENE_CITY;
+        options.stage.city_package = cities[choice].path;
+      }
+    }
   }
   audio_device_t audio;
   bool has_audio = !options.no_audio && audio_device_open(&audio);

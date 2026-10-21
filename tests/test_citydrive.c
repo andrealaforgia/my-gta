@@ -9,6 +9,8 @@
 
 #include "city_generator.h"
 #include "city_import.h"
+#include "city_list.h"
+#include "city_menu.h"
 #include "city_package.h"
 #include "driving_stage.h"
 #include "osm_reader.h"
@@ -646,6 +648,43 @@ static void the_map_and_the_pause_silence_the_engine(void) {
   stop(&run);
 }
 
+static void make_city_folder(const char* root, const char* name,
+                             bool with_manifest) {
+  char path[256];
+  snprintf(path, sizeof(path), "mkdir -p %s/%s", root, name);
+  assert(system(path) == 0);
+  if (!with_manifest) return;
+  snprintf(path, sizeof(path), "%s/%s/manifest.txt", root, name);
+  FILE* file = fopen(path, "w");
+  assert(file);
+  fputs("city\n", file);
+  fclose(file);
+}
+
+static void the_menu_lists_the_cooked_cities_by_name_and_wraps_round(void) {
+  const char* root = "/tmp/gta-like-test-city-list";
+  assert(system("rm -rf /tmp/gta-like-test-city-list") == 0);
+  make_city_folder(root, "pordenone", true);
+  make_city_folder(root, "barletta", true);
+  make_city_folder(root, "santa_maria", true);
+  make_city_folder(root, "half_cooked", false); /* no manifest: not a city */
+  city_entry_t cities[CITY_LIST_MAX];
+  size_t count = city_list(root, cities, CITY_LIST_MAX);
+  assert(count == 3);
+  assert(strcmp(cities[0].name, "barletta") == 0);
+  assert(strcmp(cities[0].title, "Barletta") == 0);
+  assert(strcmp(cities[1].name, "pordenone") == 0);
+  assert(strcmp(cities[2].title, "Santa Maria") == 0);
+  assert(strcmp(cities[0].path, "/tmp/gta-like-test-city-list/barletta") == 0);
+  assert(city_list("/tmp/gta-like-test-no-such-folder", cities, 4) == 0);
+  /* Row 0 is the test track, the cities follow; the cursor wraps. */
+  assert(strcmp(city_menu_row_title(cities, count, 0), "Test track") == 0);
+  assert(strcmp(city_menu_row_title(cities, count, 1), "Barletta") == 0);
+  assert(city_menu_move(0, 4, MENU_KEY_UP) == 3);
+  assert(city_menu_move(3, 4, MENU_KEY_DOWN) == 0);
+  assert(city_menu_move(1, 4, MENU_KEY_DOWN) == 2);
+}
+
 void run_citydrive_tests(void) {
   cook_fixture_city();
   RUN(the_city_loads_with_roads_buildings_and_a_spawn_on_a_road);
@@ -671,4 +710,5 @@ void run_citydrive_tests(void) {
   RUN(a_car_that_hits_a_lamp_post_hard_knocks_it_down);
   RUN(a_gentle_bump_leaves_a_lamp_post_standing);
   RUN(the_map_and_the_pause_silence_the_engine);
+  RUN(the_menu_lists_the_cooked_cities_by_name_and_wraps_round);
 }

@@ -52,7 +52,7 @@ CITY_VALIDATE = city-validate
 SNAPSHOT = render_snapshot
 SOUND = render_sound
 
-.PHONY: all tools install dev_install clean lint format test sanitize snapshot sound city fixture-city run run-city
+.PHONY: all tools install dev_install clean lint format test sanitize snapshot sound city fixture-city run run-city play
 
 all: $(TARGET) tools
 
@@ -130,6 +130,9 @@ fixture-city: tools
 
 run: $(TARGET)
 	./$(TARGET) --scene=track
+
+play: $(TARGET)
+	./$(TARGET)
 
 run-city: $(TARGET)
 	./$(TARGET) --scene=city:assets_cooked/cities/$(CITY)

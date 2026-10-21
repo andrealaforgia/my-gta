@@ -50,6 +50,12 @@ make city EXTRACT=data/pordenone.osm
 make run-city CITY=pordenone
 ```
 
+Barletta is fetched the same way (`python3 scripts/fetch_osm.py 16.262 41.306
+16.306 41.336 data/barletta.osm`, then `make city EXTRACT=data/barletta.osm`).
+Run `./gta-like` or `make play` with no scene and a menu lists the test track
+and every cooked city under `assets_cooked/cities`; `--city=barletta` goes
+straight to one.
+
 `make fixture-city` cooks the small hand-written district in
 `tests/fixtures/district.osm` instead, for a city that needs no download.
 See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
@@ -70,7 +76,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | N | mute |
 | F1 | debug overlay |
 | F11 | fullscreen |
-| Esc | quit |
+| Esc | quit (in the start menu too; arrows or W/S and Enter choose) |
 
 A game controller steers with the left stick, accelerates and brakes with
 the triggers, A handbrake, Y reset, Start pause.

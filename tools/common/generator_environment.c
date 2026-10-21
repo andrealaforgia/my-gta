@@ -423,6 +423,7 @@ bool generate_barriers(layout_t* layout, const city_model_t* model) {
           continue;
         city_chunk_t* chunk = gen_chunk_at(layout, middle);
         if (chunk != part_chunk) {
+          if (part) gen_finish_part(part_chunk, part);
           part = city_chunk_add_part(chunk, materials[barrier->kind],
                                      PART_COLLIDER_MESH, COLLISION_LAYER_PROP,
                                      0.5f, (uint64_t)barrier->source_id);
@@ -435,6 +436,7 @@ bool generate_barriers(layout_t* layout, const city_model_t* model) {
           return false;
       }
     }
+    if (part) gen_finish_part(part_chunk, part);
   }
   return true;
 }

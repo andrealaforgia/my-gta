@@ -166,6 +166,54 @@ window_events_t window_poll(window_t* window) {
   return events;
 }
 
+menu_key_t window_poll_menu(window_t* window) {
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    switch (event.type) {
+      case SDL_QUIT:
+        return MENU_KEY_QUIT;
+      case SDL_KEYDOWN:
+        switch (event.key.keysym.scancode) {
+          case SDL_SCANCODE_UP:
+          case SDL_SCANCODE_W:
+            return MENU_KEY_UP;
+          case SDL_SCANCODE_DOWN:
+          case SDL_SCANCODE_S:
+            return MENU_KEY_DOWN;
+          case SDL_SCANCODE_RETURN:
+          case SDL_SCANCODE_KP_ENTER:
+          case SDL_SCANCODE_SPACE:
+            return MENU_KEY_SELECT;
+          case SDL_SCANCODE_ESCAPE:
+            return MENU_KEY_QUIT;
+          default:
+            break;
+        }
+        break;
+      case SDL_CONTROLLERBUTTONDOWN:
+        if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP)
+          return MENU_KEY_UP;
+        if (event.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN)
+          return MENU_KEY_DOWN;
+        if (event.cbutton.button == SDL_CONTROLLER_BUTTON_A ||
+            event.cbutton.button == SDL_CONTROLLER_BUTTON_START)
+          return MENU_KEY_SELECT;
+        break;
+      case SDL_CONTROLLERDEVICEADDED:
+        if (!window->controller) open_first_controller(window);
+        break;
+      case SDL_WINDOWEVENT:
+        if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+            event.window.event == SDL_WINDOWEVENT_RESIZED)
+          read_sizes(window);
+        break;
+      default:
+        break;
+    }
+  }
+  return MENU_KEY_NONE;
+}
+
 static float axis(const SDL_GameController* controller,
                   SDL_GameControllerAxis which) {
   Sint16 raw =
