@@ -70,6 +70,22 @@ static bool add_tree_geometry(city_part_t* trunks, city_part_t* leaves,
              vec3(crown * 0.8f, crown * 0.75f, crown * 0.8f), 4, 7);
 }
 
+/* Whether a point lies within `margin` metres of a road's surface (its
+ * half width), so a tree there would grow out of the street. */
+static bool near_a_road(const city_model_t* model, local_point_t p,
+                        double margin) {
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (road->class == ROAD_CLASS_WATERWAY) continue;
+    double reach = road->width * 0.5 + margin;
+    for (size_t k = 1; k < road->point_count; k++)
+      if (gen_point_segment_distance(p, road->points[k - 1], road->points[k]) <
+          reach)
+        return true;
+  }
+  return false;
+}
+
 static bool generate_trees(layout_t* layout, const city_area_t* area,
                            city_generator_stats_t* stats) {
   const city_generator_options_t* o = layout->options;
@@ -111,7 +127,8 @@ static bool generate_trees(layout_t* layout, const city_area_t* area,
       bool fits = gen_point_inside(p, area->points, area->point_count);
       for (int k = 0; k < 4 && fits; k++)
         fits = gen_point_inside(margin[k], area->points, area->point_count);
-      if (!fits) continue;
+      /* Parks that run under a street plant nothing on it or its kerbs. */
+      if (!fits || near_a_road(layout->model, p, 1.8)) continue;
       float height = 3.2f + (float)((seed >> 40) % 220) / 100.0f;
       float crown = 2.0f + (float)((seed >> 50) % 100) / 100.0f;
       if (!add_tree_geometry(trunks, leaves, p, height, crown, seed))
@@ -429,6 +446,8 @@ bool generate_street_trees(layout_t* layout, const city_model_t* model,
   if (layout->options->tree_spacing <= 0) return true;
   for (size_t t = 0; t < model->tree_count; t++) {
     local_point_t p = model->trees[t];
+    /* A tree mapped on the carriageway is a slip of the mapper's pen. */
+    if (near_a_road(model, p, 0.3)) continue;
     city_chunk_t* chunk = gen_chunk_at(layout, p);
     city_part_t* trunks = city_chunk_add_part(
         chunk, "trunk", PART_COLLIDER_MESH, COLLISION_LAYER_PROP, 0.5f, 0);

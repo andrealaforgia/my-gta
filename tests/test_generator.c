@@ -670,6 +670,43 @@ static void single_trees_stand_where_they_are_mapped(void) {
   city_model_free(&model);
 }
 
+static void no_tree_grows_out_of_a_street(void) {
+  /* A road through a park, a mapped tree on its middle and another on the
+   * pavement just beside it. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.998\" minlon=\"11.998\" maxlat=\"45.002\" "
+      "maxlon=\"12.004\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0040\"/>"
+      "<node id=\"3\" lat=\"45.0000\" lon=\"12.0010\"><tag k=\"natural\" "
+      "v=\"tree\"/></node>"
+      "<node id=\"4\" lat=\"45.00005\" lon=\"12.0020\"><tag k=\"natural\" "
+      "v=\"tree\"/></node>"
+      "<node id=\"5\" lat=\"44.9992\" lon=\"12.0002\"/>"
+      "<node id=\"6\" lat=\"44.9992\" lon=\"12.0038\"/>"
+      "<node id=\"7\" lat=\"45.0008\" lon=\"12.0038\"/>"
+      "<node id=\"8\" lat=\"45.0008\" lon=\"12.0002\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"20\"><nd ref=\"5\"/><nd ref=\"6\"/><nd ref=\"7\"/><nd "
+      "ref=\"8\"/><nd ref=\"5\"/><tag k=\"leisure\" v=\"park\"/></way></osm>";
+  city_model_t model;
+  city_package_t package = generate_inline(xml, &model);
+  float half = model.roads[0].width * 0.5f;
+  size_t trunks = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* part = &package.chunks[c].parts[p];
+      if (strcmp(part->material, "trunk") != 0) continue;
+      for (size_t v = 0; v < part->mesh.vertex_count; v++)
+        assert(fabsf(part->mesh.vertices[v].position.z) > half);
+      trunks += part->mesh.vertex_count > 0;
+    }
+  assert(trunks >= 1); /* the park still has its trees */
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static double seg_distance(double px, double pz, double ax, double az,
                            double bx, double bz) {
   double dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
@@ -1548,6 +1585,7 @@ void run_generator_tests(void) {
   RUN(buildings_on_a_named_street_get_a_portico);
   RUN(a_slender_tower_gets_a_tall_spire);
   RUN(single_trees_stand_where_they_are_mapped);
+  RUN(no_tree_grows_out_of_a_street);
   RUN(the_package_carries_routes_and_parking_places);
   RUN(the_town_hall_and_churches_get_towers_and_the_hall_is_brick);
   RUN(buildings_on_main_streets_get_shopfronts_at_street_level);
