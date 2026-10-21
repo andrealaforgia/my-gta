@@ -67,6 +67,7 @@ typedef struct {
   parked_cars_t parked;
   traffic_t* traffic;
   pedestrians_t* people;
+  vec3_t walkers[64]; /* who is crossing a street now, for the traffic */
   pedestrian_meshes_t people_meshes;
   bool horn; /* the horn is being held */
   int vehicle_index;

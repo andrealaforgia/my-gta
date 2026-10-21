@@ -408,6 +408,79 @@ static void people_come_in_sizes_and_paces_and_some_walk_in_pairs(void) {
   physics_world_destroy(world);
 }
 
+static void people_cross_at_a_zebra_crossing_and_cars_give_way(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)}; /* z = 0, 6 m wide */
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 60, 17);
+  float crossing[2] = {-50.0f, 0.0f};
+  pedestrians_set_crossings(people, crossing, 1);
+  float far_player_z = 500.0f;
+  int most_in_road = 0;
+  bool crossed_over = false;
+  float side_before[60];
+  for (size_t i = 0; i < pedestrians_count(people); i++)
+    side_before[i] = pedestrians_get(people, i).position.z;
+  for (int step = 0; step < 120 * 90; step++) {
+    pedestrians_step(people, vec3(0, 0, far_player_z), 1.0f / 120.0f);
+    if (step % 30) continue;
+    vec3_t walkers[64];
+    int in_road = (int)pedestrians_crossing(people, walkers, 64);
+    most_in_road = in_road > most_in_road ? in_road : most_in_road;
+    for (int k = 0; k < in_road; k++) {
+      /* Crossing means on the carriageway, at the crossing. */
+      assert(fabsf(walkers[k].z) < 4.1f);
+      assert(fabsf(walkers[k].x + 50.0f) < 3.0f);
+    }
+    for (size_t i = 0; i < pedestrians_count(people); i++) {
+      float z = pedestrians_get(people, i).position.z;
+      if (side_before[i] * z < 0 && fabsf(z) > 3.0f) crossed_over = true;
+    }
+  }
+  assert(most_in_road >= 1 && crossed_over);
+  /* Nobody starts across with the player's car close by. */
+  pedestrians_t* wary = pedestrians_create(routes, 1, world, 60, 17);
+  pedestrians_set_crossings(wary, crossing, 1);
+  int started = 0;
+  for (int step = 0; step < 120 * 60; step++) {
+    pedestrians_step(wary, vec3(-50, 0, 8), 1.0f / 120.0f);
+    vec3_t walkers[64];
+    started += (int)pedestrians_crossing(wary, walkers, 64);
+  }
+  assert(started == 0);
+  pedestrians_destroy(wary);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void cars_stop_for_people_in_the_road(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[1] = {route(west, 1, 2, 1)}; /* one way, east */
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 3);
+  vec3_t walker = vec3(-40.0f, 2.0f, 1.9f); /* in the car's lane, ahead */
+  traffic_set_walkers(traffic, &walker, 1);
+  traffic_car_place(traffic, 0, 0, 1, 10.0f);
+  for (int step = 0; step < 120 * 15; step++)
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+  traffic_car_t waiting = traffic_car(traffic, 0);
+  assert(waiting.speed < 0.2f && waiting.position.x < -42.0f);
+  traffic_set_walkers(traffic, NULL, 0);
+  float fastest = 0;
+  for (int step = 0; step < 120 * 6; step++) {
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    fastest = fmaxf(fastest, traffic_car(traffic, 0).speed);
+  }
+  assert(fastest > 3.0f); /* it goes on once they have crossed */
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void people_are_drawn_only_when_near(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -570,6 +643,8 @@ void run_traffic_tests(void) {
   RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);
   RUN(a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk);
   RUN(people_come_in_sizes_and_paces_and_some_walk_in_pairs);
+  RUN(people_cross_at_a_zebra_crossing_and_cars_give_way);
+  RUN(cars_stop_for_people_in_the_road);
   RUN(people_are_drawn_only_when_near);
   RUN(the_fleet_has_four_bodies_and_a_palette);
   RUN(the_road_carries_buses_lorries_and_the_emergency_services);

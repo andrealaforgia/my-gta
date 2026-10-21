@@ -216,6 +216,9 @@ bool generate_crossings(layout_t* layout, const city_model_t* model,
       chunk->part_count--;
     } else {
       gen_finish_part(chunk, part);
+      /* People cross here; cars give way to them. */
+      if (!city_package_add_crossing(layout->package, (float)p.x, (float)p.z))
+        return false;
     }
   }
   return true;

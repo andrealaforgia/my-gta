@@ -269,6 +269,9 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   scene->signals = package.signals;
   scene->signal_count = package.signal_count;
   package.signals = NULL, package.signal_count = 0;
+  scene->crossings = package.crossings;
+  scene->crossing_count = package.crossing_count;
+  package.crossings = NULL, package.crossing_count = 0;
   scene->parked = package.parked;
   scene->parked_count = package.parked_count;
   package.routes = NULL, package.route_count = 0;

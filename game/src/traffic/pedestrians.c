@@ -17,6 +17,10 @@ typedef struct {
   int outfit;
   vec3_t position;
   float yaw;
+  float cross;    /* 0 on the pavement, else progress across the road, 0..1 */
+  float cooldown; /* seconds before they will cross again */
+  int decided;    /* the crossing they last made up their mind about */
+  float heading_x, heading_z; /* of the route where they stand */
 } person_t;
 
 struct pedestrians {
@@ -27,6 +31,8 @@ struct pedestrians {
   person_t* people;
   size_t count;
   uint32_t random;
+  const float* crossings;
+  size_t crossing_count;
 };
 
 static unsigned outfit_hash(int outfit) {
@@ -76,9 +82,32 @@ static void pose(const pedestrians_t* p, person_t* person) {
   float x, z, dx, dz, ground;
   route_path_sample(path, person->u, 1, &x, &z, &dx, &dz, &ground);
   float offset = lateral_offset(path->route, person->side);
+  person->heading_x = dx, person->heading_z = dz;
+  if (person->cross > 0) {
+    /* Part way over: slide from one pavement to the other, face across. */
+    float t = person->cross;
+    offset *= 1.0f - 2.0f * t;
+    person->position = vec3(x - dz * offset, ground, z + dx * offset);
+    float across = -(float)person->side; /* towards the far side */
+    person->yaw = atan2f(-across * -dz, -across * dx);
+    return;
+  }
   /* Right of the route's direction (x east, z south): (-dz, dx). */
   person->position = vec3(x - dz * offset, ground, z + dx * offset);
   person->yaw = person->direction > 0 ? atan2f(-dx, -dz) : atan2f(dx, dz);
+}
+
+void pedestrians_set_crossings(pedestrians_t* p, const float* xz,
+                               size_t count) {
+  p->crossings = xz;
+  p->crossing_count = count;
+}
+
+size_t pedestrians_crossing(const pedestrians_t* p, vec3_t* out, size_t max) {
+  size_t n = 0;
+  for (size_t i = 0; i < p->count && n < max; i++)
+    if (p->people[i].cross > 0) out[n++] = p->people[i].position;
+  return n;
 }
 
 pedestrians_t* pedestrians_create(const city_route_t* routes,
@@ -167,6 +196,7 @@ pedestrians_t* pedestrians_create(const city_route_t* routes,
         person->outfit = mate->outfit + 1;
     }
     person->speed = person->cruise;
+    person->decided = -1;
     pose(p, person);
   }
   return p;
@@ -231,6 +261,37 @@ static void reach_the_end(pedestrians_t* p, person_t* person) {
     person->side = (next_random(p) & 1) ? 1 : -1;
 }
 
+/* A person walking a pavement past a zebra crossing may cross it, if no
+ * car of the player's is near and they have not just done so. They make up
+ * their mind once per crossing. */
+static void maybe_start_crossing(pedestrians_t* p, person_t* person,
+                                 vec3_t player) {
+  const route_path_t* path = &p->paths[person->route];
+  if (!path->route->drivable || path->route->pavement < 0.4f ||
+      person->cooldown > 0 || person->speed < 0.3f)
+    return;
+  float offset = fabsf(lateral_offset(path->route, person->side));
+  float right_x = -person->heading_z, right_z = person->heading_x;
+  bool near_any = false;
+  for (size_t k = 0; k < p->crossing_count; k++) {
+    float rx = p->crossings[2 * k] - person->position.x;
+    float rz = p->crossings[2 * k + 1] - person->position.z;
+    float along = fabsf(rx * person->heading_x + rz * person->heading_z);
+    float lateral = fabsf(rx * right_x + rz * right_z);
+    if (along > 9.0f || lateral > offset + 3.0f) continue;
+    near_any = true;
+    if (along > 1.6f || fabsf(lateral - offset) > 1.6f) continue;
+    if (person->decided == (int)k) return;
+    person->decided = (int)k;
+    uint32_t dice = next_random(p) % 100;
+    float dx = player.x - person->position.x,
+          dz = player.z - person->position.z;
+    if (dice < 45 && dx * dx + dz * dz > 15.0f * 15.0f) person->cross = 0.001f;
+    return;
+  }
+  if (!near_any) person->decided = -1;
+}
+
 void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
   for (size_t i = 0; i < p->count; i++) {
     person_t* person = &p->people[i];
@@ -244,6 +305,24 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
       person->speed = fminf(target, person->speed + rate * dt);
     else
       person->speed = fmaxf(target, person->speed - rate * dt);
+    if (person->cooldown > 0) person->cooldown -= dt;
+    const route_path_t* path = &p->paths[person->route];
+    if (person->cross > 0) {
+      /* Over the road at a steady pace; the far pavement ends it. */
+      float width = fabsf(2.0f * lateral_offset(path->route, person->side));
+      person->cross += (person->speed > 0.2f ? 1.45f : 0.0f) * dt / width;
+      person->phase += person->speed * dt * 5.2f;
+      if (person->cross >= 1.0f) {
+        person->cross = 0;
+        person->side = -person->side;
+        person->cooldown = 25.0f;
+      }
+      float target_speed = near_car < 4.0f * 4.0f ? 0.0f : 1.45f;
+      person->speed += (target_speed - person->speed) * fminf(1.0f, 6.0f * dt);
+      pose(p, person);
+      continue;
+    }
+    maybe_start_crossing(p, person, player);
     float step = person->speed * dt * (float)person->direction;
     person->u += step;
     person->phase += person->speed * dt * 5.2f;

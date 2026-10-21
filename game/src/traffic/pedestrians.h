@@ -52,6 +52,14 @@ void pedestrians_step(pedestrians_t* pedestrians, vec3_t player_position,
                       float dt);
 size_t pedestrians_count(const pedestrians_t* pedestrians);
 pedestrian_t pedestrians_get(const pedestrians_t* pedestrians, size_t index);
+/* Zebra crossings (x, z pairs, borrowed): people walking a pavement past one
+ * sometimes cross there, when the player's car is not close. */
+void pedestrians_set_crossings(pedestrians_t* pedestrians, const float* xz,
+                               size_t count);
+/* The positions of the people who are in the road now, crossing, up to
+ * `max`; returns how many. Cars give way to them. */
+size_t pedestrians_crossing(const pedestrians_t* pedestrians, vec3_t* out,
+                            size_t max);
 /* Stands someone on a route: side +1 is the right of its direction. */
 void pedestrians_place(pedestrians_t* pedestrians, size_t index, int route,
                        int side, int direction, float distance);

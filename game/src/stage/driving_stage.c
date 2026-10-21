@@ -73,8 +73,11 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     stage->people =
         pedestrians_create(stage->scene.routes, stage->scene.route_count,
                            stage->physics, options.pedestrians, 2027);
-    if (stage->people)
+    if (stage->people) {
       stage->people_meshes = pedestrian_meshes_create(renderer);
+      pedestrians_set_crossings(stage->people, stage->scene.crossings,
+                                stage->scene.crossing_count);
+    }
   }
   if (stage->traffic)
     traffic_set_signals(stage->traffic, stage->scene.signals,
@@ -173,10 +176,15 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
     traffic_step(stage->traffic, stage->physics, player->position,
                  player->velocity, dt);
   }
-  if (stage->people)
+  if (stage->people) {
     pedestrians_step(
         stage->people,
         physics_body(stage->physics, stage->vehicle.body)->position, dt);
+    if (stage->traffic)
+      traffic_set_walkers(
+          stage->traffic, stage->walkers,
+          pedestrians_crossing(stage->people, stage->walkers, 64));
+  }
   rigid_body_t* chassis_body =
       physics_body(stage->physics, stage->vehicle.body);
   vec3_t velocity_before = chassis_body->velocity;

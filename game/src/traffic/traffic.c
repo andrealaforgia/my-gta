@@ -43,6 +43,8 @@ struct traffic {
   const city_signal_t* signals;
   size_t signal_count;
   float signal_time;
+  const vec3_t* walkers;
+  size_t walker_count;
 };
 
 static uint32_t next_random(traffic_t* t) {
@@ -165,6 +167,11 @@ void traffic_set_signals(traffic_t* t, const city_signal_t* signals,
                          size_t count) {
   t->signals = signals;
   t->signal_count = count;
+}
+
+void traffic_set_walkers(traffic_t* t, const vec3_t* positions, size_t count) {
+  t->walkers = positions;
+  t->walker_count = count;
 }
 
 void traffic_set_signal_time(traffic_t* t, float seconds) {
@@ -308,6 +315,19 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       else
         must_stop = true;
       if (gap < 0.5f) must_stop = true;
+    }
+    /* Someone crossing in front: stop short of them. */
+    for (size_t k = 0; k < t->walker_count; k++) {
+      float rx = t->walkers[k].x - car->position.x;
+      float rz = t->walkers[k].z - car->position.z;
+      float ahead = rx * fx + rz * fz;
+      float side = fabsf(rx * -fz + rz * fx);
+      if (ahead < 1.0f || ahead > 18.0f || side > 2.8f) continue;
+      float room = ahead - (own_half_length + 1.2f);
+      if (room < 0.5f)
+        must_stop = true;
+      else
+        limit = fminf(limit, sqrtf(2.0f * BRAKING * 0.6f * room));
     }
     /* Junctions: wait outside while another car is in them, or is closer
      * to them and also coming in (the lower index goes first). */

@@ -27,6 +27,7 @@ void city_package_free(city_package_t* package) {
   free(package->routes);
   free(package->parked);
   free(package->signals);
+  free(package->crossings);
   memset(package, 0, sizeof(*package));
 }
 
@@ -46,6 +47,17 @@ bool city_package_add_signal(city_package_t* package, city_signal_t signal) {
   if (!grown) return false;
   package->signals = grown;
   package->signals[package->signal_count++] = signal;
+  return true;
+}
+
+bool city_package_add_crossing(city_package_t* package, float x, float z) {
+  float* grown = realloc(package->crossings,
+                         (package->crossing_count + 1) * 2 * sizeof(float));
+  if (!grown) return false;
+  package->crossings = grown;
+  package->crossings[2 * package->crossing_count] = x;
+  package->crossings[2 * package->crossing_count + 1] = z;
+  package->crossing_count++;
   return true;
 }
 
@@ -191,6 +203,9 @@ bool city_package_write(const city_package_t* package, const char* directory) {
     fprintf(file, "signal %.3f %.3f %.3f %.3f %d\n", package->signals[i].x,
             package->signals[i].z, package->signals[i].heading_x,
             package->signals[i].heading_z, package->signals[i].group);
+  for (size_t i = 0; i < package->crossing_count; i++)
+    fprintf(file, "crossing %.3f %.3f\n", package->crossings[2 * i],
+            package->crossings[2 * i + 1]);
   for (size_t i = 0; i < package->parked_count; i++)
     fprintf(file, "park %.3f %.3f %.4f %d\n", package->parked[i].x,
             package->parked[i].z, package->parked[i].yaw,
@@ -322,6 +337,10 @@ bool city_package_read(city_package_t* package, const char* directory) {
       ok = sscanf(line, "signal %f %f %f %f %d", &signal.x, &signal.z,
                   &signal.heading_x, &signal.heading_z, &signal.group) >= 2 &&
            city_package_add_signal(package, signal);
+    } else if (strncmp(line, "crossing ", 9) == 0) {
+      float x, z;
+      ok = sscanf(line, "crossing %f %f", &x, &z) == 2 &&
+           city_package_add_crossing(package, x, z);
     } else if (strncmp(line, "park ", 5) == 0) {
       city_parking_t spot;
       ok = sscanf(line, "park %f %f %f %d", &spot.x, &spot.z, &spot.yaw,

@@ -117,6 +117,8 @@ typedef struct {
   size_t parked_count;
   city_signal_t* signals;
   size_t signal_count;
+  float* crossings; /* x, z pairs: zebra crossings on streets cars use */
+  size_t crossing_count;
 } city_package_t;
 
 city_package_t city_package_create(void);
@@ -124,6 +126,7 @@ void city_package_free(city_package_t* package);
 /* Takes ownership of the route's points. */
 bool city_package_add_route(city_package_t* package, const city_route_t* route);
 bool city_package_add_signal(city_package_t* package, city_signal_t signal);
+bool city_package_add_crossing(city_package_t* package, float x, float z);
 bool city_package_add_parking(city_package_t* package, city_parking_t spot);
 city_chunk_t* city_package_chunk(city_package_t* package, int column, int row);
 city_part_t* city_chunk_add_part(city_chunk_t* chunk, const char* material,
