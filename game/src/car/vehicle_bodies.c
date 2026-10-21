@@ -93,9 +93,9 @@ static bool prism_z(mesh_data_t* m, float cx, float cy, float r, float z0,
     vec3_t p1 = vec3(cx + r * cosf(a1), cy + r * sinf(a1), 0);
     vec3_t a = vec3(p0.x, p0.y, z0), b = vec3(p1.x, p1.y, z0);
     vec3_t c = vec3(p1.x, p1.y, z1), d = vec3(p0.x, p0.y, z1);
-    if (!mesh_data_add_quad(m, a, d, c, b, 1) ||
-        !mesh_data_add_quad(m, centre0, b, a, a, 1) ||
-        !mesh_data_add_quad(m, centre1, d, c, c, 1))
+    if (!mesh_data_add_quad(m, a, b, c, d, 1) ||
+        !mesh_data_add_quad(m, centre0, a, b, b, 1) ||
+        !mesh_data_add_quad(m, centre1, c, d, d, 1))
       return false;
   }
   return true;

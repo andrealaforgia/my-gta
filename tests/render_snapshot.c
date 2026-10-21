@@ -101,6 +101,19 @@ int main(int argc, char* argv[]) {
     stage.scene.environment.fog_end = 6000.0f;
     stage.scene.environment.shadow_radius = 0;
   }
+  if (getenv("SNAPSHOT_ORBIT")) {
+    /* Look at the car from `degrees` round from behind, at a distance. */
+    const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);
+    float angle = (float)atof(getenv("SNAPSHOT_ORBIT")) * (float)M_PI / 180.0f;
+    float distance = getenv("SNAPSHOT_ORBIT_DISTANCE")
+                         ? (float)atof(getenv("SNAPSHOT_ORBIT_DISTANCE"))
+                         : 12.0f;
+    vec3_t behind =
+        quat_rotate(body->rotation, vec3(sinf(angle), 0.25f, cosf(angle)));
+    stage.camera.position =
+        vec3_add(body->position, vec3_scale(behind, distance));
+    stage.camera.look_target = body->position;
+  }
   if (getenv("SNAPSHOT_LOOKUP")) {
     stage.camera.look_target = vec3_add(
         stage.camera.position, vec3(20, atof(getenv("SNAPSHOT_LOOKUP")), -60));
