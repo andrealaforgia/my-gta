@@ -21,6 +21,8 @@ void scene_release(scene_t* scene, renderer_t* renderer) {
   free(scene->parked);
   free(scene->signals);
   free(scene->crossings);
+  free(scene->bus_stops);
+  scene->bus_stops = NULL, scene->bus_stop_count = 0;
   scene->crossings = NULL, scene->crossing_count = 0;
   free(scene->poles);
   scene->poles = NULL, scene->pole_count = 0;

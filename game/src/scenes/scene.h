@@ -52,6 +52,8 @@ typedef struct {
   size_t signal_count;
   float* crossings; /* owned: x, z of zebra crossings */
   size_t crossing_count;
+  float* bus_stops; /* owned: x, z of bus stops */
+  size_t bus_stop_count;
   city_parking_t* parked; /* owned: places where cars stand at the kerb */
   size_t parked_count;
   pole_t* poles; /* owned: everything that can be knocked down */

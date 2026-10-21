@@ -316,6 +316,8 @@ bool generate_furniture(layout_t* layout, const city_model_t* model,
            add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 0.22f, 0)),
                             vec3(0.78f, 0.22f, 0.18f), along);
     } else if (kind == OSM_FURNITURE_BUS_STOP) {
+      if (!city_package_add_bus_stop(layout->package, (float)p.x, (float)p.z))
+        return false;
       ok = mesh_data_add_cylinder_y(&part->mesh, c, 0.04f, 2.6f, 6) &&
            add_oriented_box(&part->mesh, vec3_add(c, vec3(0, 2.5f, 0)),
                             vec3(0.02f, 0.2f, 0.28f), along) &&

@@ -655,6 +655,37 @@ static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_destroy(renderer);
 }
 
+static void a_bus_halts_at_a_bus_stop_for_a_while_and_goes_on(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[1] = {route(west, 1, 2, 1)}; /* east along z = 0 */
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 5);
+  traffic_car_set_kind(traffic, 0, 7, false); /* the bus */
+  float stop[2] = {-60.0f, 3.2f};             /* on the right-hand kerb */
+  traffic_set_bus_stops(traffic, stop, 1);
+  traffic_car_place(traffic, 0, 0, 1, 15.0f);
+  float stood = 0, last_x = -1e9f;
+  bool went_on = false;
+  for (int step = 0; step < 120 * 24; step++) { /* before the second lap */
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    traffic_car_t bus = traffic_car(traffic, 0);
+    if (bus.speed < 0.05f && fabsf(bus.position.x - stop[0]) < 3.5f)
+      stood += 1.0f / 120.0f;
+    if (bus.position.x > stop[0] + 12.0f && bus.speed > 3.0f) went_on = true;
+    last_x = bus.position.x;
+  }
+  (void)last_x;
+  assert(stood > 6.0f && stood < 14.0f); /* about eight seconds */
+  assert(went_on);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -699,6 +730,7 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
 
 void run_traffic_tests(void) {
   RUN(cars_wait_at_a_red_signal_and_go_on_green);
+  RUN(a_bus_halts_at_a_bus_stop_for_a_while_and_goes_on);
   RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);

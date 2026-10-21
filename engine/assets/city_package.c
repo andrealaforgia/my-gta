@@ -28,6 +28,7 @@ void city_package_free(city_package_t* package) {
   free(package->parked);
   free(package->signals);
   free(package->crossings);
+  free(package->bus_stops);
   memset(package, 0, sizeof(*package));
 }
 
@@ -58,6 +59,17 @@ bool city_package_add_crossing(city_package_t* package, float x, float z) {
   package->crossings[2 * package->crossing_count] = x;
   package->crossings[2 * package->crossing_count + 1] = z;
   package->crossing_count++;
+  return true;
+}
+
+bool city_package_add_bus_stop(city_package_t* package, float x, float z) {
+  float* grown = realloc(package->bus_stops,
+                         (package->bus_stop_count + 1) * 2 * sizeof(float));
+  if (!grown) return false;
+  package->bus_stops = grown;
+  package->bus_stops[2 * package->bus_stop_count] = x;
+  package->bus_stops[2 * package->bus_stop_count + 1] = z;
+  package->bus_stop_count++;
   return true;
 }
 
@@ -206,6 +218,9 @@ bool city_package_write(const city_package_t* package, const char* directory) {
   for (size_t i = 0; i < package->crossing_count; i++)
     fprintf(file, "crossing %.3f %.3f\n", package->crossings[2 * i],
             package->crossings[2 * i + 1]);
+  for (size_t i = 0; i < package->bus_stop_count; i++)
+    fprintf(file, "busstop %.3f %.3f\n", package->bus_stops[2 * i],
+            package->bus_stops[2 * i + 1]);
   for (size_t i = 0; i < package->parked_count; i++)
     fprintf(file, "park %.3f %.3f %.4f %d\n", package->parked[i].x,
             package->parked[i].z, package->parked[i].yaw,
@@ -341,6 +356,10 @@ bool city_package_read(city_package_t* package, const char* directory) {
       float x, z;
       ok = sscanf(line, "crossing %f %f", &x, &z) == 2 &&
            city_package_add_crossing(package, x, z);
+    } else if (strncmp(line, "busstop ", 8) == 0) {
+      float x, z;
+      ok = sscanf(line, "busstop %f %f", &x, &z) == 2 &&
+           city_package_add_bus_stop(package, x, z);
     } else if (strncmp(line, "park ", 5) == 0) {
       city_parking_t spot;
       ok = sscanf(line, "park %f %f %f %d", &spot.x, &spot.z, &spot.yaw,

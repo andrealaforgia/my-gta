@@ -25,6 +25,8 @@ typedef struct {
   int indicator; /* -1 turning left, +1 right, 0 straight on */
   float lateral; /* metres to the right of its lane, easing to lateral_goal */
   float lateral_goal;
+  float dwell;   /* seconds stood at a bus stop */
+  int stop_done; /* 1 + the bus stop it has just served, 0 for none */
   vec3_t position;
   float yaw;
   collider_handle_t collider;
@@ -46,6 +48,8 @@ struct traffic {
   uint32_t random;
   float ground_clock;
   physics_world_t* physics;
+  const float* bus_stops;
+  size_t bus_stop_count;
   const city_signal_t* signals;
   size_t signal_count;
   float signal_time;
@@ -185,6 +189,11 @@ void traffic_car_set_kind(traffic_t* t, size_t index, int variant,
   physics_set_static_box_transform(
       t->physics, car->collider,
       transform_at(car->position, quat_from_yaw(car->yaw)));
+}
+
+void traffic_set_bus_stops(traffic_t* t, const float* xz, size_t count) {
+  t->bus_stops = xz;
+  t->bus_stop_count = count;
 }
 
 void traffic_set_walkers(traffic_t* t, const vec3_t* positions, size_t count) {
@@ -386,6 +395,29 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       else
         must_stop = true;
       if (gap < 0.5f) must_stop = true;
+    }
+    /* A bus halts at a stop on its side of the road for eight seconds, then
+     * goes on and does not stop there again until it has left. */
+    if (own_visual->style == BODY_BUS) {
+      bool any_near = false;
+      for (size_t k = 0; k < t->bus_stop_count; k++) {
+        float rx = t->bus_stops[2 * k] - car->position.x;
+        float rz = t->bus_stops[2 * k + 1] - car->position.z;
+        float ahead = rx * fx + rz * fz;
+        float side = fabsf(rx * -fz + rz * fx);
+        if (side > 6.0f || fabsf(ahead) > 40.0f) continue;
+        any_near = true;
+        if (car->stop_done == (int)k + 1 || ahead < -1.0f || ahead > 26.0f)
+          continue;
+        if (ahead < 1.5f) {
+          limit = 0;
+          if (car->speed < 0.3f) car->dwell += dt;
+          if (car->dwell >= 8.0f) car->stop_done = (int)k + 1, car->dwell = 0;
+        } else {
+          limit = fminf(limit, sqrtf(2.0f * BRAKING * 0.5f * (ahead - 1.0f)));
+        }
+      }
+      if (!any_near) car->stop_done = 0;
     }
     /* Someone crossing in front: stop short of them. */
     for (size_t k = 0; k < t->walker_count; k++) {

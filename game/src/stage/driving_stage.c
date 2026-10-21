@@ -80,6 +80,9 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     }
   }
   if (stage->traffic)
+    traffic_set_bus_stops(stage->traffic, stage->scene.bus_stops,
+                          stage->scene.bus_stop_count);
+  if (stage->traffic)
     traffic_set_signals(stage->traffic, stage->scene.signals,
                         stage->scene.signal_count);
   skid_marks_reset(&stage->skid_marks);
