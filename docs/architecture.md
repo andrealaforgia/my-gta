@@ -100,3 +100,11 @@ across the shadow and main passes, 130k triangles drawn at a street-level
 view, 1.8 to 2.3 ms per frame measured over 60 frames with vsync off.
 The physics step with the car is well under a millisecond. No instancing,
 LOD or chunk streaming yet; every chunk is loaded at start.
+
+Re-measured on 2026-10-21 with everything on (110 chunks, about 250k
+triangles in the package, 2300 colliders, 60 cars, 150 people, rain, night
+lighting, terrain): 2.5 ms per frame in the town centre, 2.5 ms in a narrow
+street and 3.8 ms looking across the open ground at the edge, at 1920x1080
+with vsync off. Parked cars, people, skid marks and rain drops are culled
+by distance on the CPU; the sky, clouds and stars are one full-screen
+triangle.
