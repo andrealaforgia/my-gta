@@ -40,7 +40,7 @@ DEP = $(ENGINE_OBJ:.o=.d) $(GAME_OBJ:.o=.d) $(TOOL_OBJ:.o=.d)
 INCLUDES = $(foreach dir,$(ENGINE_DIRS) $(GAME_DIRS) $(TOOL_DIRS),-I$(dir))
 
 OPT ?= -O2
-CFLAGS := -ggdb3 $(OPT) --std=c99 -Wall -Wextra -pedantic-errors -DGL_SILENCE_DEPRECATION \
+CFLAGS := -ggdb3 $(OPT) --std=c99 -Wall -Wextra -pedantic-errors -DGL_SILENCE_DEPRECATION -D_DEFAULT_SOURCE \
           $(INCLUDES) $(SDL2_CFLAGS)
 LFLAGS := $(SDL2_LFLAGS) $(GL_LFLAGS) -lm
 
