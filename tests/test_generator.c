@@ -1056,6 +1056,63 @@ static void busy_crossings_get_traffic_lights_in_two_phases(void) {
   city_model_free(&model);
 }
 
+static void street_facing_roofs_get_a_stone_cornice(void) {
+  city_generator_stats_t stats;
+  city_package_t package = generate_fixture(&stats);
+  size_t cornices = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* part = &package.chunks[c].parts[p];
+      if (strcmp(part->material, "cornice") != 0) continue;
+      cornices++;
+      assert(part->collider == PART_COLLIDER_NONE);
+      aabb_t b = mesh_data_bounds(&part->mesh);
+      assert(near_to(b.max.y - b.min.y, 0.45, 0.01)); /* a band */
+      /* It sits at the top of its building's walls. */
+      const city_part_t* walls = facade_for(&package, part->source_id);
+      assert(walls);
+      assert(near_to(mesh_data_bounds(&walls->mesh).max.y, b.max.y, 0.01) ||
+             mesh_data_bounds(&walls->mesh).max.y >= b.max.y - 0.01);
+    }
+  assert(cornices >= 1 && cornices <= stats.buildings);
+  city_package_free(&package);
+}
+
+static void nothing_is_lifted_twice_on_raised_ground(void) {
+  /* Ground at 100 m everywhere: every part of the town, including what is
+   * attached to buildings, must sit within the tallest building's height
+   * above it, not 100 m above that. */
+  city_model_t model = fixture_model();
+  float heights[4] = {100, 100, 100, 100};
+  model.terrain.min_x = -1000, model.terrain.min_z = -1000;
+  model.terrain.dx = 2000, model.terrain.dz = 2000;
+  model.terrain.cols = 2, model.terrain.rows = 2;
+  model.terrain.heights = malloc(sizeof(heights));
+  memcpy(model.terrain.heights, heights, sizeof(heights));
+  city_generator_options_t options = city_generator_default_options();
+  city_package_t package;
+  city_generator_stats_t stats;
+  assert(city_generate(&package, &model, &options, "raised", &stats));
+  size_t attached = 0;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* part = &package.chunks[c].parts[p];
+      if (part->mesh.vertex_count == 0) continue;
+      aabb_t b = mesh_data_bounds(&part->mesh);
+      bool ground = strcmp(part->material, "ground") == 0;
+      /* Walls may reach a few metres below, on a slope. */
+      if (!ground) assert(b.min.y > 94.0f && b.max.y < 160.0f);
+      if (strcmp(part->material, "door") == 0 ||
+          strcmp(part->material, "chimney") == 0 ||
+          strcmp(part->material, "cornice") == 0 ||
+          strcmp(part->material, "shopfront") == 0)
+        attached++;
+    }
+  assert(attached >= 2);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void a_package_with_crossings_has_no_empty_parts(void) {
   /* Crossing nodes that are not on a street cars use make nothing at all. */
   const char* xml =
@@ -1324,6 +1381,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
           strcmp(part->material, "marking") == 0 ||
           strcmp(part->material, "manhole") == 0 ||
           strcmp(part->material, "door") == 0 ||
+          strcmp(part->material, "cornice") == 0 ||
           strcmp(part->material, "rail") == 0 ||
           strcmp(part->material, "chimney") == 0 ||
           strcmp(part->material, "furniture") == 0 ||
@@ -1459,6 +1517,8 @@ void run_generator_tests(void) {
   RUN(benches_bus_stops_bollards_and_signals_stand_where_mapped);
   RUN(walls_stand_where_mapped_but_never_across_a_street);
   RUN(busy_crossings_get_traffic_lights_in_two_phases);
+  RUN(street_facing_roofs_get_a_stone_cornice);
+  RUN(nothing_is_lifted_twice_on_raised_ground);
   RUN(a_package_with_crossings_has_no_empty_parts);
   RUN(mapped_crossings_get_zebra_stripes_away_from_junctions);
   RUN(pitched_roofs_sprout_chimneys_above_the_ridge);

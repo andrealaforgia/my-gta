@@ -554,7 +554,12 @@ bool gen_apply_terrain(layout_t* layout) {
       city_part_t* part = &chunk->parts[p];
       bool skip = strcmp(part->material, "ground") == 0 ||
                   strncmp(part->material, "facade", 6) == 0 ||
-                  strncmp(part->material, "roof", 4) == 0;
+                  strncmp(part->material, "roof", 4) == 0 ||
+                  /* Placed with their building, which found its own ground. */
+                  strcmp(part->material, "door") == 0 ||
+                  strcmp(part->material, "chimney") == 0 ||
+                  strcmp(part->material, "shopfront") == 0 ||
+                  strcmp(part->material, "cornice") == 0;
       if (!skip) {
         for (size_t k = 0; k < sizeof(surfaces) / sizeof(surfaces[0]); k++)
           if (strcmp(part->material, surfaces[k]) == 0 &&

@@ -700,11 +700,7 @@ static bool add_clock_faces(layout_t* layout, const city_building_t* building,
                            1, 0, 1))
       return false;
   }
-  float base = layout->terrain ? (float)city_terrain_height(layout->terrain,
-                                                            centre.x, centre.z)
-                               : 0.0f;
-  for (size_t v = 0; v < clock->mesh.vertex_count; v++)
-    clock->mesh.vertices[v].position.y += base;
+  (void)layout; /* the terrain pass lifts the clock like the lamps */
   gen_finish_part(chunk, clock);
   return true;
 }
@@ -806,6 +802,80 @@ static bool add_doors(layout_t* layout, const city_building_t* building,
   return true;
 }
 
+/* A stone cornice along the top of the walls that face a street: a band
+ * that stands 0.4 m out and drops 0.45 m below the eaves, with an underside
+ * and a top. Pitched roofs get it on the long sides only, flat and hipped
+ * roofs all round. */
+static bool add_cornices(layout_t* layout, const city_building_t* building,
+                         city_chunk_t* chunk) {
+  unsigned hash = (unsigned)((uint64_t)building->source_id * 2246822519u >> 9);
+  if (building->height < 5.5f || hash % 100 >= 65) return true;
+  roof_shape_t shape = roof_shape(building);
+  size_t count = building->point_count;
+  vec2_t long_axis = gen_v2(1, 0);
+  if (shape == ROOF_GABLED || shape == ROOF_RIDGE)
+    long_axis = gen_bounding_rectangle(building->points, count).axis;
+  float lift = 0;
+  if (layout->terrain && layout->terrain->cols > 0) {
+    local_point_t c = gen_centroid(building->points, count);
+    lift = (float)gen_terrain_at(layout, c.x, c.z);
+  }
+  const city_model_t* model = layout->model;
+  city_part_t* part = NULL;
+  float top = building->height + lift, bottom = top - 0.45f;
+  for (size_t i = 0; i < count; i++) {
+    local_point_t a = building->points[i],
+                  b = building->points[(i + 1) % count];
+    double length = hypot(b.x - a.x, b.z - a.z);
+    if (length < 4.0) continue;
+    vec2_t direction = gen_v2_normalize(gen_v2_sub(b, a));
+    if ((shape == ROOF_GABLED || shape == ROOF_RIDGE) &&
+        fabs(direction.x * long_axis.x + direction.z * long_axis.z) < 0.9)
+      continue;
+    vec2_t out = gen_v2(-direction.z, direction.x);
+    local_point_t middle = {(a.x + b.x) * 0.5, (a.z + b.z) * 0.5};
+    local_point_t ahead = gen_offset(middle, out, 3.0);
+    double distance = 1e30;
+    for (size_t r = 0; r < model->road_count; r++) {
+      const city_road_t* road = &model->roads[r];
+      if (road->class == ROAD_CLASS_WATERWAY ||
+          road->class == ROAD_CLASS_MOTORWAY)
+        continue;
+      for (size_t k = 1; k < road->point_count; k++)
+        distance =
+            fmin(distance, gen_point_segment_distance(
+                               ahead, road->points[k - 1], road->points[k]));
+    }
+    if (distance > 11.0) continue;
+    if (!part) {
+      part = city_chunk_add_part(chunk, "cornice", PART_COLLIDER_NONE, 0, 0,
+                                 (uint64_t)building->source_id);
+      if (!part) return false;
+    }
+    local_point_t ao = gen_offset(a, out, 0.4), bo = gen_offset(b, out, 0.4);
+    vec3_t normal = vec3((float)out.x, 0, (float)out.z);
+    float run = (float)length;
+    if (!gen_add_wall_quad(part, ao, bo, bottom, top, normal, 0, run, 0, 0.45f))
+      return false;
+    /* Underside and top, from the wall out to the face. */
+    for (int face = 0; face < 2; face++) {
+      float y = face == 0 ? bottom : top;
+      vec3_t up = vec3(0, face == 0 ? -1.0f : 1.0f, 0);
+      uint32_t base = (uint32_t)part->mesh.vertex_count;
+      if (!gen_add_vertex(&part->mesh, gen_at(a, y), up, 0, 0) ||
+          !gen_add_vertex(&part->mesh, gen_at(b, y), up, run, 0) ||
+          !gen_add_vertex(&part->mesh, gen_at(bo, y), up, run, 0.4f) ||
+          !gen_add_vertex(&part->mesh, gen_at(ao, y), up, 0, 0.4f) ||
+          !gen_add_face(&part->mesh, base, base + 1, base + 2, up) ||
+          !gen_add_face(&part->mesh, base, base + 2, base + 3, up))
+        return false;
+    }
+  }
+  if (!part) return true;
+  gen_finish_part(chunk, part);
+  return true;
+}
+
 /* Finishes the building's parts, with its landmark tower and clock. */
 static bool finish_landmark_building(layout_t* layout,
                                      const city_building_t* building,
@@ -821,6 +891,8 @@ static bool finish_landmark_building(layout_t* layout,
     return false;
   finish_building(layout, building, chunk, walls, roof);
   if (landmark == LANDMARK_NONE && !add_doors(layout, building, chunk, NULL))
+    return false;
+  if (landmark == LANDMARK_NONE && !add_cornices(layout, building, chunk))
     return false;
   if (landmark == LANDMARK_NONE) {
     roof_shape_t shape = roof_shape(building);
