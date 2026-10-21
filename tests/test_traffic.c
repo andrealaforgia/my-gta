@@ -161,7 +161,12 @@ static void cars_follow_the_roads_on_the_right_at_a_sensible_speed(void) {
       best = fmin(best, hypot(car.position.x - (p[0] + u * dx),
                               car.position.z - (p[1] + u * dz)));
     }
-    assert(best > 0.8 && best < 2.2);
+    /* A car turning round at a dead end sweeps across its road. */
+    bool turning_round =
+        hypotf(car.position.x, car.position.z - 100.0f) < 6.0f ||
+        hypotf(car.position.x + 100.0f, car.position.z) < 6.0f ||
+        hypotf(car.position.x - 100.0f, car.position.z) < 6.0f;
+    assert(best < 2.2 && (best > 0.8 || turning_round));
   }
   traffic_destroy(traffic, world);
   fleet_destroy(&fleet, renderer);

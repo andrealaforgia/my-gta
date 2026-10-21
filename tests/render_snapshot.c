@@ -79,8 +79,20 @@ int main(int argc, char* argv[]) {
   }
   driving_input_t input = {1.0f, 0.0f, steering, false};
   int steps = (int)(seconds * 120);
+  /* SNAPSHOT_STUCK reports the cars that stood still for long. */
+  bool watch_stuck = getenv("SNAPSHOT_STUCK") != NULL && stage.traffic;
+  size_t watched = watch_stuck ? traffic_car_count(stage.traffic) : 0;
+  float* stood = watched ? calloc(watched, sizeof(float)) : NULL;
+  float* longest = watched ? calloc(watched, sizeof(float)) : NULL;
   for (int i = 0; i < steps; i++) {
     driving_stage_step(&stage, input, 1.0f / 120.0f);
+    if (watched && i % 120 == 0) {
+      for (size_t k = 0; k < watched; k++) {
+        traffic_car_t car = traffic_car(stage.traffic, k);
+        stood[k] = car.speed < 0.1f ? stood[k] + 1.0f : 0.0f;
+        if (stood[k] > longest[k]) longest[k] = stood[k];
+      }
+    }
     if (i % 2 == 0) {
       const rigid_body_t* body =
           physics_body(stage.physics, stage.vehicle.body);
@@ -89,6 +101,14 @@ int main(int argc, char* argv[]) {
                           body->velocity, stage.physics, 1.0f / 60.0f);
     }
   }
+  for (size_t k = 0; k < watched; k++) {
+    if (stood[k] < 40.0f) continue;
+    traffic_car_t car = traffic_car(stage.traffic, k);
+    printf("stuck %zu variant %d route %d at %.1f %.1f for %.0f s\n", k,
+           car.variant, car.route, car.position.x, car.position.z, stood[k]);
+  }
+  free(stood);
+  free(longest);
   stage.fps = 60;
   stage.view_mode = getenv("SNAPSHOT_VIEW") ? atoi(getenv("SNAPSHOT_VIEW")) : 0;
   stage.map_open = getenv("SNAPSHOT_MAP") != NULL;

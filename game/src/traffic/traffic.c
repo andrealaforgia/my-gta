@@ -31,6 +31,8 @@ typedef struct {
   float raw_x, raw_z, raw_yaw;
   float error_x, error_z, error_yaw;
   bool changed_lane;
+  float waited;  /* seconds spent standing still */
+  float ghost;   /* metres left to go through others, after a deadlock */
   float dwell;   /* seconds stood at a bus stop */
   int stop_done; /* 1 + the bus stop it has just served, 0 for none */
   vec3_t position;
@@ -184,6 +186,16 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
              pick * (t->lanes[chosen].length - 12.0f) / t->lanes[chosen].length;
     car->speed = 0;
     car->planned_route = -1;
+    for (int tries = 0; tries < 20; tries++) {
+      pose(t, car, true, 0);
+      bool crowded = false;
+      for (size_t j = 0; j < t->car_count && !crowded; j++)
+        crowded = hypotf(t->cars[j].position.x - car->position.x,
+                         t->cars[j].position.z - car->position.z) < 10.0f;
+      if (!crowded) break;
+      car->s = 6.0f + (float)(next_random(t) % 1000) / 1000.0f *
+                          (t->lanes[chosen].length - 12.0f);
+    }
     int style = (int)(next_random(t) % 1000);
     car->variant = fleet_traffic_variant_for(style);
     car->paint = (int)(next_random(t) % 1000);
@@ -445,8 +457,8 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       float other_half_length = 2.2f, other_half_width = 0.9f;
       if (j == t->car_count) {
         other = player;
-      } else if (j == i) {
-        continue;
+      } else if (j == i || car->ghost > 0) {
+        continue; /* a car stuck for good drives through the others */
       } else {
         other = t->cars[j].position;
         other_speed = t->cars[j].speed;
@@ -459,6 +471,11 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       float ahead = rx * fx + rz * fz;
       float side = fabsf(rx * -fz + rz * fx);
       float side_limit = fmaxf(2.1f, own_half_width + other_half_width + 0.3f);
+      if (j < t->car_count) {
+        /* Oncoming cars on a narrow road squeeze past each other. */
+        float ofx = -sinf(t->cars[j].yaw), ofz = -cosf(t->cars[j].yaw);
+        if (ofx * fx + ofz * fz < -0.5f) side_limit = fminf(side_limit, 1.3f);
+      }
       if (ahead < 1.0f ||
           ahead > LOOKAHEAD + own_half_length + other_half_length ||
           side > side_limit)
@@ -522,12 +539,14 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       sample(lane, lane->length, car->direction, &px, &pz, &pdx, &pdz, &pg);
       bool blocked = false;
       for (size_t j = 0; j < t->car_count && !blocked; j++) {
-        if (j == i) continue;
+        if (j == i || car->ghost > 0) continue;
         const car_t* other = &t->cars[j];
         float ox = other->position.x - px, oz = other->position.z - pz;
         float inside = sqrtf(ox * ox + oz * oz);
-        if (inside < 7.0f) {
-          /* Cars queued behind me on my own lane are not in the junction. */
+        if (inside < 7.0f && (j < i || other->speed > 0.3f)) {
+          /* Someone in the junction: if it is standing, the lower index goes
+           * first, so two that have both crept in cannot wait for each
+           * other for ever. */
           blocked = true;
         } else if (inside < 18.0f && j < i) {
           float ofx = -sinf(other->yaw), ofz = -cosf(other->yaw);
@@ -542,22 +561,28 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       }
     }
     /* A red signal ahead for the way this car is heading: stop six metres
-     * short of it. */
+     * short of it. A junction can have several heads of both groups, so the
+     * car obeys the one that faces it best, or it could never go. */
+    const city_signal_t* obeyed = NULL;
+    float best_alignment = 0.7f, obeyed_ahead = 0;
     for (size_t k = 0; k < t->signal_count; k++) {
       const city_signal_t* signal = &t->signals[k];
-      if (signal->group < 0 ||
-          traffic_signal_open(t->signal_time, signal->group))
-        continue; /* green, or knocked down */
+      if (signal->group < 0) continue; /* knocked down */
       bool any_heading = signal->heading_x == 0 && signal->heading_z == 0;
-      if (!any_heading &&
-          signal->heading_x * fx + signal->heading_z * fz < 0.7f)
-        continue;
+      float alignment =
+          any_heading ? 0.75f : signal->heading_x * fx + signal->heading_z * fz;
+      if (alignment < best_alignment) continue;
       float rx = signal->x - car->position.x;
       float rz = signal->z - car->position.z;
       float ahead = rx * fx + rz * fz;
       float side = fabsf(rx * -fz + rz * fx);
       if (ahead < 1.0f || ahead > 30.0f || side > 8.0f) continue;
-      float room = ahead - 6.0f;
+      if (alignment == best_alignment && obeyed && ahead > obeyed_ahead)
+        continue;
+      obeyed = signal, best_alignment = alignment, obeyed_ahead = ahead;
+    }
+    if (obeyed && !traffic_signal_open(t->signal_time, obeyed->group)) {
+      float room = obeyed_ahead - 6.0f;
       limit =
           fminf(limit, room > 0 ? sqrtf(2.0f * BRAKING * 0.6f * room) : 0.0f);
     }
@@ -571,6 +596,15 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     }
     car->braking = car->speed < before - 0.002f || must_stop;
     car->s += car->speed * dt;
+    /* Deadlocks are rare but would last for ever: after a long stand, go on
+     * through the others for a little way. */
+    if (car->ghost > 0) car->ghost -= car->speed * dt;
+    if (car->speed > 1.0f) {
+      car->waited = 0;
+    } else if (car->speed < 0.1f && car->ghost <= 0) {
+      car->waited += dt;
+      if (car->waited > 35.0f) car->ghost = 25.0f, car->waited = 0;
+    }
     car->wheel_turn +=
         car->speed * dt / t->fleet->visuals[car->variant].wheel_radius;
     if (car->s >= lane->length) {
