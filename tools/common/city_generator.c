@@ -18,7 +18,7 @@
 city_generator_options_t city_generator_default_options(void) {
   city_generator_options_t o = {150.0f, 0.06f, true,  2.0f,  0.18f, 8.0f,
                                 3.0f,   3.2f,  12,    0.25f, 1.0f,  0.9f,
-                                0.7f,   0.6f,  28.0f, 14.0f, {0}};
+                                0.7f,   0.6f,  28.0f, 14.0f, {0},   0.0,   0.0};
   return o;
 }
 
@@ -58,6 +58,10 @@ bool city_generator_options_load(city_generator_options_t* o,
       config_get_float(&config, "building_friction", o->building_friction);
   o->lamp_spacing = config_get_float(&config, "lamp_spacing", o->lamp_spacing);
   o->tree_spacing = config_get_float(&config, "tree_spacing", o->tree_spacing);
+  o->spawn_latitude =
+      config_get_float(&config, "spawn_latitude", (float)o->spawn_latitude);
+  o->spawn_longitude =
+      config_get_float(&config, "spawn_longitude", (float)o->spawn_longitude);
   if (config_defaulted_count(&config) > 0)
     LOG_WARN("generate", "%s: %zu settings missing, defaults used", path,
              config_defaulted_count(&config));
@@ -73,12 +77,14 @@ uint64_t city_generator_options_hash(const city_generator_options_t* o) {
   /* FNV-1a over a textual rendering so padding bytes do not matter. */
   char text[512];
   snprintf(text, sizeof(text),
-           "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g %g %s", o->chunk_size,
+           "%g %g %d %g %g %g %g %g %d %g %g %g %g %g %g %g %s %g %g",
+           o->chunk_size,
            o->road_height, o->pavements, o->pavement_width, o->kerb_height,
            o->road_texture_length, o->window_width, o->storey_height,
            o->facade_variants, o->ground_uv_scale, o->road_friction,
            o->pavement_friction, o->ground_friction, o->building_friction,
-           o->lamp_spacing, o->tree_spacing, o->arcade_streets);
+           o->lamp_spacing, o->tree_spacing, o->arcade_streets,
+           o->spawn_latitude, o->spawn_longitude);
   uint64_t hash = 1469598103934665603ull;
   for (const char* c = text; *c; c++)
     hash = (hash ^ (uint8_t)*c) * 1099511628211ull;
@@ -93,13 +99,20 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
   const city_road_t* best = NULL;
   double best_length = 0;
   double extent = 0;
+  /* The place a drive starts: the middle of the extract, or where the
+   * settings put it. */
+  local_point_t centre = {0, 0};
+  bool chosen_centre = o->spawn_latitude != 0 || o->spawn_longitude != 0;
+  if (chosen_centre)
+    centre = projection_project(&model->projection, o->spawn_latitude,
+                                o->spawn_longitude);
   for (size_t r = 0; r < model->road_count; r++)
     for (size_t i = 0; i < model->roads[r].point_count; i++) {
       local_point_t p = model->roads[r].points[i];
       extent = fmax(extent, fmax(fabs(p.x), fabs(p.z)));
     }
   for (int pass = 0; pass < 2 && !best; pass++) {
-    double limit = pass == 0 ? extent * 0.4 : 1e30;
+    double limit = pass == 0 ? (chosen_centre ? 400.0 : extent * 0.4) : 1e30;
     for (size_t r = 0; r < model->road_count; r++) {
       const city_road_t* road = &model->roads[r];
       if (road->class == ROAD_CLASS_SERVICE ||
@@ -108,7 +121,9 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
           road->class == ROAD_CLASS_PATH || road->class == ROAD_CLASS_WATERWAY)
         continue;
       local_point_t middle = gen_centroid(road->points, road->point_count);
-      if (fabs(middle.x) > limit || fabs(middle.z) > limit) continue;
+      if (fabs(middle.x - centre.x) > limit ||
+          fabs(middle.z - centre.z) > limit)
+        continue;
       double length = 0;
       for (size_t i = 1; i < road->point_count; i++)
         length +=
@@ -135,7 +150,9 @@ static void choose_spawn(city_package_t* package, const city_model_t* model,
   local_point_t a = best->points[longest - 1], b = best->points[longest];
   local_point_t first = best->points[0],
                 last = best->points[best->point_count - 1];
-  bool towards_last = hypot(last.x, last.z) <= hypot(first.x, first.z);
+  bool towards_last =
+      hypot(last.x - centre.x, last.z - centre.z) <=
+      hypot(first.x - centre.x, first.z - centre.z);
   vec2_t direction = towards_last ? gen_v2_normalize(gen_v2_sub(b, a))
                                   : gen_v2_normalize(gen_v2_sub(a, b));
   package->spawn_position =
@@ -393,6 +410,15 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   free(fits);
   free(cuts);
   ok = ok && gen_apply_terrain(&layout);
+  /* Real maps leave the odd hairline triangle: drop them rather than ship
+   * geometry that draws nothing and confuses the validator. */
+  size_t hairlines = 0;
+  for (size_t c = 0; ok && c < package->chunk_count; c++)
+    for (size_t p = 0; p < package->chunks[c].part_count; p++)
+      hairlines +=
+          mesh_data_remove_degenerate(&package->chunks[c].parts[p].mesh, 1e-3f);
+  if (hairlines > 0)
+    LOG_INFO("generate", "%zu degenerate triangles dropped", hairlines);
   if (!ok) {
     LOG_ERROR("generate", "out of memory while generating");
     return false;

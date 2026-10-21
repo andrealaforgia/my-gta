@@ -1,5 +1,6 @@
 #include "city_scene.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,8 +80,46 @@ static material_t material_for(const char* name,
   return material_rough(vec3(1, 0, 1), 0.8f); /* unknown materials shout */
 }
 
+/* Growable lists on a chunk's state. */
+static bool remember_entity(chunk_state_t* st, uint32_t id) {
+  if (st->entity_count == st->entity_capacity) {
+    size_t capacity = st->entity_capacity ? st->entity_capacity * 2 : 64;
+    uint32_t* grown = realloc(st->entities, capacity * sizeof(*grown));
+    if (!grown) return false;
+    st->entities = grown;
+    st->entity_capacity = capacity;
+  }
+  st->entities[st->entity_count++] = id;
+  return true;
+}
+
+static bool remember_mesh(chunk_state_t* st, mesh_handle_t mesh) {
+  if (st->mesh_count == st->mesh_capacity) {
+    size_t capacity = st->mesh_capacity ? st->mesh_capacity * 2 : 64;
+    mesh_handle_t* grown = realloc(st->meshes, capacity * sizeof(*grown));
+    if (!grown) return false;
+    st->meshes = grown;
+    st->mesh_capacity = capacity;
+  }
+  st->meshes[st->mesh_count++] = mesh;
+  return true;
+}
+
+static bool remember_collider(chunk_state_t* st, collider_handle_t handle) {
+  if (st->collider_count == st->collider_capacity) {
+    size_t capacity = st->collider_capacity ? st->collider_capacity * 2 : 32;
+    collider_handle_t* grown =
+        realloc(st->colliders, capacity * sizeof(*grown));
+    if (!grown) return false;
+    st->colliders = grown;
+    st->collider_capacity = capacity;
+  }
+  st->colliders[st->collider_count++] = handle;
+  return true;
+}
+
 /* One upload per chunk and material: the merged mesh keeps draw calls low. */
-static bool upload_merged(scene_t* scene, scene_context_t c,
+static bool upload_merged(chunk_state_t* st, scene_context_t c,
                           const city_chunk_t* chunk, const char* material,
                           int* draws) {
   mesh_data_t merged = mesh_data_create();
@@ -99,23 +138,23 @@ static bool upload_merged(scene_t* scene, scene_context_t c,
     return true;
   }
   mesh_handle_t handle = renderer_upload_mesh(c.renderer, &merged);
-  scene_track_mesh(scene, handle);
   char label[ENTITY_LABEL_LENGTH];
   snprintf(label, sizeof(label), "%s %d,%d", material, chunk->column,
            chunk->row);
-  world_add(c.world, transform_identity(), handle,
-            material_for(material, c.textures), mesh_data_bounds(&merged),
-            label);
+  uint32_t entity = world_add(c.world, transform_identity(), handle,
+                              material_for(material, c.textures),
+                              mesh_data_bounds(&merged), label);
   (*draws)++;
   mesh_data_free(&merged);
-  return true;
+  return remember_mesh(st, handle) && remember_entity(st, entity);
 }
 
 /* Lamp posts, signals and road signs: each pole's parts become entities of
  * their own and its solid part a collider of its own, so one can be knocked
  * over without touching the rest. */
-static bool add_poles(scene_t* scene, scene_context_t c,
-                      const city_chunk_t* chunk, int* draws, int* colliders) {
+static bool add_poles(scene_t* scene, chunk_state_t* st, scene_context_t c,
+                      const city_chunk_t* chunk, int chunk_index, int* draws,
+                      int* colliders) {
   size_t p = 0;
   while (p < chunk->part_count) {
     if (!city_source_is_pole(chunk->parts[p].source_id)) {
@@ -126,6 +165,7 @@ static bool add_poles(scene_t* scene, scene_context_t c,
     pole_t pole;
     memset(&pole, 0, sizeof(pole));
     pole.kind = POLE_LAMP;
+    pole.chunk = chunk_index;
     aabb_t bounds = aabb_empty();
     size_t first = p;
     for (; p < chunk->part_count && chunk->parts[p].source_id == id; p++) {
@@ -139,16 +179,18 @@ static bool add_poles(scene_t* scene, scene_context_t c,
         return false;
       }
       mesh_handle_t handle = renderer_upload_mesh(c.renderer, &copy);
-      scene_track_mesh(scene, handle);
+      if (!remember_mesh(st, handle)) return false;
       char label[ENTITY_LABEL_LENGTH];
       snprintf(label, sizeof(label), "%s %d,%d", part->material, chunk->column,
                chunk->row);
       aabb_t local = mesh_data_bounds(&copy);
       bounds = aabb_merge(bounds, local);
+      uint32_t entity =
+          world_add(c.world, transform_identity(), handle,
+                    material_for(part->material, c.textures), local, label);
+      if (!remember_entity(st, entity)) return false;
       if (pole.entity_count < POLE_MAX_ENTITIES)
-        pole.entities[pole.entity_count++] =
-            world_add(c.world, transform_identity(), handle,
-                      material_for(part->material, c.textures), local, label);
+        pole.entities[pole.entity_count++] = entity;
       (*draws)++;
       mesh_data_free(&copy);
       if (part->collider == PART_COLLIDER_MESH) {
@@ -187,12 +229,17 @@ static bool add_poles(scene_t* scene, scene_context_t c,
   return true;
 }
 
-static bool add_colliders(scene_context_t c, const city_chunk_t* chunk,
+/* Solid parts of a chunk: with `ground` the ground layer (roads, kerbs,
+ * pavements, grass), which stays for good, otherwise buildings and props,
+ * which go with the chunk. */
+static bool add_colliders(chunk_state_t* st, scene_context_t c,
+                          const city_chunk_t* chunk, bool ground,
                           int* colliders) {
   for (size_t p = 0; p < chunk->part_count; p++) {
     const city_part_t* part = &chunk->parts[p];
     if (part->collider != PART_COLLIDER_MESH ||
-        city_source_is_pole(part->source_id))
+        city_source_is_pole(part->source_id) ||
+        (part->layer == COLLISION_LAYER_GROUND) != ground)
       continue;
     vec3_t* positions = malloc(part->mesh.vertex_count * sizeof(vec3_t));
     if (!positions) return false;
@@ -204,9 +251,116 @@ static bool add_colliders(scene_context_t c, const city_chunk_t* chunk,
         part->source_id);
     free(positions);
     if (handle.id == 0) return false;
+    if (!ground && !remember_collider(st, handle)) return false;
     (*colliders)++;
   }
   return true;
+}
+
+static bool load_chunk(scene_t* scene, size_t index, int* draws,
+                       int* colliders) {
+  scene_context_t c = scene->context;
+  const city_chunk_t* chunk = &scene->package->chunks[index];
+  chunk_state_t* st = &scene->chunk_states[index];
+  bool ok = true;
+  /* Every material the chunk uses, once, in order of first appearance: a
+   * material the generator adds is drawn without being listed here. */
+  for (size_t p = 0; ok && p < chunk->part_count; p++) {
+    bool seen = false;
+    for (size_t q = 0; q < p && !seen; q++)
+      seen = strcmp(chunk->parts[q].material, chunk->parts[p].material) == 0;
+    if (!seen)
+      ok = upload_merged(st, c, chunk, chunk->parts[p].material, draws);
+  }
+  if (ok) ok = add_poles(scene, st, c, chunk, (int)index, draws, colliders);
+  if (ok) ok = add_colliders(st, c, chunk, false, colliders);
+  st->loaded = true;
+  return ok;
+}
+
+static void unload_chunk(scene_t* scene, size_t index) {
+  scene_context_t c = scene->context;
+  chunk_state_t* st = &scene->chunk_states[index];
+  for (size_t i = 0; i < st->entity_count; i++)
+    world_remove(c.world, st->entities[i]);
+  for (size_t i = 0; i < st->mesh_count; i++)
+    renderer_release_mesh(c.renderer, st->meshes[i]);
+  for (size_t i = 0; i < st->collider_count; i++)
+    physics_remove_collider(c.physics, st->colliders[i]);
+  for (size_t i = 0; i < scene->pole_count; i++) {
+    pole_t* pole = &scene->poles[i];
+    if (pole->chunk != (int)index || pole->state == POLE_GONE) continue;
+    if (pole->collider.id != 0)
+      physics_remove_collider(c.physics, pole->collider);
+    pole->collider.id = 0;
+    pole->state = POLE_GONE;
+    scene->poles_gone++;
+  }
+  st->entity_count = st->mesh_count = st->collider_count = 0;
+  st->loaded = false;
+  /* Drop the gone poles once they pile up, so the list stays short. */
+  if (scene->poles_gone > 2048) {
+    size_t kept = 0;
+    for (size_t i = 0; i < scene->pole_count; i++)
+      if (scene->poles[i].state != POLE_GONE)
+        scene->poles[kept++] = scene->poles[i];
+    scene->pole_count = kept;
+    scene->poles_gone = 0;
+  }
+}
+
+/* Metres from a point to a chunk's footprint. */
+static float chunk_distance(const city_chunk_t* chunk, vec3_t centre) {
+  float dx = fmaxf(
+      fmaxf(chunk->bounds.min.x - centre.x, centre.x - chunk->bounds.max.x),
+      0.0f);
+  float dz = fmaxf(
+      fmaxf(chunk->bounds.min.z - centre.z, centre.z - chunk->bounds.max.z),
+      0.0f);
+  return sqrtf(dx * dx + dz * dz);
+}
+
+void scene_stream(scene_t* scene, vec3_t centre, int budget) {
+  if (!scene->package) return;
+  int draws = 0, colliders = 0;
+  /* Nearest first, so what is under the wheels is there before the rest. */
+  while (true) {
+    size_t best = scene->package->chunk_count;
+    float best_distance = scene->stream_load_radius;
+    for (size_t i = 0; i < scene->package->chunk_count; i++) {
+      if (scene->chunk_states[i].loaded) continue;
+      float d = chunk_distance(&scene->package->chunks[i], centre);
+      if (d < best_distance) best_distance = d, best = i;
+    }
+    if (best == scene->package->chunk_count) break;
+    if (best_distance > scene->stream_near_radius && budget <= 0) break;
+    if (!load_chunk(scene, best, &draws, &colliders))
+      LOG_ERROR("scene", "could not load chunk %zu", best);
+    budget--;
+  }
+  for (size_t i = 0; i < scene->package->chunk_count; i++)
+    if (scene->chunk_states[i].loaded &&
+        chunk_distance(&scene->package->chunks[i], centre) >
+            scene->stream_unload_radius)
+      unload_chunk(scene, i);
+}
+
+void scene_release_streamed(scene_t* scene, renderer_t* renderer) {
+  if (scene->package) {
+    for (size_t i = 0; i < scene->package->chunk_count; i++) {
+      chunk_state_t* st = &scene->chunk_states[i];
+      for (size_t m = 0; m < st->mesh_count; m++)
+        renderer_release_mesh(renderer, st->meshes[m]);
+      free(st->entities);
+      free(st->meshes);
+      free(st->colliders);
+    }
+    city_package_free(scene->package);
+    free(scene->package);
+    scene->package = NULL;
+  }
+  free(scene->chunk_states);
+  scene->chunk_states = NULL;
 }
 
 bool scene_build_city(scene_t* scene, scene_context_t c,
@@ -216,26 +370,28 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
     LOG_ERROR("scene", "no city package given");
     return false;
   }
-  city_package_t package;
-  if (!city_package_read(&package, package_directory)) return false;
+  scene->context = c;
+  scene->stream_load_radius = 800.0f;
+  scene->stream_unload_radius = 1000.0f;
+  scene->stream_near_radius = 250.0f;
+  scene->package = calloc(1, sizeof(city_package_t));
+  if (!scene->package) return false;
+  if (!city_package_read(scene->package, package_directory)) return false;
+  city_package_t package = *scene->package; /* a view; the scene owns it */
+  scene->chunk_states = calloc(package.chunk_count ? package.chunk_count : 1,
+                               sizeof(chunk_state_t));
+  if (!scene->chunk_states) return false;
   snprintf(scene->name, sizeof(scene->name), "city %s", package.name);
   int draws = 0, colliders = 0;
   bool ok = true;
-  for (size_t ch = 0; ok && ch < package.chunk_count; ch++) {
-    const city_chunk_t* chunk = &package.chunks[ch];
-    /* Every material the chunk uses, once, in order of first appearance:
-     * a material the generator adds is drawn without being listed here. */
-    for (size_t p = 0; ok && p < chunk->part_count; p++) {
-      bool seen = false;
-      for (size_t q = 0; q < p && !seen; q++)
-        seen = strcmp(chunk->parts[q].material, chunk->parts[p].material) == 0;
-      if (!seen)
-        ok = upload_merged(scene, c, chunk, chunk->parts[p].material, &draws);
-    }
-    if (ok) ok = add_poles(scene, c, chunk, &draws, &colliders);
-    if (ok) ok = add_colliders(c, chunk, &colliders);
-  }
-  if (!city_map_build(&scene->map, &package, 1024))
+  /* Every road, pavement and field is solid from the start, so far-off
+   * traffic has a surface; buildings and props come with their chunk. */
+  for (size_t ch = 0; ok && ch < package.chunk_count; ch++)
+    ok = add_colliders(&scene->chunk_states[ch], c, &package.chunks[ch], true,
+                       &colliders);
+  /* A big city needs a finer picture to stay readable in the corner. */
+  if (!city_map_build(&scene->map, &package,
+                      package.chunk_count > 200 ? 4096 : 1024))
     LOG_WARN("scene", "no map for %s", package.name);
   memcpy(scene->labels, package.labels, sizeof(scene->labels));
   scene->label_count = package.label_count;
@@ -280,7 +436,9 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
   scene->parked_count = package.parked_count;
   package.routes = NULL, package.route_count = 0;
   package.parked = NULL, package.parked_count = 0;
-  city_package_free(&package);
+  *scene->package = package;
+  /* The first chunks, all at once: everything within reach of the spawn. */
+  if (ok) scene_stream(scene, scene->spawn_position, 1 << 20);
   if (!ok) LOG_ERROR("scene", "could not build the city scene");
   return ok;
 }

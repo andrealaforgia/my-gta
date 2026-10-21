@@ -82,6 +82,11 @@ typedef struct {
 
 bool osm_load(osm_data_t* data, const char* path);
 bool osm_parse(osm_data_t* data, const char* xml);
+/* Drops the nodes lying more than `margin_metres` outside the extract's
+ * bounds, so a river or a motorway that runs on for kilometres does not
+ * stretch the city; ways simply lose those points. Does nothing without
+ * bounds. */
+void osm_clip_to_bounds(osm_data_t* data, double margin_metres);
 void osm_free(osm_data_t* data);
 const osm_node_t* osm_find_node(const osm_data_t* data, int64_t id);
 const osm_way_t* osm_find_way(const osm_data_t* data, int64_t id);

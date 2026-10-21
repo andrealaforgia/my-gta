@@ -25,7 +25,12 @@ curl -A "gta-like-prototype/0.1" -o data/<name>.osm \
   "https://api.openstreetmap.org/api/0.6/map?bbox=<minlon>,<minlat>,<maxlon>,<maxlat>"
 ```
 
-Keep it to a few blocks (under about a kilometre square). PBF is not
+Keep it to a few blocks (under about a kilometre square), or use
+`scripts/fetch_osm.py MIN_LON MIN_LAT MAX_LON MAX_LAT OUTPUT`, which fetches
+larger boxes in tiles and merges them (Pordenone and Cordenons, about 5 km
+square, takes about two minutes). `city-import` drops nodes more than 150 m
+outside the extract's bounds, so a river that runs on for kilometres does
+not stretch the city. PBF is not
 supported (ADR-004); convert with `osmium cat x.osm.pbf -o x.osm` if you
 have a PBF.
 

@@ -33,6 +33,8 @@ struct pedestrians {
   uint32_t random;
   const float* crossings;
   size_t crossing_count;
+  vec3_t focus;
+  bool has_focus;
 };
 
 static unsigned outfit_hash(int outfit) {
@@ -95,6 +97,37 @@ static void pose(const pedestrians_t* p, person_t* person) {
   /* Right of the route's direction (x east, z south): (-dz, dx). */
   person->position = vec3(x - dz * offset, ground, z + dx * offset);
   person->yaw = person->direction > 0 ? atan2f(-dx, -dz) : atan2f(dx, dz);
+}
+
+void pedestrians_set_focus(pedestrians_t* p, vec3_t focus) {
+  p->focus = focus;
+  p->has_focus = true;
+}
+
+/* Moves someone left far behind to a walkable street near the focus. */
+static void recycle_person(pedestrians_t* p, person_t* person) {
+  for (int attempt = 0; attempt < 48; attempt++) {
+    size_t r = next_random(p) % p->path_count;
+    const route_path_t* path = &p->paths[r];
+    if (!walkable(path->route) || path->length <= 12.0f) continue;
+    size_t mid = path->route->point_count / 2;
+    float dx = path->route->points[2 * mid] - p->focus.x;
+    float dz = path->route->points[2 * mid + 1] - p->focus.z;
+    float d = sqrtf(dx * dx + dz * dz);
+    if (d < 100.0f || d > 450.0f) continue;
+    float first = p->margin_start[r] + 1.0f;
+    float last = path->length - p->margin_end[r] - 1.0f;
+    if (last < first) continue;
+    person->route = (int)r;
+    person->side = (next_random(p) & 1) ? 1 : -1;
+    person->direction = (next_random(p) & 1) ? 1 : -1;
+    person->u =
+        first + (last - first) * (float)(next_random(p) % 1000) / 1000.0f;
+    person->cross = 0;
+    person->cooldown = 0;
+    person->decided = -1;
+    return;
+  }
 }
 
 void pedestrians_set_crossings(pedestrians_t* p, const float* xz,
@@ -298,6 +331,14 @@ static void maybe_start_crossing(pedestrians_t* p, person_t* person,
 void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
   for (size_t i = 0; i < p->count; i++) {
     person_t* person = &p->people[i];
+    if (p->has_focus) {
+      float fx0 = person->position.x - p->focus.x;
+      float fz0 = person->position.z - p->focus.z;
+      if (fx0 * fx0 + fz0 * fz0 > 700.0f * 700.0f) {
+        recycle_person(p, person);
+        pose(p, person);
+      }
+    }
     float dx = player.x - person->position.x,
           dz = player.z - person->position.z;
     float near_car = dx * dx + dz * dz;

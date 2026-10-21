@@ -52,6 +52,9 @@ void pedestrians_step(pedestrians_t* pedestrians, vec3_t player_position,
                       float dt);
 size_t pedestrians_count(const pedestrians_t* pedestrians);
 pedestrian_t pedestrians_get(const pedestrians_t* pedestrians, size_t index);
+/* The place people should be thick around, usually the player: someone more
+ * than 700 m from it is moved to a pavement 100 to 450 m from it. */
+void pedestrians_set_focus(pedestrians_t* pedestrians, vec3_t focus);
 /* Zebra crossings (x, z pairs, borrowed): people walking a pavement past one
  * sometimes cross there, when the player's car is not close. */
 void pedestrians_set_crossings(pedestrians_t* pedestrians, const float* xz,

@@ -307,3 +307,25 @@ bool mesh_data_add_cylinder_y(mesh_data_t* mesh, vec3_t base, float radius,
   }
   return true;
 }
+
+size_t mesh_data_remove_degenerate(mesh_data_t* mesh, float epsilon) {
+  size_t kept = 0, removed = 0;
+  for (size_t i = 0; i + 2 < mesh->index_count; i += 3) {
+    vec3_t a = mesh->vertices[mesh->indices[i]].position;
+    vec3_t b = mesh->vertices[mesh->indices[i + 1]].position;
+    vec3_t c = mesh->vertices[mesh->indices[i + 2]].position;
+    if (vec3_length(vec3_cross(vec3_sub(b, a), vec3_sub(c, a))) <
+        2.0f * epsilon) {
+      removed++;
+      continue;
+    }
+    if (kept != i) {
+      mesh->indices[kept] = mesh->indices[i];
+      mesh->indices[kept + 1] = mesh->indices[i + 1];
+      mesh->indices[kept + 2] = mesh->indices[i + 2];
+    }
+    kept += 3;
+  }
+  mesh->index_count = kept;
+  return removed;
+}

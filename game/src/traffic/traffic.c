@@ -53,6 +53,8 @@ struct traffic {
   const city_signal_t* signals;
   size_t signal_count;
   float signal_time;
+  vec3_t focus;
+  bool has_focus;
   const vec3_t* walkers;
   size_t walker_count;
 };
@@ -191,6 +193,38 @@ void traffic_car_set_kind(traffic_t* t, size_t index, int variant,
       transform_at(car->position, quat_from_yaw(car->yaw)));
 }
 
+void traffic_set_focus(traffic_t* t, vec3_t focus) {
+  t->focus = focus;
+  t->has_focus = true;
+}
+
+/* Moves a car that has been left far behind to a road near the focus. */
+static void recycle(traffic_t* t, car_t* car) {
+  for (int attempt = 0; attempt < 48; attempt++) {
+    size_t r = next_random(t) % t->lane_count;
+    const lane_t* lane = &t->lanes[r];
+    if (!lane->route->drivable || lane->length <= 12.0f ||
+        lane->route->point_count < 2)
+      continue;
+    size_t mid = lane->route->point_count / 2;
+    float dx = lane->route->points[2 * mid] - t->focus.x;
+    float dz = lane->route->points[2 * mid + 1] - t->focus.z;
+    float d = sqrtf(dx * dx + dz * dz);
+    if (d < 150.0f || d > 650.0f) continue;
+    car->route = (int)r;
+    car->direction = lane->route->oneway || (next_random(t) & 1) ? 1 : -1;
+    car->s = 6.0f +
+             (float)(next_random(t) % 1000) / 1000.0f * (lane->length - 12.0f);
+    car->speed = 0;
+    car->planned_route = -1;
+    car->indicator = 0;
+    car->lateral = car->lateral_goal = 0;
+    car->stop_done = 0;
+    car->dwell = 0;
+    return;
+  }
+}
+
 void traffic_set_bus_stops(traffic_t* t, const float* xz, size_t count) {
   t->bus_stops = xz;
   t->bus_stop_count = count;
@@ -314,6 +348,14 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
   t->ground_clock += dt;
   for (size_t i = 0; i < t->car_count; i++) {
     car_t* car = &t->cars[i];
+    if (t->has_focus) {
+      float fx0 = car->position.x - t->focus.x,
+            fz0 = car->position.z - t->focus.z;
+      if (fx0 * fx0 + fz0 * fz0 > 900.0f * 900.0f) {
+        recycle(t, car);
+        pose(t, car);
+      }
+    }
     const lane_t* lane = &t->lanes[car->route];
     const car_visual_t* own_visual = &t->fleet->visuals[car->variant];
     float own_half_length = own_visual->half_extents.z;

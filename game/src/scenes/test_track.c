@@ -12,6 +12,7 @@ void scene_track_mesh(scene_t* scene, mesh_handle_t mesh) {
 }
 
 void scene_release(scene_t* scene, renderer_t* renderer) {
+  scene_release_streamed(scene, renderer);
   for (int i = 0; i < scene->mesh_count; i++)
     renderer_release_mesh(renderer, scene->meshes[i]);
   scene->mesh_count = 0;

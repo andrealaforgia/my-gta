@@ -7,7 +7,7 @@
 #include "log.h"
 
 #define MAX_BODIES 16
-#define MAX_COLLIDERS 8192
+#define MAX_COLLIDERS 65536
 #define MAX_CONTACTS 256
 #define SOLVER_ITERATIONS 6
 #define CONTACT_MARGIN \

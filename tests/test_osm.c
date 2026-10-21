@@ -112,7 +112,29 @@ static void street_furniture_nodes_are_told_apart(void) {
   osm_free(&data);
 }
 
+static void clipping_drops_nodes_far_outside_the_bounds(void) {
+  const char* xml =
+      "<osm><bounds minlat=\"45.000\" minlon=\"12.000\" maxlat=\"45.010\" "
+      "maxlon=\"12.010\"/>"
+      "<node id=\"1\" lat=\"45.005\" lon=\"12.005\"/>"
+      "<node id=\"2\" lat=\"45.0105\" lon=\"12.005\"/>" /* 55 m over */
+      "<node id=\"3\" lat=\"45.030\" lon=\"12.005\"/>"  /* 2 km over */
+      "<node id=\"4\" lat=\"45.005\" lon=\"12.200\"/>"  /* 14 km east */
+      "<way id=\"9\"><nd ref=\"1\"/><nd ref=\"2\"/><nd ref=\"3\"/><nd "
+      "ref=\"4\"/><tag k=\"waterway\" v=\"river\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  assert(osm.node_count == 4);
+  osm_clip_to_bounds(&osm, 150.0);
+  /* The first two are within the box and 150 m of margin; the others go. */
+  assert(osm.node_count == 2);
+  assert(osm_find_node(&osm, 1) && osm_find_node(&osm, 2));
+  assert(!osm_find_node(&osm, 3) && !osm_find_node(&osm, 4));
+  osm_free(&osm);
+}
+
 void run_osm_tests(void) {
+  RUN(clipping_drops_nodes_far_outside_the_bounds);
   RUN(street_furniture_nodes_are_told_apart);
   RUN(tagged_nodes_are_noticed_when_they_are_trees);
   RUN(the_fixture_loads_with_nodes_ways_tags_and_relations);

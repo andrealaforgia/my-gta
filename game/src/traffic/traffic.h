@@ -50,6 +50,10 @@ void traffic_car_place(traffic_t* traffic, size_t index, int route,
  * stops six metres short of it while its group shows red. */
 void traffic_set_signals(traffic_t* traffic, const city_signal_t* signals,
                          size_t count);
+/* The place traffic should be thick around, usually the player: a car more
+ * than 900 m from it is moved to a road 150 to 650 m from it, so a big city
+ * has cars where someone can see them. */
+void traffic_set_focus(traffic_t* traffic, vec3_t focus);
 /* Bus stops (x, z pairs, borrowed): a bus halts at each it passes for a
  * few seconds. */
 void traffic_set_bus_stops(traffic_t* traffic, const float* xz, size_t count);

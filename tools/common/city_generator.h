@@ -34,6 +34,10 @@ typedef struct {
   /* Comma-separated names (spaces as underscores, as in the model) of
    * pedestrian streets whose buildings get porticoes. */
   char arcade_streets[256];
+  /* Where a drive starts, when the extract has more than one town: 0, 0
+   * for the middle of the extract. */
+  double spawn_latitude;
+  double spawn_longitude;
 } city_generator_options_t;
 
 typedef struct {

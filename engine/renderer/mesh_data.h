@@ -53,6 +53,9 @@ bool mesh_data_add_grid(mesh_data_t* mesh, float half_size, float spacing);
 /* Splits triangles at the midpoint of their longest edge until every edge
  * is at most max_edge long; winding, normals and uvs are interpolated. */
 bool mesh_data_subdivide(mesh_data_t* mesh, float max_edge);
+/* Drops triangles whose area is below `epsilon` square metres (twice the
+ * cross product's length is compared with 2 * epsilon); returns how many. */
+size_t mesh_data_remove_degenerate(mesh_data_t* mesh, float epsilon);
 bool mesh_data_append(mesh_data_t* mesh, const mesh_data_t* other);
 aabb_t mesh_data_bounds(const mesh_data_t* mesh);
 size_t mesh_data_triangle_count(const mesh_data_t* mesh);

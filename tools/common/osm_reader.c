@@ -1,5 +1,6 @@
 #include "osm_reader.h"
 
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -425,4 +426,22 @@ const char* osm_tag(const osm_tag_t* tags, size_t count, const char* key) {
   for (size_t i = 0; i < count; i++)
     if (strcmp(tags[i].key, key) == 0) return tags[i].value;
   return NULL;
+}
+
+void osm_clip_to_bounds(osm_data_t* data, double margin_metres) {
+  if (!data->has_bounds) return;
+  double mid_lat = 0.5 * (data->bounds.min_lat + data->bounds.max_lat);
+  double dlat = margin_metres / 111320.0;
+  double dlon = margin_metres / (111320.0 * cos(mid_lat * M_PI / 180.0));
+  size_t kept = 0;
+  for (size_t i = 0; i < data->node_count; i++) {
+    const osm_node_t* n = &data->nodes[i];
+    if (n->lat < data->bounds.min_lat - dlat ||
+        n->lat > data->bounds.max_lat + dlat ||
+        n->lon < data->bounds.min_lon - dlon ||
+        n->lon > data->bounds.max_lon + dlon)
+      continue;
+    data->nodes[kept++] = *n;
+  }
+  data->node_count = kept;
 }

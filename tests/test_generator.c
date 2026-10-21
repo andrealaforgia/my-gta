@@ -765,6 +765,42 @@ static void the_package_carries_routes_and_parking_places(void) {
   city_package_free(&package);
 }
 
+static void the_spawn_can_be_set_to_a_place_in_a_larger_extract(void) {
+  /* Two towns a kilometre apart: the spawn goes where the settings say. */
+  const char* xml =
+      "<osm><bounds minlat=\"44.995\" minlon=\"11.995\" maxlat=\"45.005\" "
+      "maxlon=\"12.015\"/>"
+      "<node id=\"1\" lat=\"45.0000\" lon=\"11.9990\"/>"
+      "<node id=\"2\" lat=\"45.0000\" lon=\"12.0000\"/>"
+      "<node id=\"3\" lat=\"45.0000\" lon=\"12.0120\"/>"
+      "<node id=\"4\" lat=\"45.0000\" lon=\"12.0130\"/>"
+      "<way id=\"10\"><nd ref=\"1\"/><nd ref=\"2\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way>"
+      "<way id=\"11\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+      "v=\"residential\"/></way></osm>";
+  osm_data_t osm;
+  assert(osm_parse(&osm, xml));
+  city_model_t model;
+  assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+  osm_free(&osm);
+  city_generator_options_t options = city_generator_default_options();
+  options.spawn_latitude = 45.0000;
+  options.spawn_longitude = 12.0125; /* the eastern road */
+  city_package_t package;
+  city_generator_stats_t stats;
+  assert(city_generate(&package, &model, &options, "two", &stats));
+  local_point_t east =
+      projection_project(&model.projection, 45.0, 12.0125);
+  assert(fabs(package.spawn_position.x - east.x) < 60.0);
+  options.spawn_longitude = 11.9995; /* the western one */
+  city_package_free(&package);
+  assert(city_generate(&package, &model, &options, "two", &stats));
+  local_point_t west = projection_project(&model.projection, 45.0, 11.9995);
+  assert(fabs(package.spawn_position.x - west.x) < 60.0);
+  city_package_free(&package);
+  city_model_free(&model);
+}
+
 static void the_town_hall_and_churches_get_towers_and_the_hall_is_brick(void) {
   /* A 40 x 20 m "Municipio" and a 12 x 30 m "Chiesa", each 14 m high, and a
    * plain house of the same size as the hall. */
@@ -1587,6 +1623,7 @@ void run_generator_tests(void) {
   RUN(single_trees_stand_where_they_are_mapped);
   RUN(no_tree_grows_out_of_a_street);
   RUN(the_package_carries_routes_and_parking_places);
+  RUN(the_spawn_can_be_set_to_a_place_in_a_larger_extract);
   RUN(the_town_hall_and_churches_get_towers_and_the_hall_is_brick);
   RUN(buildings_on_main_streets_get_shopfronts_at_street_level);
   RUN(some_buildings_on_side_streets_have_a_shop_too);

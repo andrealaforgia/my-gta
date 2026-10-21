@@ -182,6 +182,62 @@ static void a_hard_crash_jolts_the_view_and_it_settles(void) {
   stop(&run);
 }
 
+static size_t loaded_chunks(const scene_t* scene) {
+  size_t n = 0;
+  for (size_t i = 0; i < scene->package->chunk_count; i++)
+    n += scene->chunk_states[i].loaded;
+  return n;
+}
+
+static void a_big_city_is_streamed_in_and_out_around_the_car(void) {
+  city_run_t run;
+  start(&run);
+  scene_t* scene = &run.stage.scene;
+  size_t chunks = scene->package->chunk_count;
+  size_t everything = world_count(&run.stage.world);
+  size_t all_colliders = physics_collider_count(run.stage.physics);
+  assert(chunks > 4 && loaded_chunks(scene) == chunks); /* small: all in */
+  /* Shrink the radii to a few chunks and stand in a corner. */
+  scene->stream_load_radius = 90.0f;
+  scene->stream_unload_radius = 130.0f;
+  scene->stream_near_radius = 30.0f;
+  vec3_t corner = vec3(scene->package->chunks[0].bounds.min.x + 5.0f, 0,
+                       scene->package->chunks[0].bounds.min.z + 5.0f);
+  scene_stream(scene, corner, 100);
+  size_t near = loaded_chunks(scene);
+  assert(near >= 1 && near < chunks);
+  assert(world_count(&run.stage.world) < everything);
+  size_t ground_only = physics_collider_count(run.stage.physics);
+  assert(ground_only <= all_colliders && ground_only > 0);
+  /* The roads stay solid everywhere: a ray from above still lands. */
+  vec3_t far = vec3(scene->package->chunks[chunks - 1].bounds.max.x - 5.0f, 50,
+                    scene->package->chunks[chunks - 1].bounds.max.z - 5.0f);
+  ray_t down = {far, vec3(0, -1, 0)};
+  ray_cast_result_t hit;
+  assert(physics_ray_cast(run.stage.physics, down, 200, COLLISION_LAYER_GROUND,
+                          &hit));
+  /* Poles of unloaded chunks are gone, and standing ones count only the
+   * loaded. */
+  assert(scene->poles_gone > 0 || scene->pole_count < 10000);
+  /* A budget of nothing loads only what is close; walking across brings the
+   * far corner in and sends the first one out. */
+  scene_stream(scene, far, 0);
+  scene_stream(scene, far, 100);
+  assert(scene->chunk_states[chunks - 1].loaded);
+  assert(!scene->chunk_states[0].loaded);
+  /* Back again, and everything the first corner had is rebuilt. */
+  scene_stream(scene, corner, 100);
+  assert(scene->chunk_states[0].loaded);
+  assert(world_count(&run.stage.world) < everything);
+  scene->stream_load_radius = 1e6f;
+  scene->stream_unload_radius = 2e6f;
+  scene_stream(scene, corner, 1000);
+  assert(loaded_chunks(scene) == chunks);
+  assert(world_count(&run.stage.world) == everything);
+  assert(physics_collider_count(run.stage.physics) == all_colliders);
+  stop(&run);
+}
+
 static void the_tyres_stay_quiet_on_an_ordinary_drive(void) {
   /* No squeal and no skid marks driving along a road, on the flat or up a
    * hill, nor while standing still. */
@@ -559,6 +615,7 @@ void run_citydrive_tests(void) {
   RUN(the_car_drives_along_the_spawn_road_and_through_a_junction);
   RUN(buildings_stop_the_car);
   RUN(a_hard_crash_jolts_the_view_and_it_settles);
+  RUN(a_big_city_is_streamed_in_and_out_around_the_car);
   RUN(the_tyres_stay_quiet_on_an_ordinary_drive);
   RUN(the_car_follows_the_hills);
   RUN(the_town_sounds_follow_the_time_of_day);

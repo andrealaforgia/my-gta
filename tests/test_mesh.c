@@ -130,7 +130,28 @@ static void the_font_covers_digits_and_capitals(void) {
          !font5x7_pixel('I', 3, 0));
 }
 
+static void degenerate_triangles_are_removed_and_the_rest_kept(void) {
+  mesh_data_t mesh = mesh_data_create();
+  vertex_t v = {{0, 0, 0}, {0, 1, 0}, 0, 0};
+  for (int i = 0; i < 5; i++) {
+    v.position = vec3((float)i, 0, 0);
+    assert(mesh_data_add_vertex(&mesh, v));
+  }
+  v.position = vec3(0, 0, 1);
+  assert(mesh_data_add_vertex(&mesh, v));
+  assert(mesh_data_add_triangle(&mesh, 0, 1, 5)); /* a proper one */
+  assert(mesh_data_add_triangle(&mesh, 0, 1, 2)); /* all on one line */
+  assert(mesh_data_add_triangle(&mesh, 3, 3, 4)); /* a repeated corner */
+  assert(mesh_data_add_triangle(&mesh, 2, 3, 5)); /* another proper one */
+  assert(mesh_data_remove_degenerate(&mesh, 1e-6f) == 2);
+  assert(mesh.index_count == 6);
+  assert(mesh.indices[0] == 0 && mesh.indices[2] == 5 && mesh.indices[3] == 2);
+  assert(mesh_data_remove_degenerate(&mesh, 1e-6f) == 0);
+  mesh_data_free(&mesh);
+}
+
 void run_mesh_tests(void) {
+  RUN(degenerate_triangles_are_removed_and_the_rest_kept);
   RUN(a_box_has_twelve_outward_facing_triangles);
   RUN(a_wheel_cylinder_spans_its_width_and_radius);
   RUN(meshes_append_with_rebased_indices);

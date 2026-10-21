@@ -176,10 +176,14 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
     traffic_set_signal_time(stage->traffic, stage->signal_clock);
     const rigid_body_t* player =
         physics_body(stage->physics, stage->vehicle.body);
+    traffic_set_focus(stage->traffic, player->position);
     traffic_step(stage->traffic, stage->physics, player->position,
                  player->velocity, dt);
   }
   if (stage->people) {
+    pedestrians_set_focus(
+        stage->people,
+        physics_body(stage->physics, stage->vehicle.body)->position);
     pedestrians_step(
         stage->people,
         physics_body(stage->physics, stage->vehicle.body)->position, dt);
@@ -203,6 +207,9 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
              after.z + (velocity_before.z - after.z) * 0.6f);
   }
   poles_step(&stage->scene, &stage->world, dt);
+  /* A big city is streamed: what is near the car is in the world. */
+  scene_stream(&stage->scene,
+               physics_body(stage->physics, stage->vehicle.body)->position, 1);
   /* A hard hit jolts the view, scaled to the vehicle as the sound is. */
   stage->shake = fmaxf(stage->shake - 2.5f * dt, 0.0f);
   float felt = stage->vehicle.impact_impulse /

@@ -95,6 +95,23 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
 - **Camera views** and a car swap live in the stage; the map is a picture
   rasterised once at load.
 
+## Streaming
+
+The cooked package is read whole (a few seconds and about 400 MB for the
+5 km extract of Pordenone and Cordenons: 1296 chunks, 5.3 million
+triangles), but the world only holds what is near the car. `scene_stream`
+(`game/src/scenes/city_scene.c`), called every physics step, loads the
+chunks within 800 m of the car, nearest first and at most one a step apart
+from those within 250 m, and unloads those beyond 1000 m: a chunk's
+merged meshes, pole entities and its building and prop colliders. Ground
+colliders (roads, pavements, fields) stay for every chunk so cars far away
+still drive on something, and routes, signals, crossings and bus stops are
+global. Traffic and people more than 900 m and 700 m from the car are moved
+to a road or pavement near it, so a big city has them where they can be
+seen. The map is a 4096 pixel picture for a big city. Measured at 1080p on
+the reference machine: about 4000 draws and 8 ms a frame in town, 14 ms of
+CPU for each simulated second with 70 cars and 180 people.
+
 ## Rendering
 
 `renderer_draw_mesh` only records a draw. `renderer_end_frame` renders the

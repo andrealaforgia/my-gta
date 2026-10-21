@@ -15,7 +15,7 @@
 #include "log.h"
 #include "renderer.h"
 
-#define MAX_MESHES 4096
+#define MAX_MESHES 16384
 #define MAX_TEXTURES 256
 #define MAX_LINE_VERTICES (1 << 16)
 #define MAX_TEXT_VERTICES (1 << 17)

@@ -60,6 +60,7 @@ int main(int argc, char* argv[]) {
   }
   osm_data_t osm;
   if (!osm_load(&osm, input)) return 1;
+  osm_clip_to_bounds(&osm, 150.0);
   LOG_INFO("import", "%s: %zu nodes, %zu ways, %zu relations", input,
            osm.node_count, osm.way_count, osm.relation_count);
   city_model_t model;
