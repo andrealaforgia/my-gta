@@ -165,8 +165,11 @@ pedestrians_t* pedestrians_create(const city_route_t* routes,
     person->route = (int)chosen;
     person->side = (next_random(p) & 1) ? 1 : -1;
     person->direction = (next_random(p) & 1) ? 1 : -1;
-    person->u = 2.0f + pick * (p->paths[chosen].length - 4.0f) /
-                           p->paths[chosen].length;
+    /* Between the junction margins, where the pavement is. */
+    float first = p->margin_start[chosen] + 1.0f;
+    float last = p->paths[chosen].length - p->margin_end[chosen] - 1.0f;
+    if (last < first) last = first;
+    person->u = first + (last - first) * pick / p->paths[chosen].length;
     person->outfit = (int)(next_random(p) % 1000);
     float spread = (float)(next_random(p) % 50) / 100.0f;
     switch (pedestrian_kind(person->outfit)) {

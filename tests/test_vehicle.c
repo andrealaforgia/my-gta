@@ -192,6 +192,36 @@ static void wheels_follow_the_suspension_and_spin_with_speed(void) {
   destroy(&track);
 }
 
+static void ordinary_driving_leaves_no_skid_marks(void) {
+  /* Brisk but sensible: 50 km/h round a moderate bend, and a firm stop. */
+  track_t track = flat_track(1.0f);
+  drive(&track, idle(), 2.0f);
+  physics_body(track.world, track.car.body)->velocity = vec3(0, 0, -14);
+  driving_input_t turn = idle();
+  turn.throttle = 0.3f;
+  turn.steering = 0.4f;
+  bool marked = false;
+  for (int i = 0; i < 240; i++) {
+    vehicle_update(&track.car, track.world, turn, step);
+    physics_world_step(track.world, step);
+    for (int w = 0; w < VEHICLE_WHEEL_COUNT; w++)
+      if (track.car.wheels[w].skidding) marked = true;
+  }
+  assert(!marked);
+  driving_input_t stop = idle();
+  stop.brake = 0.7f;
+  for (int i = 0; i < 240; i++) {
+    vehicle_update(&track.car, track.world, stop, step);
+    physics_world_step(track.world, step);
+    for (int w = 0; w < VEHICLE_WHEEL_COUNT; w++)
+      if (track.car.wheels[w].skidding) {
+        marked = true;
+      }
+  }
+  assert(!marked);
+  destroy(&track);
+}
+
 static void the_handbrake_locks_the_rear_and_marks_a_skid(void) {
   track_t track = flat_track(1.0f);
   drive(&track, idle(), 2.0f);
@@ -360,5 +390,6 @@ void run_vehicle_tests(void) {
   RUN(a_slippery_surface_lengthens_the_stop);
   RUN(reset_returns_the_car_to_its_spawn);
   RUN(wheels_follow_the_suspension_and_spin_with_speed);
+  RUN(ordinary_driving_leaves_no_skid_marks);
   RUN(the_handbrake_locks_the_rear_and_marks_a_skid);
 }

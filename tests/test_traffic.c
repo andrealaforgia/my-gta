@@ -408,6 +408,25 @@ static void people_come_in_sizes_and_paces_and_some_walk_in_pairs(void) {
   physics_world_destroy(world);
 }
 
+static void nobody_starts_out_in_the_road_or_the_junction(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[3] = {route(west, 1, 2, 0), route(east, 2, 3, 0),
+                            route(south, 2, 4, 0)};
+  for (uint32_t seed = 1; seed <= 20; seed++) {
+    pedestrians_t* people = pedestrians_create(routes, 3, world, 200, seed);
+    for (size_t i = 0; i < pedestrians_count(people); i++) {
+      pedestrian_t p = pedestrians_get(people, i);
+      double d = 1e9;
+      for (int r = 0; r < 3; r++)
+        d = fmin(
+            d, distance_to_line(routes[r].points, p.position.x, p.position.z));
+      assert(d > 2.9); /* the road is 3 m each side of its centre line */
+    }
+    pedestrians_destroy(people);
+  }
+  physics_world_destroy(world);
+}
+
 static void people_cross_at_a_zebra_crossing_and_cars_give_way(void) {
   physics_world_t* world = ground_world();
   city_route_t routes[1] = {route(west, 1, 2, 0)}; /* z = 0, 6 m wide */
@@ -740,6 +759,7 @@ void run_traffic_tests(void) {
   RUN(people_go_round_the_junctions_and_turn_back_at_dead_ends);
   RUN(a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk);
   RUN(people_come_in_sizes_and_paces_and_some_walk_in_pairs);
+  RUN(nobody_starts_out_in_the_road_or_the_junction);
   RUN(people_cross_at_a_zebra_crossing_and_cars_give_way);
   RUN(cars_stop_for_people_in_the_road);
   RUN(people_are_drawn_only_when_near);

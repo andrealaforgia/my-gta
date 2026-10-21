@@ -140,7 +140,7 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     float d = traffic_nearest_distance(stage->traffic, me->position);
     state.traffic = d < 30.0f ? 1.0f - d / 30.0f : 0.0f;
     float siren = traffic_nearest_siren(stage->traffic, me->position);
-    state.siren = siren < 150.0f ? 1.0f - siren / 150.0f : 0.0f;
+    state.siren = siren < 100.0f ? 1.0f - siren / 100.0f : 0.0f;
   }
   state.rpm = vehicle_rpm(car);
   state.throttle =

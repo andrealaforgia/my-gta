@@ -259,7 +259,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       float saw = mixer->siren_phase * 2.0f - 1.0f;
       siren =
           (sinf(2.0f * (float)M_PI * mixer->siren_phase) * 0.8f + saw * 0.15f) *
-          0.2f * mixer->siren_level * mixer->siren_level;
+          0.13f * mixer->siren_level * mixer->siren_level;
     }
     /* The bell: a strike every three seconds, each ringing out. */
     mixer->bell_timer -= dt;

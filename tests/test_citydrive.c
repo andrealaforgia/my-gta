@@ -182,6 +182,28 @@ static void a_hard_crash_jolts_the_view_and_it_settles(void) {
   stop(&run);
 }
 
+static void the_tyres_stay_quiet_on_an_ordinary_drive(void) {
+  /* No squeal and no skid marks driving along a road, on the flat or up a
+   * hill, nor while standing still. */
+  const char* places[2] = {package_directory, hill_directory};
+  for (int place = 0; place < 2; place++) {
+    city_run_t run;
+    start_in(&run, places[place]);
+    driving_input_t idle = {0, 0, 0, false}, throttle = {0.5f, 0, 0, false};
+    float loudest = 0;
+    bool marked = false;
+    for (int i = 0; i < 120 * 10; i++) {
+      driving_stage_step(&run.stage, i < 120 * 3 ? idle : throttle,
+                         1.0f / 120.0f);
+      loudest = fmaxf(loudest, driving_stage_audio_state(&run.stage).skid);
+      for (int w = 0; w < VEHICLE_WHEEL_COUNT; w++)
+        marked |= run.stage.vehicle.wheels[w].skidding;
+    }
+    assert(loudest == 0 && !marked);
+    stop(&run);
+  }
+}
+
 static void the_car_follows_the_hills(void) {
   city_run_t run;
   start_in(&run, hill_directory);
@@ -537,6 +559,7 @@ void run_citydrive_tests(void) {
   RUN(the_car_drives_along_the_spawn_road_and_through_a_junction);
   RUN(buildings_stop_the_car);
   RUN(a_hard_crash_jolts_the_view_and_it_settles);
+  RUN(the_tyres_stay_quiet_on_an_ordinary_drive);
   RUN(the_car_follows_the_hills);
   RUN(the_town_sounds_follow_the_time_of_day);
   RUN(the_driver_sees_from_inside_and_from_the_bonnet);

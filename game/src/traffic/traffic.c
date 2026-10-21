@@ -154,7 +154,7 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
     car->variant = fleet_traffic_variant_for(style);
     car->paint = (int)(next_random(t) % 1000);
     car->responding =
-        fleet->visuals[car->variant].emergency && next_random(t) % 100 < 60;
+        fleet->visuals[car->variant].emergency && next_random(t) % 100 < 30;
     pose(t, car);
     car->collider = physics_add_static_box(
         physics, transform_at(car->position, quat_from_yaw(car->yaw)),
