@@ -44,6 +44,17 @@ Ownership is explicit: the stage owns the physics world, the world, the
 scene's meshes and the vehicle; `main` owns the window, renderer and
 audio device and passes pointers down. No globals.
 
+## The city generator
+
+`tools/common/city_generator.c` holds the settings, the spawn, the map labels,
+the routes and `city_generate`. The geometry is in four files that share
+`generator_internal.h`: `generator_common.c` (meshes, strips, kerbs, small
+vector helpers), `generator_roads.c` (width fitting, junctions, markings,
+signs, lamps, manholes, footbridges, roads), `generator_buildings.c` (walls,
+roofs, porticoes, landmarks, doors, chimneys, shop fronts) and
+`generator_environment.c` (ground, parks, trees, furniture, crossings,
+terrain). Helpers used across files are exported with a `gen_` prefix.
+
 ## Game systems (2026-10-21)
 
 - **Time of day**: `game/src/stage/daylight.c` turns an hour into the sun and
