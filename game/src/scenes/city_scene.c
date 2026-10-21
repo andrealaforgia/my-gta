@@ -85,7 +85,9 @@ static bool upload_merged(scene_t* scene, scene_context_t c,
   mesh_data_t merged = mesh_data_create();
   for (size_t p = 0; p < chunk->part_count; p++) {
     const city_part_t* part = &chunk->parts[p];
-    if (strcmp(part->material, material) != 0) continue;
+    if (strcmp(part->material, material) != 0 ||
+        city_source_is_pole(part->source_id))
+      continue; /* poles are entities of their own */
     if (!mesh_data_append(&merged, &part->mesh)) {
       mesh_data_free(&merged);
       return false;
@@ -108,11 +110,89 @@ static bool upload_merged(scene_t* scene, scene_context_t c,
   return true;
 }
 
+/* Lamp posts, signals and road signs: each pole's parts become entities of
+ * their own and its solid part a collider of its own, so one can be knocked
+ * over without touching the rest. */
+static bool add_poles(scene_t* scene, scene_context_t c,
+                      const city_chunk_t* chunk, int* draws, int* colliders) {
+  size_t p = 0;
+  while (p < chunk->part_count) {
+    if (!city_source_is_pole(chunk->parts[p].source_id)) {
+      p++;
+      continue;
+    }
+    uint64_t id = chunk->parts[p].source_id;
+    pole_t pole;
+    memset(&pole, 0, sizeof(pole));
+    pole.kind = POLE_LAMP;
+    aabb_t bounds = aabb_empty();
+    size_t first = p;
+    for (; p < chunk->part_count && chunk->parts[p].source_id == id; p++) {
+      const city_part_t* part = &chunk->parts[p];
+      if (part->mesh.vertex_count == 0) continue;
+      if (strcmp(part->material, "sign_pole") == 0) pole.kind = POLE_SIGN;
+      if (strcmp(part->material, "furniture") == 0) pole.kind = POLE_SIGNAL;
+      mesh_data_t copy = mesh_data_create();
+      if (!mesh_data_append(&copy, &part->mesh)) {
+        mesh_data_free(&copy);
+        return false;
+      }
+      mesh_handle_t handle = renderer_upload_mesh(c.renderer, &copy);
+      scene_track_mesh(scene, handle);
+      char label[ENTITY_LABEL_LENGTH];
+      snprintf(label, sizeof(label), "%s %d,%d", part->material, chunk->column,
+               chunk->row);
+      aabb_t local = mesh_data_bounds(&copy);
+      bounds = aabb_merge(bounds, local);
+      if (pole.entity_count < POLE_MAX_ENTITIES)
+        pole.entities[pole.entity_count++] =
+            world_add(c.world, transform_identity(), handle,
+                      material_for(part->material, c.textures), local, label);
+      (*draws)++;
+      mesh_data_free(&copy);
+      if (part->collider == PART_COLLIDER_MESH) {
+        vec3_t* positions = malloc(part->mesh.vertex_count * sizeof(vec3_t));
+        if (!positions) return false;
+        for (size_t v = 0; v < part->mesh.vertex_count; v++)
+          positions[v] = part->mesh.vertices[v].position;
+        pole.collider = physics_add_static_mesh(
+            c.physics, positions, part->mesh.vertex_count, part->mesh.indices,
+            part->mesh.index_count, (collision_layer_t)part->layer,
+            part->friction, part->source_id);
+        free(positions);
+        if (pole.collider.id == 0) return false;
+        (*colliders)++;
+      }
+    }
+    /* The foot is where the lowest vertices sit. */
+    pole.height = bounds.max.y - bounds.min.y;
+    float foot_x = 0, foot_z = 0;
+    int on_ground = 0;
+    for (size_t q = first; q < p; q++)
+      for (size_t v = 0; v < chunk->parts[q].mesh.vertex_count; v++) {
+        vec3_t position = chunk->parts[q].mesh.vertices[v].position;
+        if (position.y > bounds.min.y + 0.05f) continue;
+        foot_x += position.x, foot_z += position.z, on_ground++;
+      }
+    pole.foot =
+        vec3(on_ground ? foot_x / (float)on_ground : bounds.min.x, bounds.min.y,
+             on_ground ? foot_z / (float)on_ground : bounds.min.z);
+    scene->pole_count++;
+    pole_t* grown = realloc(scene->poles, scene->pole_count * sizeof(pole_t));
+    if (!grown) return false;
+    scene->poles = grown;
+    scene->poles[scene->pole_count - 1] = pole;
+  }
+  return true;
+}
+
 static bool add_colliders(scene_context_t c, const city_chunk_t* chunk,
                           int* colliders) {
   for (size_t p = 0; p < chunk->part_count; p++) {
     const city_part_t* part = &chunk->parts[p];
-    if (part->collider != PART_COLLIDER_MESH) continue;
+    if (part->collider != PART_COLLIDER_MESH ||
+        city_source_is_pole(part->source_id))
+      continue;
     vec3_t* positions = malloc(part->mesh.vertex_count * sizeof(vec3_t));
     if (!positions) return false;
     for (size_t v = 0; v < part->mesh.vertex_count; v++)
@@ -151,6 +231,7 @@ bool scene_build_city(scene_t* scene, scene_context_t c,
       if (!seen)
         ok = upload_merged(scene, c, chunk, chunk->parts[p].material, &draws);
     }
+    if (ok) ok = add_poles(scene, c, chunk, &draws, &colliders);
     if (ok) ok = add_colliders(c, chunk, &colliders);
   }
   if (!city_map_build(&scene->map, &package, 1024))

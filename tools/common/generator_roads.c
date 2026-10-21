@@ -291,9 +291,6 @@ static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
     best = best < road_rank(c) ? best : road_rank(c);
   }
   if (arm_count < 3) return true;
-  city_chunk_t* chunk = gen_chunk_at(layout, junction->position);
-  city_part_t* poles = NULL;
-  city_part_t* plates = NULL;
   for (size_t a = 0; a < arm_count; a++) {
     const city_road_t* road = &model->roads[sources[a].road];
     if (road->class == ROAD_CLASS_PEDESTRIAN || road_rank(road->class) <= best)
@@ -301,17 +298,6 @@ static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
     if (polyline_length(road->points, road->point_count) < 25.0 ||
         fits[sources[a].road].pavement <= 0)
       continue;
-    if (!poles) {
-      poles = city_chunk_add_part(chunk, "sign_pole", PART_COLLIDER_MESH,
-                                  COLLISION_LAYER_PROP, 0.5f,
-                                  (uint64_t)junction->node_id);
-      plates = poles
-                   ? city_chunk_add_part(chunk, "sign_red", PART_COLLIDER_NONE,
-                                         0, 0, (uint64_t)junction->node_id)
-                   : NULL;
-      if (!poles || !plates) return false;
-      poles = &chunk->parts[chunk->part_count - 2];
-    }
     vec2_t d = {arms[a].direction.x, arms[a].direction.z};
     /* A car heading into the junction travels along -d; its right is
      * (dz, -dx) in this frame (x east, z south). */
@@ -321,7 +307,18 @@ static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
         gen_offset(gen_offset(junction->position, d, shape->cut[a] + 1.4),
                    right, half + 0.7);
     float y0 = o->kerb_height;
-    if (!mesh_data_add_box(&poles->mesh,
+    /* Each sign is a pole of its own, so the car can knock it down. */
+    city_chunk_t* chunk = gen_chunk_at(layout, foot);
+    uint64_t source = gen_pole_source(layout, (uint64_t)junction->node_id);
+    city_part_t* pole = city_chunk_add_part(chunk, "sign_pole",
+                                            PART_COLLIDER_MESH,
+                                            COLLISION_LAYER_PROP, 0.5f, source);
+    if (!pole || !city_chunk_add_part(chunk, "sign_red", PART_COLLIDER_NONE, 0,
+                                      0, source))
+      return false;
+    pole = &chunk->parts[chunk->part_count - 2];
+    city_part_t* plate = &chunk->parts[chunk->part_count - 1];
+    if (!mesh_data_add_box(&pole->mesh,
                            vec3((float)foot.x, y0 + 1.1f, (float)foot.z),
                            vec3(0.035f, 1.1f, 0.035f)))
       return false;
@@ -329,14 +326,13 @@ static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
     vec3_t half_extents =
         vec3(0.3f * (float)fabs(right.x) + 0.015f * (float)fabs(d.x), 0.3f,
              0.3f * (float)fabs(right.z) + 0.015f * (float)fabs(d.z));
-    if (!mesh_data_add_box(&plates->mesh,
+    if (!mesh_data_add_box(&plate->mesh,
                            vec3((float)foot.x, y0 + 2.0f, (float)foot.z),
                            half_extents))
       return false;
+    gen_finish_part(chunk, pole);
+    gen_finish_part(chunk, plate);
   }
-  if (!poles) return true;
-  gen_finish_part(chunk, poles);
-  gen_finish_part(chunk, plates);
   return true;
 }
 
@@ -536,16 +532,6 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
   const city_generator_options_t* o = layout->options;
   double length = polyline_length(points, count);
   if (length < o->lamp_spacing * 0.6) return true;
-  city_chunk_t* chunk = gen_chunk_at(layout, gen_centroid(points, count));
-  city_part_t* part = city_chunk_add_part(chunk, "lamp", PART_COLLIDER_MESH,
-                                          COLLISION_LAYER_PROP, 0.5f,
-                                          (uint64_t)road->source_id);
-  city_part_t* lights =
-      part ? city_chunk_add_part(chunk, "lamp_light", PART_COLLIDER_NONE, 0, 0,
-                                 (uint64_t)road->source_id)
-           : NULL;
-  if (!part || !lights) return false;
-  part = &chunk->parts[chunk->part_count - 2];
   const float height = 4.5f;
   int side = 1;
   for (double along = o->lamp_spacing * 0.5; along < length;
@@ -558,30 +544,36 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
     local_point_t base = gen_offset(on_line, lateral, post_offset);
     local_point_t head = gen_offset(on_line, lateral, post_offset - side * 0.9);
     float y0 = o->kerb_height;
+    /* Each lamp is a pole of its own, so the car can knock it down. */
+    city_chunk_t* chunk = gen_chunk_at(layout, base);
+    uint64_t source = gen_pole_source(layout, (uint64_t)road->source_id);
+    city_part_t* post =
+        city_chunk_add_part(chunk, "lamp", PART_COLLIDER_MESH,
+                            COLLISION_LAYER_PROP, 0.5f, source);
+    if (!post ||
+        !city_chunk_add_part(chunk, "lamp_light", PART_COLLIDER_NONE, 0, 0,
+                             source))
+      return false;
+    post = &chunk->parts[chunk->part_count - 2];
+    city_part_t* lights = &chunk->parts[chunk->part_count - 1];
     if (!mesh_data_add_box(
-            &part->mesh, vec3((float)base.x, y0 + height * 0.5f, (float)base.z),
+            &post->mesh, vec3((float)base.x, y0 + height * 0.5f, (float)base.z),
             vec3(0.07f, height * 0.5f, 0.07f)))
       return false;
     vec3_t arm_centre = vec3((float)((base.x + head.x) * 0.5), y0 + height,
                              (float)((base.z + head.z) * 0.5));
     vec3_t arm_half = vec3((float)fabs(head.x - base.x) * 0.5f + 0.06f, 0.06f,
                            (float)fabs(head.z - base.z) * 0.5f + 0.06f);
-    if (!mesh_data_add_box(&part->mesh, arm_centre, arm_half)) return false;
+    if (!mesh_data_add_box(&post->mesh, arm_centre, arm_half)) return false;
     if (!mesh_data_add_box(
             &lights->mesh,
             vec3((float)head.x, y0 + height - 0.12f, (float)head.z),
             vec3(0.22f, 0.1f, 0.22f)))
       return false;
+    gen_finish_part(chunk, post);
+    gen_finish_part(chunk, lights);
     stats->lamps++;
   }
-  if (part->mesh.vertex_count == 0) {
-    mesh_data_free(&part->mesh);
-    mesh_data_free(&lights->mesh);
-    chunk->part_count -= 2;
-    return true;
-  }
-  gen_finish_part(chunk, part);
-  gen_finish_part(chunk, lights);
   return true;
 }
 

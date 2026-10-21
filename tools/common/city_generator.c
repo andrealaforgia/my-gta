@@ -332,6 +332,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   layout.model = model;
   layout.arcade_edges = NULL;
   layout.arcade_edge_count = 0;
+  layout.pole_count = 0;
   layout.min_x =
       floor((min_x - margin) / options->chunk_size) * options->chunk_size;
   layout.min_z =

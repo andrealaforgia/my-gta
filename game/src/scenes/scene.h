@@ -15,7 +15,27 @@
 #include "textures.h"
 #include "world.h"
 
-#define SCENE_MAX_MESHES 4096
+#define SCENE_MAX_MESHES 16384
+#define POLE_MAX_ENTITIES 5
+
+typedef enum { POLE_LAMP, POLE_SIGNAL, POLE_SIGN } pole_kind_t;
+typedef enum { POLE_STANDING, POLE_FALLING, POLE_DOWN } pole_state_t;
+
+/* A lamp post, signal or road sign the car can knock over: its parts are
+ * entities of their own, and its solid part a collider that goes when it
+ * is hit. Its meshes are in world coordinates, so falling turns them about
+ * the foot. */
+typedef struct {
+  pole_kind_t kind;
+  pole_state_t state;
+  vec3_t foot;
+  float height;
+  collider_handle_t collider;
+  uint32_t entities[POLE_MAX_ENTITIES];
+  int entity_count;
+  float fall;    /* seconds since it was hit */
+  vec3_t pushed; /* horizontal unit vector it falls along */
+} pole_t;
 
 typedef struct {
   vec3_t spawn_position;
@@ -32,6 +52,8 @@ typedef struct {
   size_t signal_count;
   city_parking_t* parked; /* owned: places where cars stand at the kerb */
   size_t parked_count;
+  pole_t* poles; /* owned: everything that can be knocked down */
+  size_t pole_count;
   city_map_t map; /* the pause-screen map; size 0 on the test track */
 } scene_t;
 

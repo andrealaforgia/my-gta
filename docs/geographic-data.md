@@ -67,7 +67,8 @@ have a PBF.
   traffic signals are kept as street furniture too; other node tags are not
   read. Pordenone has 37 trees, 16 benches, 6 bus stops, 5 bollards and 7
   signals. Signals show red, amber and green on a 48 s cycle and cars stop at
-  them.
+  them; a mapped signal node faces both ways along its road. Busy junctions
+  without a mapped signal get lights of their own (see architecture.md).
 - Ways tagged `barrier=wall`, `retaining_wall`, `city_wall`, `fence` or
   `hedge` become low solid slabs (1.9 m of stone, 1.25 m of timber, 1.3 m of
   hedge) with a collider, written to `barriers.txt` in the intermediate

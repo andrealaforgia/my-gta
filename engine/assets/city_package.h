@@ -68,6 +68,25 @@ typedef struct {
 /* A traffic signal head: where it stands, the way the traffic it controls
  * is heading (a unit vector; 0, 0 for any), and which of the two phases it
  * keeps: group 0 is green while group 1 is red, and the other way round. */
+/* Parts that make up a pole the car can knock down (a lamp post, a signal,
+ * a road sign) carry a source id with the pole flag set, the pole's index
+ * in bits 40 to 61 and the feature they belong to in the low 40 bits. */
+#define CITY_POLE_FLAG (1ull << 62)
+#define CITY_POLE_ORIGINAL_MASK ((1ull << 40) - 1)
+static inline uint64_t city_pole_source(uint32_t index, uint64_t original) {
+  return CITY_POLE_FLAG | ((uint64_t)index << 40) |
+         (original & CITY_POLE_ORIGINAL_MASK);
+}
+static inline bool city_source_is_pole(uint64_t source) {
+  return (source & CITY_POLE_FLAG) != 0;
+}
+static inline uint32_t city_source_pole_index(uint64_t source) {
+  return (uint32_t)((source >> 40) & 0x3fffff);
+}
+static inline uint64_t city_source_original(uint64_t source) {
+  return source & CITY_POLE_ORIGINAL_MASK;
+}
+
 typedef struct {
   float x, z;
   float heading_x, heading_z;

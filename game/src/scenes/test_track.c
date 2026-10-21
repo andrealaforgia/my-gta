@@ -20,6 +20,8 @@ void scene_release(scene_t* scene, renderer_t* renderer) {
   free(scene->routes);
   free(scene->parked);
   free(scene->signals);
+  free(scene->poles);
+  scene->poles = NULL, scene->pole_count = 0;
   scene->signals = NULL, scene->signal_count = 0;
   scene->routes = NULL, scene->route_count = 0;
   scene->parked = NULL, scene->parked_count = 0;

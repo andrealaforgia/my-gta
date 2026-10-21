@@ -66,8 +66,24 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
   scene keeps them. `parked_cars` stands cars at the kerb, `traffic` drives
   kinematic cars (box colliders moved each step) on `route_path` lanes with
   right-hand lanes, junction right of way and stopping for the player,
-  `pedestrians` walks the pavements. A fleet of four bodies is built from
-  vehicle cfg files.
+  `pedestrians` walks the pavements (adults, children, elders and joggers,
+  some in pairs). The fleet is fourteen vehicles built from vehicle cfg
+  files: four cars for parked and moving traffic, then police, ambulance,
+  fire engine, bus and six lorries for moving traffic only. A cfg's `body`
+  key picks the shape (`game/src/car/vehicle_bodies.c`); the player can
+  drive any of them with V, and the chase camera backs off for long ones.
+- **Traffic lights**: signals are `city_signal_t` records (position, the
+  heading of the traffic they govern, phase group). Mapped signal nodes give
+  two records, one for each way along the road; the generator adds a head at
+  the entry of each street of a junction where three streets of tertiary
+  rank or better meet (or four meet and two are). Group 0 (east-west) and
+  group 1 (north-south) are green in turn on a 48 s cycle; a car stops six
+  metres short of a red head it is heading towards.
+- **Poles**: every lamp post, signal and road sign is a pole with its own
+  numbered parts (`city_pole_source`), which the city scene turns into
+  entities and a collider of their own. `poles.c` topples one when the car
+  hits it above 2.5 m/s: collider gone, the meshes turn about the foot, the
+  light goes dark and a signal stops governing traffic.
 - **Audio** adds the town (rumble, birds, crickets, cars close by) and a
   church bell on the hour; paused and map screens are silent.
 - **Camera views** and a car swap live in the stage; the map is a picture

@@ -158,6 +158,10 @@ local_point_t gen_centroid(const local_point_t* points, size_t count) {
   return c;
 }
 
+uint64_t gen_pole_source(layout_t* layout, uint64_t original) {
+  return city_pole_source(layout->pole_count++, original);
+}
+
 void gen_finish_part(city_chunk_t* chunk, city_part_t* part) {
   chunk->bounds = aabb_merge(chunk->bounds, mesh_data_bounds(&part->mesh));
 }

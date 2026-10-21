@@ -336,7 +336,9 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
      * short of it. */
     for (size_t k = 0; k < t->signal_count; k++) {
       const city_signal_t* signal = &t->signals[k];
-      if (traffic_signal_open(t->signal_time, signal->group)) continue;
+      if (signal->group < 0 ||
+          traffic_signal_open(t->signal_time, signal->group))
+        continue; /* green, or knocked down */
       bool any_heading = signal->heading_x == 0 && signal->heading_z == 0;
       if (!any_heading &&
           signal->heading_x * fx + signal->heading_z * fz < 0.7f)

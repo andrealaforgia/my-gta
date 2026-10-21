@@ -7,6 +7,7 @@
 #include "city_scene.h"
 #include "daylight.h"
 #include "log.h"
+#include "poles.h"
 
 #define PHYSICS_STEP (1.0 / 120.0)
 #define MAX_CATCH_UP 0.25
@@ -173,7 +174,21 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
     pedestrians_step(
         stage->people,
         physics_body(stage->physics, stage->vehicle.body)->position, dt);
+  rigid_body_t* chassis_body =
+      physics_body(stage->physics, stage->vehicle.body);
+  vec3_t velocity_before = chassis_body->velocity;
   physics_world_step(stage->physics, dt);
+  /* A pole the car hits at speed goes over, and gives way rather than
+   * stopping the car dead. */
+  if (poles_topple_struck(&stage->scene, stage->physics, &stage->world,
+                          stage->vehicle.body, velocity_before) > 0) {
+    chassis_body = physics_body(stage->physics, stage->vehicle.body);
+    vec3_t after = chassis_body->velocity;
+    chassis_body->velocity =
+        vec3(after.x + (velocity_before.x - after.x) * 0.6f, after.y,
+             after.z + (velocity_before.z - after.z) * 0.6f);
+  }
+  poles_step(&stage->scene, &stage->world, dt);
   stage->simulated_seconds += dt;
 }
 

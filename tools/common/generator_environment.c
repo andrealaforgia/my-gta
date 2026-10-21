@@ -229,6 +229,7 @@ bool gen_add_signal_head(layout_t* layout, vec3_t c, vec2_t along,
                          bool both_faces, int group, uint64_t source_id) {
   local_point_t at = {c.x, c.z};
   city_chunk_t* chunk = gen_chunk_at(layout, at);
+  source_id = gen_pole_source(layout, source_id);
   static const char* names[2][3] = {
       {"signal_red", "signal_amber", "signal_green"},
       {"signal_r2", "signal_a2", "signal_g2"}};

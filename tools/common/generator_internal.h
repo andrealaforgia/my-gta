@@ -30,6 +30,7 @@ typedef struct {
   const city_model_t* model;
   struct arcade_edge* arcade_edges; /* street-facing building edges */
   size_t arcade_edge_count;
+  uint32_t pole_count; /* poles numbered so the game can tell them apart */
 } layout_t;
 
 typedef struct {
@@ -93,6 +94,9 @@ typedef enum { LANDMARK_NONE, LANDMARK_TOWN_HALL, LANDMARK_CHURCH } landmark_t;
 /* ---- common ---- */
 
 vec3_t gen_at(local_point_t p, float y);
+
+/* The source id for the parts of the next pole, for feature `original`. */
+uint64_t gen_pole_source(layout_t* layout, uint64_t original);
 
 bool gen_add_vertex(mesh_data_t* mesh, vec3_t position, vec3_t normal, float u,
                     float v);

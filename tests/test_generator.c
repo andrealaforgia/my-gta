@@ -48,7 +48,8 @@ static const city_part_t* part_for(const city_package_t* package,
   for (size_t c = 0; c < package->chunk_count; c++)
     for (size_t p = 0; p < package->chunks[c].part_count; p++) {
       const city_part_t* part = &package->chunks[c].parts[p];
-      if (strcmp(part->material, material) == 0 && part->source_id == source)
+      if (strcmp(part->material, material) == 0 &&
+          city_source_original(part->source_id) == source)
         return part;
     }
   return NULL;
@@ -1283,21 +1284,33 @@ static void lamp_posts_stand_on_the_pavements(void) {
   city_package_t package = generate_fixture(&stats);
   assert(stats.lamps > 10);
   size_t lamp_parts = count_material(&package, "lamp");
-  /* Posts and arms, and the lamp heads apart so they can glow at night. */
-  assert(lamp_parts > 0 && lamp_parts <= 2 * stats.roads);
+  /* Every lamp is a pole of its own (a post and arm, and a head apart so it
+   * can glow at night), numbered so the game can knock it down. */
+  assert(lamp_parts == 2 * stats.lamps); /* posts and heads */
   const city_part_t* heads = part_for(&package, "lamp_light", 103);
   assert(heads && heads->collider == PART_COLLIDER_NONE);
-  assert(mesh_data_triangle_count(&heads->mesh) > 0 &&
-         mesh_data_triangle_count(&heads->mesh) % 12 == 0); /* one box each */
+  assert(mesh_data_triangle_count(&heads->mesh) == 12); /* one box */
+  assert(city_source_is_pole(heads->source_id));
   const city_part_t* lamps = part_for(&package, "lamp", 103);
   assert(lamps && lamps->collider == PART_COLLIDER_MESH && lamps->layer == 8);
-  aabb_t bounds = mesh_data_bounds(&lamps->mesh);
-  assert(near_to(bounds.min.y, 0.18f, 0.01f)); /* standing on the pavement */
-  assert(bounds.max.y > 4.5f && bounds.max.y < 5.0f);
+  assert(lamps->source_id == heads->source_id ||
+         city_source_original(lamps->source_id) == 103);
   /* Road 103 runs east-west, 6 m wide with 2 m pavements: posts stand
    * about 4 m either side of the centre line. */
-  assert(bounds.max.z - bounds.min.z > 7.0f &&
-         bounds.max.z - bounds.min.z < 9.5f);
+  float lowest = 1e9f, highest = -1e9f;
+  for (size_t c = 0; c < package.chunk_count; c++)
+    for (size_t p = 0; p < package.chunks[c].part_count; p++) {
+      const city_part_t* part = &package.chunks[c].parts[p];
+      if (strcmp(part->material, "lamp") != 0 ||
+          city_source_original(part->source_id) != 103)
+        continue;
+      aabb_t bounds = mesh_data_bounds(&part->mesh);
+      assert(near_to(bounds.min.y, 0.18f, 0.01f)); /* on the pavement */
+      assert(bounds.max.y > 4.5f && bounds.max.y < 5.0f);
+      lowest = fminf(lowest, bounds.min.z);
+      highest = fmaxf(highest, bounds.max.z);
+    }
+  assert(highest - lowest > 7.0f && highest - lowest < 9.5f);
   city_package_free(&package);
 }
 

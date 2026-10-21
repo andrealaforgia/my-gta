@@ -12,6 +12,7 @@
 #include "city_package.h"
 #include "driving_stage.h"
 #include "osm_reader.h"
+#include "poles.h"
 #include "test_groups.h"
 #include "test_support.h"
 
@@ -424,6 +425,68 @@ static void every_vehicle_pulls_away_and_stays_on_its_wheels(void) {
   stop(&run);
 }
 
+/* Aims the car at a pole from the east at a given speed, heading west. */
+static void aim_at_pole(city_run_t* run, const pole_t* pole, float speed) {
+  vec3_t from = vec3(pole->foot.x + 6.0f, pole->foot.y + 0.6f, pole->foot.z);
+  quat_t facing_west = quat_from_yaw((float)M_PI * 0.5f);
+  physics_body_teleport(run->stage.physics, run->stage.vehicle.body, from,
+                        facing_west);
+  rigid_body_t* body =
+      physics_body(run->stage.physics, run->stage.vehicle.body);
+  body->velocity = vec3(-speed, 0, 0);
+  body->angular_velocity = vec3_zero();
+}
+
+static void a_car_that_hits_a_lamp_post_hard_knocks_it_down(void) {
+  city_run_t run;
+  start(&run);
+  scene_t* scene = &run.stage.scene;
+  assert(scene->pole_count > 5);
+  size_t standing = poles_standing(scene);
+  assert(standing == scene->pole_count);
+  /* Some pole in the fixture stands where a fast car can reach it. */
+  driving_input_t coast = {0, 0, 0, false};
+  const pole_t* felled = NULL;
+  for (size_t i = 0; i < scene->pole_count && !felled; i++) {
+    pole_t* pole = &scene->poles[i];
+    if (pole->kind != POLE_LAMP) continue;
+    aim_at_pole(&run, pole, 12.0f);
+    for (int step = 0; step < 120 * 2; step++)
+      driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
+    if (pole->state != POLE_STANDING) felled = pole;
+  }
+  assert(felled);
+  assert(poles_standing(scene) < standing);
+  /* It is no longer solid and lies tipped over, away from the car. */
+  assert(felled->collider.id == 0);
+  assert(felled->state == POLE_DOWN);
+  entity_t* post = world_entity(&run.stage.world, felled->entities[0]);
+  assert(post && quat_rotate(post->transform.rotation, vec3(0, 1, 0)).y < 0.2f);
+  /* The lamp head is dark and the car carried on rather than stopping dead. */
+  bool dark = false;
+  for (int e = 0; e < felled->entity_count; e++)
+    dark |= strncmp(world_entity(&run.stage.world, felled->entities[e])->label,
+                    "dead lamp_light", 15) == 0;
+  assert(dark);
+  stop(&run);
+}
+
+static void a_gentle_bump_leaves_a_lamp_post_standing(void) {
+  city_run_t run;
+  start(&run);
+  scene_t* scene = &run.stage.scene;
+  driving_input_t coast = {0, 0, 0, false};
+  for (size_t i = 0; i < scene->pole_count; i++) {
+    pole_t* pole = &scene->poles[i];
+    if (pole->kind != POLE_LAMP) continue;
+    aim_at_pole(&run, pole, 1.5f);
+    for (int step = 0; step < 120 * 2; step++)
+      driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
+  }
+  assert(poles_standing(scene) == scene->pole_count);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -457,5 +520,7 @@ void run_citydrive_tests(void) {
   RUN(walls_are_grubbier_at_the_foot_but_roads_are_not);
   RUN(everything_the_generator_builds_is_drawn);
   RUN(every_vehicle_pulls_away_and_stays_on_its_wheels);
+  RUN(a_car_that_hits_a_lamp_post_hard_knocks_it_down);
+  RUN(a_gentle_bump_leaves_a_lamp_post_standing);
   RUN(the_map_and_the_pause_silence_the_engine);
 }
