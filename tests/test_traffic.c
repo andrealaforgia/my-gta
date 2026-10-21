@@ -620,6 +620,41 @@ static void a_car_signals_before_it_turns_and_stops_once_round(void) {
   renderer_destroy(renderer);
 }
 
+static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  /* A two-way road, 6 m wide, heading east: an ordinary car with an
+   * ambulance on a call coming up behind it. */
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 2, 5);
+  traffic_car_set_kind(traffic, 0, 0, false); /* hatchback */
+  traffic_car_set_kind(traffic, 1, 5, true);  /* ambulance, on a call */
+  traffic_car_place(traffic, 0, 0, 1, 45.0f);
+  traffic_car_place(traffic, 1, 0, 1, 12.0f);
+  float widest = 0;
+  bool passed = false;
+  for (int step = 0; step < 120 * 14; step++) {
+    traffic_step(traffic, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    traffic_car_t car = traffic_car(traffic, 0),
+                  ambulance = traffic_car(traffic, 1);
+    widest = fmaxf(widest, fabsf(car.position.z - ambulance.position.z));
+    if (ambulance.position.x > car.position.x + 4.0f && car.position.x > -54.0f)
+      passed = true;
+    /* Never inside one another. */
+    assert(hypotf(car.position.x - ambulance.position.x,
+                  car.position.z - ambulance.position.z) > 1.5f);
+  }
+  assert(passed);        /* the ambulance got by */
+  assert(widest > 2.4f); /* by using the room: one to the kerb, one out */
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -664,6 +699,7 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
 
 void run_traffic_tests(void) {
   RUN(cars_wait_at_a_red_signal_and_go_on_green);
+  RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);

@@ -23,6 +23,8 @@ typedef struct {
   int planned_route; /* where it will go at the end of this lane, or -1 */
   int planned_direction;
   int indicator; /* -1 turning left, +1 right, 0 straight on */
+  float lateral; /* metres to the right of its lane, easing to lateral_goal */
+  float lateral_goal;
   vec3_t position;
   float yaw;
   collider_handle_t collider;
@@ -43,6 +45,7 @@ struct traffic {
   const fleet_t* fleet;
   uint32_t random;
   float ground_clock;
+  physics_world_t* physics;
   const city_signal_t* signals;
   size_t signal_count;
   float signal_time;
@@ -73,7 +76,7 @@ static void pose(const traffic_t* t, car_t* car) {
   sample(lane, car->s, car->direction, &x, &z, &dx, &dz, &ground);
   /* Right of the direction of travel: (-dz, dx) in our x, z frame with z
    * south: right of east is south (+z), so right = (-dz, dx). */
-  float offset = lane_offset(lane);
+  float offset = lane_offset(lane) + car->lateral;
   car->position.x = x - dz * offset;
   car->position.z = z + dx * offset;
   car->yaw = atan2f(-dx, -dz);
@@ -94,6 +97,7 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
   traffic_t* t = calloc(1, sizeof(traffic_t));
   if (!t) return NULL;
   t->fleet = fleet;
+  t->physics = physics;
   t->random = seed * 2654435761u + 12345u;
   t->lane_count = route_count;
   t->lanes = calloc(route_count ? route_count : 1, sizeof(lane_t));
@@ -171,6 +175,16 @@ void traffic_set_signals(traffic_t* t, const city_signal_t* signals,
                          size_t count) {
   t->signals = signals;
   t->signal_count = count;
+}
+
+void traffic_car_set_kind(traffic_t* t, size_t index, int variant,
+                          bool responding) {
+  car_t* car = &t->cars[index];
+  car->variant = variant;
+  car->responding = responding;
+  physics_set_static_box_transform(
+      t->physics, car->collider,
+      transform_at(car->position, quat_from_yaw(car->yaw)));
 }
 
 void traffic_set_walkers(traffic_t* t, const vec3_t* positions, size_t count) {
@@ -306,6 +320,30 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     target = fminf(target, curve_speed(lane, car->s, car->direction));
     /* The way ahead: a point a few metres in front of the nose. */
     float fx = -sinf(car->yaw), fz = -cosf(car->yaw);
+    /* Make way for an emergency vehicle coming up behind, or, on a call
+     * oneself, go round slower traffic in the room the others leave. */
+    float goal = 0;
+    for (size_t j = 0; j < t->car_count; j++) {
+      if (j == i) continue;
+      const car_t* other = &t->cars[j];
+      float rx = other->position.x - car->position.x;
+      float rz = other->position.z - car->position.z;
+      float ahead = rx * fx + rz * fz;
+      float side = fabsf(rx * -fz + rz * fx);
+      float ofx = -sinf(other->yaw), ofz = -cosf(other->yaw);
+      if (ofx * fx + ofz * fz < 0.7f || side > 4.5f) continue; /* not ours */
+      if (other->responding && !car->responding && ahead > -45.0f &&
+          ahead < 8.0f) {
+        float room = lane->route->width * 0.5f - lane_offset(lane) - 0.95f;
+        goal = fmaxf(0.0f, fminf(1.4f, room));
+        target = fminf(target, 3.0f);
+      } else if (car->responding && !other->responding && ahead > -5.0f &&
+                 ahead < 24.0f) {
+        goal = -fminf(2.3f, 2.0f * lane_offset(lane));
+      }
+    }
+    car->lateral_goal = goal;
+    car->lateral += (car->lateral_goal - car->lateral) * fminf(1.0f, 2.5f * dt);
     float limit = target;
     bool must_stop = false;
     float gap_to_stop = 1e9f;

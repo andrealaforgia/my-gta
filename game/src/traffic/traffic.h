@@ -61,6 +61,10 @@ void traffic_set_signal_time(traffic_t* traffic, float seconds);
 bool traffic_signal_open(float seconds, int group);
 /* The same for group 0. */
 bool traffic_signals_open(float seconds);
+/* Makes car `index` a given fleet variant, on a call or not. For setting up
+ * scenes and tests. */
+void traffic_car_set_kind(traffic_t* traffic, size_t index, int variant,
+                          bool responding);
 /* Distance from a point to the nearest emergency vehicle that is on a call
  * (beacons flashing, siren sounding), 1e9 with none. */
 float traffic_nearest_siren(const traffic_t* traffic, vec3_t point);
