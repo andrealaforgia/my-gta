@@ -54,6 +54,7 @@ static material_t material_for(const char* name,
       style < CITY_FACADE_STYLES) {
     material_t m = material_rough(vec3(1, 1, 1), 0.8f);
     m.texture = textures->facades[style];
+    m.wall_ao = 0.8f;
     return m;
   }
   for (size_t i = 0; i < sizeof(bindings) / sizeof(bindings[0]); i++) {
@@ -62,6 +63,9 @@ static material_t material_for(const char* name,
       m.texture = bindings[i].texture;
       if (strcmp(name, "lamp") == 0) m.metallic = 0.7f;
       if (strcmp(name, "water") == 0) m.metallic = 0.4f;
+      if (strcmp(name, "facade_fresco") == 0 ||
+          strcmp(name, "facade_brick") == 0 || strcmp(name, "shopfront") == 0)
+        m.wall_ao = 0.8f;
       return m;
     }
   }

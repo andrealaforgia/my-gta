@@ -784,7 +784,7 @@ bool generate_road(layout_t* layout, const city_model_t* model,
   } else {
     ok = part &&
          gen_add_strip(&part->mesh, points, laterals, count, inner, outer,
-                       height, for_people ? 3.0f : o->road_texture_length);
+                       height, for_people ? 2.0f : o->road_texture_length);
   }
   if (ok && part && road->bridge && road->class == ROAD_CLASS_PATH &&
       road->layer >= 1) {

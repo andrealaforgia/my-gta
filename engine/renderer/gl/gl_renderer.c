@@ -120,6 +120,7 @@ static const char* mesh_fragment_source =
     "uniform float u_roughness;\n"
     "uniform float u_emissive;\n"
     "uniform float u_window_glow;\n"
+    "uniform float u_wall_ao;\n"
     "uniform int u_has_texture;\n"
     "uniform sampler2D u_texture;\n"
     "uniform vec3 u_light_direction;\n"
@@ -181,6 +182,10 @@ static const char* mesh_fragment_source =
     "    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 4.0);\n"
     "    color = mix(color, u_sky_color * (0.35 + 0.65 * u_ambient / 0.3), "
     "0.06 + 0.5 * fresnel);\n"
+    "  }\n"
+    "  if (u_wall_ao > 0.0) {\n"
+    "    float up = max(v_uv.y * 3.2, 0.0);\n"
+    "    color *= mix(1.0 - 0.42 * u_wall_ao, 1.0, smoothstep(0.0, 1.8, up));\n"
     "  }\n"
     "  color += albedo * u_emissive;\n"
     "  if (u_window_glow > 0.0 && pane < 0.5) {\n"
@@ -703,6 +708,8 @@ static void draw_list(renderer_t* r, GLuint program, bool bind_materials) {
                   material->emissive);
       glUniform1f(glGetUniformLocation(program, "u_window_glow"),
                   material->window_glow);
+      glUniform1f(glGetUniformLocation(program, "u_wall_ao"),
+                  material->wall_ao);
       bool textured = material->texture.id != 0 &&
                       material->texture.id < MAX_TEXTURES &&
                       r->textures[material->texture.id] != 0;

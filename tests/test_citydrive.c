@@ -353,6 +353,28 @@ static void a_wrecked_car_smokes_and_looks_scuffed(void) {
   stop(&run);
 }
 
+static void walls_are_grubbier_at_the_foot_but_roads_are_not(void) {
+  city_run_t run;
+  start(&run);
+  int walls = 0, others = 0;
+  for (size_t i = 0; i < run.stage.world.capacity; i++) {
+    const entity_t* e = &run.stage.world.entities[i];
+    if (!e->used) continue;
+    bool is_wall = strncmp(e->label, "facade", 6) == 0 ||
+                   strncmp(e->label, "shopfront", 9) == 0;
+    if (is_wall) {
+      assert(e->material.wall_ao > 0.3f && e->material.wall_ao <= 1.0f);
+      walls++;
+    } else if (strncmp(e->label, "road", 4) == 0 ||
+               strncmp(e->label, "roof", 4) == 0) {
+      assert(e->material.wall_ao == 0.0f);
+      others++;
+    }
+  }
+  assert(walls > 3 && others > 3);
+  stop(&run);
+}
+
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
@@ -383,5 +405,6 @@ void run_citydrive_tests(void) {
   RUN(the_cockpit_has_a_dashboard_and_a_wheel_that_turns);
   RUN(the_horn_sounds_only_while_held_and_not_on_the_map);
   RUN(a_wrecked_car_smokes_and_looks_scuffed);
+  RUN(walls_are_grubbier_at_the_foot_but_roads_are_not);
   RUN(the_map_and_the_pause_silence_the_engine);
 }

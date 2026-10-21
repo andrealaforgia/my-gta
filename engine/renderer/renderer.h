@@ -35,6 +35,9 @@ typedef struct {
   /* 0..1: how many of the panes a texture marks as glass (alpha 0) are lit
    * from inside, chosen per window by position. */
   float window_glow;
+  /* 0..1: darkens a wall towards its foot, as grime and contact shadow do.
+   * Reads the height up the wall from the texture's v (storeys). */
+  float wall_ao;
 } material_t;
 
 typedef struct {
