@@ -57,6 +57,11 @@ void traffic_set_signal_time(traffic_t* traffic, float seconds);
 bool traffic_signal_open(float seconds, int group);
 /* The same for group 0. */
 bool traffic_signals_open(float seconds);
+/* Distance from a point to the nearest emergency vehicle that is on a call
+ * (beacons flashing, siren sounding), 1e9 with none. */
+float traffic_nearest_siren(const traffic_t* traffic, vec3_t point);
+/* Whether car `index` is on a call. */
+bool traffic_car_responding(const traffic_t* traffic, size_t index);
 /* Distance from a point to the nearest moving car, 1e9 with none. */
 float traffic_nearest_distance(const traffic_t* traffic, vec3_t point);
 /* Draws the cars within `range` of the eye; returns how many. */

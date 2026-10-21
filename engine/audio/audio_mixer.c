@@ -6,7 +6,7 @@
 #define CYLINDERS 4
 
 audio_state_t audio_state_default(void) {
-  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0, 0, false};
+  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0, 0, false, 0};
   return state;
 }
 
@@ -242,6 +242,25 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
           sinf(2.0f * (float)M_PI * mixer->horn_phase_b) * 0.7f + b * 0.2f;
       horn = (wa + wb) * 0.17f * mixer->horn_level;
     }
+    /* A siren: two tones in turn, 435 and 580 Hz, a little under half a
+     * second each, with the pitch gliding between them. */
+    mixer->siren_level += (s->siren - mixer->siren_level) * 0.0008f * 48000.0f /
+                          (float)mixer->sample_rate;
+    float siren = 0;
+    if (mixer->siren_level > 0.002f) {
+      mixer->siren_clock += dt;
+      if (mixer->siren_clock >= 0.9f) mixer->siren_clock -= 0.9f;
+      float wanted = mixer->siren_clock < 0.45f ? 435.0f : 580.0f;
+      if (mixer->siren_frequency < 1.0f) mixer->siren_frequency = wanted;
+      mixer->siren_frequency += (wanted - mixer->siren_frequency) * 0.002f *
+                                48000.0f / (float)mixer->sample_rate;
+      mixer->siren_phase += mixer->siren_frequency * dt;
+      if (mixer->siren_phase >= 1.0f) mixer->siren_phase -= 1.0f;
+      float saw = mixer->siren_phase * 2.0f - 1.0f;
+      siren =
+          (sinf(2.0f * (float)M_PI * mixer->siren_phase) * 0.8f + saw * 0.15f) *
+          0.2f * mixer->siren_level * mixer->siren_level;
+    }
     /* The bell: a strike every three seconds, each ringing out. */
     mixer->bell_timer -= dt;
     mixer->bell_age += dt;
@@ -264,7 +283,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       bell *= 0.16f;
     }
     out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
-                        bird + cricket + bell + rain + horn) *
+                        bird + cricket + bell + rain + horn + siren) *
                        gain);
   }
 }

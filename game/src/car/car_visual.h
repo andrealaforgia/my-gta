@@ -46,10 +46,10 @@ typedef struct {
 car_visual_t car_visual_create(renderer_t* renderer,
                                const vehicle_params_t* params);
 void car_visual_destroy(car_visual_t* visual, renderer_t* renderer);
-void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
-                     const vehicle_t* vehicle, transform_t chassis,
-                     float lights_on /* 0 by day .. 1 at night */,
-                     float clock /* seconds: the beacons flash on it */);
+void car_visual_draw(
+    const car_visual_t* visual, renderer_t* renderer, const vehicle_t* vehicle,
+    transform_t chassis, float lights_on /* 0 by day .. 1 at night */,
+    float clock /* seconds: the beacons flash on it, dark if negative */);
 
 /* Draws a car standing or rolling with no suspension state: the body in the
  * given paint, wheels at rest, lights as asked (brake lights light up

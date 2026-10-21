@@ -19,6 +19,7 @@ typedef struct {
   int paint;
   float wheel_turn;
   bool braking;
+  bool responding; /* an emergency vehicle on a call */
   vec3_t position;
   float yaw;
   collider_handle_t collider;
@@ -138,6 +139,8 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
     int style = (int)(next_random(t) % 1000);
     car->variant = fleet_traffic_variant_for(style);
     car->paint = (int)(next_random(t) % 1000);
+    car->responding =
+        fleet->visuals[car->variant].emergency && next_random(t) % 100 < 60;
     pose(t, car);
     car->collider = physics_add_static_box(
         physics, transform_at(car->position, quat_from_yaw(car->yaw)),
@@ -374,6 +377,22 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
   }
 }
 
+float traffic_nearest_siren(const traffic_t* t, vec3_t point) {
+  float nearest = 1e9f;
+  for (size_t i = 0; i < t->car_count; i++) {
+    if (!t->cars[i].responding) continue;
+    float dx = t->cars[i].position.x - point.x,
+          dz = t->cars[i].position.z - point.z;
+    float d = sqrtf(dx * dx + dz * dz);
+    if (d < nearest) nearest = d;
+  }
+  return nearest;
+}
+
+bool traffic_car_responding(const traffic_t* t, size_t index) {
+  return t->cars[index].responding;
+}
+
 float traffic_nearest_distance(const traffic_t* t, vec3_t point) {
   float nearest = 1e9f;
   for (size_t i = 0; i < t->car_count; i++) {
@@ -392,11 +411,12 @@ int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
     const car_t* car = &t->cars[i];
     float dx = car->position.x - eye.x, dz = car->position.z - eye.z;
     if (dx * dx + dz * dz > range * range) continue;
-    car_visual_draw_still(&fleet->visuals[car->variant], renderer,
-                          transform_at(car->position, quat_from_yaw(car->yaw)),
-                          fleet_paint(car->paint), lights_on,
-                          car->braking ? 1.0f : 0.0f, car->wheel_turn,
-                          t->ground_clock + 0.37f * (float)i);
+    car_visual_draw_still(
+        &fleet->visuals[car->variant], renderer,
+        transform_at(car->position, quat_from_yaw(car->yaw)),
+        fleet_paint(car->paint), lights_on, car->braking ? 1.0f : 0.0f,
+        car->wheel_turn,
+        car->responding ? t->ground_clock + 0.37f * (float)i : -1.0f);
     drawn++;
   }
   return drawn;

@@ -491,6 +491,34 @@ static void a_signal_stops_only_the_traffic_it_faces_and_its_own_group(void) {
   renderer_destroy(renderer);
 }
 
+static void some_emergency_vehicles_are_on_a_call_and_can_be_heard(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 400, 11);
+  size_t emergency = 0, responding = 0, others_responding = 0;
+  vec3_t where = vec3_zero();
+  for (size_t i = 0; i < traffic_car_count(traffic); i++) {
+    bool services = fleet.visuals[traffic_car(traffic, i).variant].emergency;
+    emergency += services;
+    if (traffic_car_responding(traffic, i)) {
+      responding++;
+      where = traffic_car(traffic, i).position;
+      if (!services) others_responding++;
+    }
+  }
+  assert(emergency > 5 && others_responding == 0);
+  assert(responding > 0 && responding < emergency); /* some, not all */
+  assert(traffic_nearest_siren(traffic, where) < 0.5f);
+  assert(traffic_nearest_siren(traffic, vec3(5000, 0, 5000)) > 1000.0f);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_wait_at_a_red_signal_and_go_on_green(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -535,6 +563,7 @@ static void cars_wait_at_a_red_signal_and_go_on_green(void) {
 
 void run_traffic_tests(void) {
   RUN(cars_wait_at_a_red_signal_and_go_on_green);
+  RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);
   RUN(sliding_wheels_leave_marks_that_overwrite_the_oldest);
   RUN(people_walk_on_the_pavements_at_a_walking_pace);

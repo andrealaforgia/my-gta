@@ -329,7 +329,37 @@ static void the_horn_is_a_two_note_chord_that_starts_and_stops_quickly(void) {
   assert(peak(out + RATE / 4, RATE / 4) < 0.003f);
 }
 
+static void a_siren_alternates_two_tones_and_swells_as_it_nears(void) {
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  state.engine_running = false;
+  static float out[RATE * 2];
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE) < 1e-4f);
+  state.siren = 1.0f;
+  render(&mixer, state, out, RATE * 2);
+  /* The two tones of the two-tone horn, about 435 and 580 Hz, each for
+   * under half a second in turn: both are there over two seconds and
+   * nothing much in between. */
+  float low = power_at(out + RATE / 2, RATE * 3 / 2, 435.0f);
+  float high = power_at(out + RATE / 2, RATE * 3 / 2, 580.0f);
+  float between = power_at(out + RATE / 2, RATE * 3 / 2, 505.0f);
+  assert(low > between * 5.0f && high > between * 5.0f);
+  float full = rms(out + RATE, RATE);
+  assert(full > 0.03f && full < 0.4f);
+  /* Further away it is quieter, and gone when the vehicle is. */
+  state.siren = 0.25f;
+  render(&mixer, state, out, RATE);
+  render(&mixer, state, out, RATE);
+  assert(rms(out, RATE) < full * 0.6f);
+  state.siren = 0;
+  render(&mixer, state, out, RATE);
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE) < 0.002f);
+}
+
 void run_audio_tests(void) {
+  RUN(a_siren_alternates_two_tones_and_swells_as_it_nears);
   RUN(the_horn_is_a_two_note_chord_that_starts_and_stops_quickly);
   RUN(rain_is_a_soft_wash_that_is_louder_in_heavier_rain);
   RUN(the_town_has_a_background_that_is_quiet_and_goes_with_the_level);

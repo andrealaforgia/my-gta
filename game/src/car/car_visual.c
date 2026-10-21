@@ -299,10 +299,11 @@ static void draw_body(const car_visual_t* visual, renderer_t* renderer,
   draw_optional(renderer, visual->trim, visual->trim_material, model);
   draw_optional(renderer, visual->accent, visual->accent_material, model);
   if (visual->emergency) {
+    /* A negative clock: not on a call, the beacons stay dark. */
     bool first = fmodf(clock * 3.0f, 1.0f) < 0.5f;
     material_t a = visual->beacon_a_material, b = visual->beacon_b_material;
-    a.emissive = first ? 3.0f : 0.1f;
-    b.emissive = first ? 0.1f : 3.0f;
+    a.emissive = clock >= 0 && first ? 3.0f : 0.1f;
+    b.emissive = clock >= 0 && !first ? 3.0f : 0.1f;
     draw_optional(renderer, visual->beacon_a, a, model);
     draw_optional(renderer, visual->beacon_b, b, model);
   }
