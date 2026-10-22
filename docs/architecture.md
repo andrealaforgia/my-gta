@@ -95,6 +95,36 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
 - **Camera views** and a car swap live in the stage; the map is a picture
   rasterised once at load.
 
+## The drive's purpose (2026-10-22)
+
+- **Delivery runs** (`mission.c`, `mission_hud.c`): a destination on a drivable
+  route 250 to 1000 m away, a time limit of 20 s plus a sixth of the distance
+  in seconds, and cash for arriving within 9 m. A pillar of light stands over
+  it and the HUD, minimap and map mark it.
+- **Satnav** (`navigation.c`): the drivable routes are a graph (junction
+  nodes, one-ways respected) searched with Dijkstra. `nav_path` gives the way
+  as a polyline for the minimap, map and arrow; `nav_next_hop` tells a police
+  car which road to take at its next junction. A target is matched to the
+  cheapest reachable road within 40 m of the nearest, because map data has
+  one-way spurs and islands; a destination no road leads to is replaced.
+- **The law** (`wanted.c`, pursuit in `traffic.c`): a crash felt above 3600
+  or a toppled pole is a crime, one star each (at most five, a second apart at
+  least); stars send up to three of the police cars that traffic always
+  contains (the first three cars of any traffic of twelve or more). Pursuers
+  start beyond sight on a road that leads to the player, go 2.6 times the
+  usual pace, ignore signals and stop behind the player. Standing still with
+  one within 9 m for two seconds is a bust (a quarter of the cash, back to the
+  spawn); twelve seconds out of reach once they have found the player, or 90
+  without them finding the player, is a getaway.
+- **On foot** (`walker.c`): F steps out by the driver's door. The walker has
+  no physics body; ground and walls are found with rays (a step above 0.45 m
+  is a wall). The car stands with its handbrake on, cars stop for it, and F
+  beside it, or beside any parked or moving car, gets in; another car is
+  stolen (`parked_cars_take`, `traffic_take_car`), which is a crime.
+- **Nothing appears in sight**: traffic is drawn to `TRAFFIC_VISIBLE_RANGE`
+  (450 m) and a car is only ever put on the road beyond it and clear of
+  other cars.
+
 ## Streaming
 
 The cooked package is read whole (a few seconds and about 400 MB for the
