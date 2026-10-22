@@ -18,7 +18,7 @@
 city_generator_options_t city_generator_default_options(void) {
   city_generator_options_t o = {150.0f, 0.06f, true,  2.0f, 0.18f, 8.0f, 3.0f,
                                 3.2f,   12,    0.25f, 1.0f, 0.9f,  0.7f, 0.6f,
-                                28.0f,  14.0f, {0},   0.0,  0.0};
+                                28.0f,  14.0f, {0},   0.0,  0.0,   {0}};
   return o;
 }
 
@@ -33,6 +33,8 @@ bool city_generator_options_load(city_generator_options_t* o,
   }
   const char* arcades = config_get_string(&config, "arcade_streets", "");
   snprintf(o->arcade_streets, sizeof(o->arcade_streets), "%s", arcades);
+  const char* side = config_get_string(&config, "airport_side", "");
+  snprintf(o->airport_side, sizeof(o->airport_side), "%s", side);
   o->chunk_size = config_get_float(&config, "chunk_size", o->chunk_size);
   o->road_height = config_get_float(&config, "road_height", o->road_height);
   o->pavements = config_get_bool(&config, "pavements", o->pavements);
@@ -340,6 +342,14 @@ bool city_generate(city_package_t* package, const city_model_t* model,
       min_x = fmin(min_x, p.x), max_x = fmax(max_x, p.x),
       min_z = fmin(min_z, p.z), max_z = fmax(max_z, p.z);
     }
+  airport_site_t airport;
+  if (gen_airport_site(model, options->airport_side, min_x, min_z, max_x, max_z,
+                       &airport)) {
+    min_x = fmin(min_x, airport.lo_x), max_x = fmax(max_x, airport.hi_x);
+    min_z = fmin(min_z, airport.lo_z), max_z = fmax(max_z, airport.hi_z);
+  } else {
+    LOG_WARN("generate", "no dry ground for an airport");
+  }
   const double margin = 40.0;
   layout_t layout;
   layout.package = package;
@@ -404,6 +414,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   if (ok) ok = generate_street_trees(&layout, model, stats);
   if (ok) ok = generate_furniture(&layout, model, stats);
   if (ok) ok = generate_barriers(&layout, model);
+  if (ok) ok = generate_airport(&layout, &airport);
   if (ok) ok = generate_crossings(&layout, model, fits);
   free(layout.arcade_edges);
   free(fits);
@@ -424,6 +435,16 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   }
   choose_spawn(package, model, options);
   choose_labels(package, model);
+  if (package->airport.present) {
+    /* The map has room for so many names; the airport takes the last. */
+    size_t at = package->label_count < CITY_PACKAGE_MAX_LABELS
+                    ? package->label_count++
+                    : CITY_PACKAGE_MAX_LABELS - 1;
+    city_label_t* label = &package->labels[at];
+    label->x = package->airport.x;
+    label->z = package->airport.z;
+    snprintf(label->text, sizeof(label->text), "AIRPORT");
+  }
   /* The car starts on an empty road. */
   size_t kept = 0;
   for (size_t i = 0; i < package->parked_count; i++) {

@@ -94,6 +94,24 @@ typedef struct {
   int group;
 } city_signal_t;
 
+#define CITY_PACKAGE_MAX_AIRCRAFT 12
+
+typedef enum { AIRCRAFT_PLANE, AIRCRAFT_HELICOPTER } aircraft_kind_t;
+
+/* An aeroplane or helicopter standing at the airport, and which way it faces
+ * (yaw as for the spawn). */
+typedef struct {
+  int kind; /* aircraft_kind_t */
+  float x, z, yaw;
+} city_aircraft_t;
+
+/* The airport beside the city: the middle of its runway, the way the runway
+ * lies (yaw of its first end, as for the spawn), and its size in metres. */
+typedef struct {
+  bool present;
+  float x, z, yaw, length, width;
+} city_airport_t;
+
 typedef struct {
   char name[CITY_PACKAGE_TEXT];
   char source[256];
@@ -122,6 +140,9 @@ typedef struct {
   size_t crossing_count;
   float* bus_stops; /* x, z pairs: where buses stop */
   size_t bus_stop_count;
+  city_airport_t airport;
+  city_aircraft_t aircraft[CITY_PACKAGE_MAX_AIRCRAFT];
+  size_t aircraft_count;
 } city_package_t;
 
 city_package_t city_package_create(void);

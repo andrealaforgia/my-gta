@@ -42,6 +42,7 @@ static void cook_fixture_city_into(const char* directory, bool hilly) {
     memcpy(model.terrain.heights, heights, sizeof(heights));
   }
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, &model, &options, "district", &stats));
@@ -123,9 +124,9 @@ static void the_city_loads_with_roads_buildings_and_a_spawn_on_a_road(void) {
 static void the_car_drives_along_the_spawn_road_and_through_a_junction(void) {
   city_run_t run;
   start(&run);
-  driving_input_t idle = {0, 0, 0, false};
+  driving_input_t idle = {0, 0, 0, false, false};
   drive(&run, idle, 1.0f);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   vec3_t start_position = car(&run)->position;
   drive(&run, throttle, 8.0f);
   const rigid_body_t* body = car(&run);
@@ -147,7 +148,7 @@ static void buildings_stop_the_car(void) {
   vehicle_set_spawn(&run.stage.vehicle, start_position,
                     quat_from_yaw((float)M_PI));
   vehicle_reset(&run.stage.vehicle, run.stage.physics);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&run, throttle, 8.0f);
   const rigid_body_t* body = car(&run);
   assert(body->position.z > 30.0f); /* it did reach the wall */
@@ -164,7 +165,7 @@ static void a_hard_crash_jolts_the_view_and_it_settles(void) {
   vehicle_reset(&run.stage.vehicle, run.stage.physics);
   assert(run.stage.shake == 0);
   render_camera_t steady = driving_stage_camera(&run.stage);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   float most = 0;
   for (int i = 0; i < 120 * 8; i++) {
     driving_stage_step(&run.stage, throttle, 1.0f / 120.0f);
@@ -177,7 +178,7 @@ static void a_hard_crash_jolts_the_view_and_it_settles(void) {
   run.stage.shake = 0;
   render_camera_t calm = driving_stage_camera(&run.stage);
   assert(vec3_distance(jolted.eye, calm.eye) > 0.02f);
-  driving_input_t coast = {0, 1, 0, false};
+  driving_input_t coast = {0, 1, 0, false, false};
   for (int i = 0; i < 120 * 3; i++)
     driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
   assert(run.stage.shake < 0.01f);
@@ -265,7 +266,7 @@ static void the_street_under_the_car_is_named_on_the_screen(void) {
   /* The stage keeps it up to date as the car moves. */
   physics_body_teleport(run.stage.physics, run.stage.vehicle.body,
                         vec3(x, 1.0f, z), quat_identity());
-  driving_input_t coast = {0, 0, 0, false};
+  driving_input_t coast = {0, 0, 0, false, false};
   for (int i = 0; i < 120; i++)
     driving_stage_step(&run.stage, coast, 1.0f / 120.0f);
   assert(run.stage.street[0] != '\0');
@@ -284,7 +285,8 @@ static void the_tyres_stay_quiet_on_an_ordinary_drive(void) {
   for (int place = 0; place < 2; place++) {
     city_run_t run;
     start_in(&run, places[place]);
-    driving_input_t idle = {0, 0, 0, false}, throttle = {0.5f, 0, 0, false};
+    driving_input_t idle = {0, 0, 0, false, false},
+                    throttle = {0.5f, 0, 0, false, false};
     float loudest = 0;
     bool marked = false;
     for (int i = 0; i < 120 * 10; i++) {
@@ -305,9 +307,9 @@ static void the_car_follows_the_hills(void) {
   /* The car spawns on the slope, not under it. */
   vec3_t spawn = run.stage.scene.spawn_position;
   assert(near_to(spawn.y, hill_height(spawn.x) + 0.06f + 0.9f, 0.2f));
-  driving_input_t idle = {0, 0, 0, false};
+  driving_input_t idle = {0, 0, 0, false, false};
   drive(&run, idle, 1.0f);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&run, throttle, 8.0f);
   const rigid_body_t* body = car(&run);
   /* Hills lift the drive: unlike on the flat the check in drive() that
@@ -338,7 +340,7 @@ static void the_town_sounds_follow_the_time_of_day(void) {
 static void the_driver_sees_from_inside_and_from_the_bonnet(void) {
   city_run_t run;
   start(&run);
-  driving_input_t idle = {0, 0, 0, false};
+  driving_input_t idle = {0, 0, 0, false, false};
   drive(&run, idle, 0.5f);
   vec3_t chassis = car(&run)->position;
   vec3_t forward = quat_rotate(car(&run)->rotation, vec3(0, 0, -1));
@@ -360,7 +362,7 @@ static void the_driver_sees_from_inside_and_from_the_bonnet(void) {
 static void v_swaps_the_car_for_the_next_one_where_it_stands(void) {
   city_run_t run;
   start(&run);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&run, throttle, 2.0f);
   vec3_t where = car(&run)->position;
   float mass = car(&run)->mass;
@@ -389,7 +391,7 @@ static void a_busy_city_runs_for_a_minute_without_trouble(void) {
   assert(run.stage.traffic && run.stage.people);
   assert(run.stage.parked.count > 0 || run.stage.scene.parked_count == 0);
   assert(traffic_car_count(run.stage.traffic) == 20);
-  driving_input_t throttle = {0.6f, 0, 0.1f, false};
+  driving_input_t throttle = {0.6f, 0, 0.1f, false, false};
   for (int second = 0; second < 60; second++) {
     drive(&run, throttle, 1.0f);
     /* Whatever the car runs into, nothing goes wrong (and police after a
@@ -400,7 +402,7 @@ static void a_busy_city_runs_for_a_minute_without_trouble(void) {
              c.speed < 30.0f);
     }
     if (second % 15 == 14) {
-      driving_input_t reverse = {0, 1, -0.3f, false};
+      driving_input_t reverse = {0, 1, -0.3f, false, false};
       drive(&run, reverse, 2.0f);
     }
   }
@@ -412,10 +414,10 @@ static void a_busy_city_runs_for_a_minute_without_trouble(void) {
 static void the_chase_view_widens_with_speed(void) {
   city_run_t run;
   start(&run);
-  driving_input_t idle = {0, 0, 0, false};
+  driving_input_t idle = {0, 0, 0, false, false};
   drive(&run, idle, 0.5f);
   float standing = driving_stage_camera(&run.stage).fov_y;
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&run, throttle, 8.0f);
   float moving = driving_stage_camera(&run.stage).fov_y;
   assert(moving > standing + 0.03f && moving < standing + 0.2f);
@@ -435,7 +437,7 @@ static void rain_comes_on_gradually_wets_the_roads_and_is_heard(void) {
   }
   assert(dry > 0.9f);
   driving_stage_set_rain(&run.stage, 1.0f);
-  driving_input_t idle = {0, 0, 0, false};
+  driving_input_t idle = {0, 0, 0, false, false};
   driving_stage_advance(&run.stage, idle, 3.0);
   assert(run.stage.rain > 0.3f && run.stage.rain < 0.7f); /* part way */
   driving_stage_advance(&run.stage, idle, 4.0);
@@ -465,7 +467,7 @@ static void the_cockpit_has_a_dashboard_and_a_wheel_that_turns(void) {
   /* The wheel's angle follows the steering, a lock and a half each way at
    * full input, and is level when the car goes straight. */
   assert(near_to(driving_stage_wheel_angle(&run.stage), 0.0f, 1e-3f));
-  driving_input_t left = {0.2f, 0, -1.0f, false};
+  driving_input_t left = {0.2f, 0, -1.0f, false, false};
   drive(&run, left, 2.0f);
   float angle = driving_stage_wheel_angle(&run.stage);
   assert(angle < -1.0f && angle > -4.8f);
@@ -506,7 +508,7 @@ static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
     void) {
   city_run_t run;
   start(&run);
-  driving_input_t idle = {0, 0, 0, false};
+  driving_input_t idle = {0, 0, 0, false, false};
   run.stage.vehicle.damage = 1.0f;
   for (int i = 0; i < 120 * 3; i++)
     driving_stage_step(&run.stage, idle, 1.0f / 120.0f);
@@ -534,7 +536,7 @@ static void on_foot_the_pistol_fires_leaves_a_trail_and_cools_down(void) {
   test_pedestrians = 10;
   city_run_t run;
   start(&run);
-  driving_input_t stand = {0, 0, 0, false};
+  driving_input_t stand = {0, 0, 0, false, false};
   /* In the car there is no shooting. */
   assert(!driving_stage_fire(&run.stage));
   drive(&run, stand, 1.0f);
@@ -557,7 +559,7 @@ static void a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged(void) {
   test_pedestrians = 10;
   city_run_t run;
   start(&run);
-  driving_input_t stand = {0, 0, 0, false};
+  driving_input_t stand = {0, 0, 0, false, false};
   drive(&run, stand, 1.0f);
   driving_stage_interact(&run.stage);
   drive(&run, stand, 0.5f);
@@ -635,7 +637,7 @@ static void everything_the_generator_builds_is_drawn(void) {
 static void every_vehicle_pulls_away_and_stays_on_its_wheels(void) {
   city_run_t run;
   start(&run);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   for (int i = 0; i < FLEET_VARIANTS; i++) {
     run.stage.vehicle.damage = 0;
     vec3_t before = car(&run)->position;
@@ -673,7 +675,7 @@ static void a_car_that_hits_a_lamp_post_hard_knocks_it_down(void) {
   size_t standing = poles_standing(scene);
   assert(standing == scene->pole_count);
   /* Some pole in the fixture stands where a fast car can reach it. */
-  driving_input_t coast = {0, 0, 0, false};
+  driving_input_t coast = {0, 0, 0, false, false};
   const pole_t* felled = NULL;
   for (size_t i = 0; i < scene->pole_count && !felled; i++) {
     pole_t* pole = &scene->poles[i];
@@ -703,7 +705,7 @@ static void a_gentle_bump_leaves_a_lamp_post_standing(void) {
   city_run_t run;
   start(&run);
   scene_t* scene = &run.stage.scene;
-  driving_input_t coast = {0, 0, 0, false};
+  driving_input_t coast = {0, 0, 0, false, false};
   for (size_t i = 0; i < scene->pole_count; i++) {
     pole_t* pole = &scene->poles[i];
     if (pole->kind != POLE_LAMP) continue;
@@ -718,7 +720,7 @@ static void a_gentle_bump_leaves_a_lamp_post_standing(void) {
 static void the_map_and_the_pause_silence_the_engine(void) {
   city_run_t run;
   start(&run);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&run, throttle, 1.0f);
   assert(driving_stage_audio_state(&run.stage).engine_running);
   run.stage.map_open = true;
@@ -775,7 +777,7 @@ static void the_player_can_get_out_walk_get_back_in_and_steal_a_car(void) {
   city_run_t run;
   start(&run);
   assert(run.stage.has_figures && !run.stage.on_foot);
-  driving_input_t stand = {0, 0, 0, false};
+  driving_input_t stand = {0, 0, 0, false, false};
   drive(&run, stand, 1.0f);
   vec3_t car_at = car(&run)->position;
   /* Out by the car's side; the car stays where it is. */
@@ -784,7 +786,7 @@ static void the_player_can_get_out_walk_get_back_in_and_steal_a_car(void) {
   float apart = hypotf(run.stage.walker.position.x - car_at.x,
                        run.stage.walker.position.z - car_at.z);
   assert(apart > 1.0f && apart < 3.5f);
-  driving_input_t walk = {1.0f, 0, 0, false};
+  driving_input_t walk = {1.0f, 0, 0, false, false};
   vec3_t start_at = run.stage.walker.position;
   for (int i = 0; i < 120 * 2; i++)
     driving_stage_step(&run.stage, walk, 1.0f / 120.0f);

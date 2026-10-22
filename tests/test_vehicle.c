@@ -38,7 +38,7 @@ static void drive(track_t* track, driving_input_t input, float seconds) {
 }
 
 static driving_input_t idle(void) {
-  driving_input_t input = {0, 0, 0, false};
+  driving_input_t input = {0, 0, 0, false, false};
   return input;
 }
 
@@ -247,11 +247,11 @@ static float roll_angle(const track_t* track) {
 
 static void a_hard_corner_leans_the_body_a_few_degrees_not_a_dozen(void) {
   track_t track = flat_track(1.0f);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&track, throttle, 6.0f); /* up to speed */
-  driving_input_t hold = {0.25f, 0, 0, false};
+  driving_input_t hold = {0.25f, 0, 0, false, false};
   float worst = 0;
-  driving_input_t turn = {0.25f, 0, 1.0f, false};
+  driving_input_t turn = {0.25f, 0, 1.0f, false, false};
   int steps = (int)(4.0f / step);
   for (int i = 0; i < steps; i++) {
     vehicle_update(&track.car, track.world, turn, step);
@@ -267,11 +267,11 @@ static void a_hard_corner_leans_the_body_a_few_degrees_not_a_dozen(void) {
 
 static void the_car_does_not_tip_over_in_a_sudden_swerve(void) {
   track_t track = flat_track(1.0f);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&track, throttle, 7.0f);
   float worst = 0;
   for (int swerve = 0; swerve < 6; swerve++) {
-    driving_input_t turn = {0.5f, 0, swerve % 2 ? -1.0f : 1.0f, false};
+    driving_input_t turn = {0.5f, 0, swerve % 2 ? -1.0f : 1.0f, false, false};
     for (int i = 0; i < (int)(0.5f / step); i++) {
       vehicle_update(&track.car, track.world, turn, step);
       physics_world_step(track.world, step);
@@ -291,9 +291,9 @@ static float pitch_angle(const track_t* track) {
 
 static void hard_braking_dips_the_nose_a_couple_of_degrees(void) {
   track_t track = flat_track(1.0f);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   drive(&track, throttle, 9.0f);
-  driving_input_t brake = {0, 1, 0, false};
+  driving_input_t brake = {0, 1, 0, false, false};
   float dip = 0;
   for (int i = 0; i < (int)(2.0f / step); i++) {
     vehicle_update(&track.car, track.world, brake, step);
@@ -323,12 +323,12 @@ static void every_car_in_the_fleet_accelerates_corners_and_stops_sensibly(
     assert(vehicle_create(&car, world, &params, vec3(0, 0.9f, 0),
                           quat_identity()));
     track_t track = {world, car};
-    driving_input_t throttle = {1, 0, 0, false};
+    driving_input_t throttle = {1, 0, 0, false, false};
     drive(&track, throttle, 10.0f);
     float speed = vehicle_speed_kmh(&track.car);
     assert(speed > 55.0f && speed < 200.0f);
     /* A hard corner at pace leans it a few degrees, never a dozen. */
-    driving_input_t turn = {0.3f, 0, 1.0f, false};
+    driving_input_t turn = {0.3f, 0, 1.0f, false, false};
     float worst = 0;
     for (int k = 0; k < (int)(3.0f / step); k++) {
       vehicle_update(&track.car, track.world, turn, step);
@@ -337,7 +337,7 @@ static void every_car_in_the_fleet_accelerates_corners_and_stops_sensibly(
     }
     assert(worst < 0.12f);
     /* And it stops. */
-    driving_input_t brake = {0, 1, 0, false};
+    driving_input_t brake = {0, 1, 0, false, false};
     /* Holding the brake at a standstill reverses, so look for the stop. */
     float slowest = 1e9f;
     for (int k = 0; k < (int)(8.0f / step); k++) {
@@ -358,7 +358,7 @@ static void crashes_dent_the_car_and_take_off_power_until_it_is_reset(void) {
                          transform_at(vec3(0, 2, -40), quat_identity()),
                          vec3(30, 2, 1), COLLISION_LAYER_BUILDING, 0.5f, 1);
   assert(track.car.damage == 0.0f);
-  driving_input_t throttle = {1, 0, 0, false};
+  driving_input_t throttle = {1, 0, 0, false, false};
   float power_before = vehicle_power_factor(&track.car);
   assert(near_to(power_before, 1.0f, 1e-4f));
   drive(&track, throttle, 9.0f); /* into the wall at speed */

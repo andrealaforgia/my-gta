@@ -58,6 +58,8 @@ static material_t material_for(const char* name,
       {"trunk", textures->bark, vec3(1.0f, 1.0f, 1.0f), 0.9f},
       {"leaves", textures->foliage, vec3(1.5f, 1.5f, 1.5f), 0.95f},
       {"marking", {0}, vec3(0.9f, 0.9f, 0.86f), 0.7f},
+      {"marking_yellow", {0}, vec3(0.95f, 0.78f, 0.12f), 0.7f},
+      {"hangar", textures->metal, vec3(0.72f, 0.8f, 0.88f), 0.55f},
   };
   int style = -1;
   if (sscanf(name, "facade%d", &style) == 1 && style >= 0 &&

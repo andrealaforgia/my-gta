@@ -91,6 +91,16 @@ typedef enum { ROOF_FLAT, ROOF_HIPPED, ROOF_GABLED, ROOF_RIDGE } roof_shape_t;
 
 typedef enum { LANDMARK_NONE, LANDMARK_TOWN_HALL, LANDMARK_CHURCH } landmark_t;
 
+/* Where the airport goes, found before the ground is laid so the ground
+ * reaches it. */
+typedef struct {
+  bool present;
+  local_point_t origin;          /* middle of the runway */
+  vec2_t axis;                   /* along the runway */
+  vec2_t toward;                 /* from the runway towards the city */
+  double lo_x, lo_z, hi_x, hi_z; /* the airport's footprint */
+} airport_site_t;
+
 /* ---- common ---- */
 
 vec3_t gen_at(local_point_t p, float y);
@@ -238,5 +248,16 @@ bool generate_ground(layout_t* layout, city_generator_stats_t* stats);
  * follow the hills, then every vertex rises by the ground height under
  * it. Chunk bounds are rebuilt. */
 bool gen_apply_terrain(layout_t* layout);
+
+/* ---- airport ---- */
+
+/* A dry place beside the city's extent (given), on the side asked for or the
+ * first that is not water; false when there is none. */
+bool gen_airport_site(const city_model_t* model, const char* side, double min_x,
+                      double min_z, double max_x, double max_z,
+                      airport_site_t* site);
+
+/* Runway, taxiway, apron, buildings and the aircraft that stand there. */
+bool generate_airport(layout_t* layout, const airport_site_t* site);
 
 #endif  // TOOLS_COMMON_GENERATOR_INTERNAL_H_

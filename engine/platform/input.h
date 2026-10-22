@@ -12,6 +12,7 @@
 /* SDL scancodes, repeated here so the mapping has no SDL dependency. */
 enum {
   INPUT_SCANCODE_SPACE = 44,
+  INPUT_SCANCODE_LCTRL = 224,
   INPUT_SCANCODE_LSHIFT = 225,
   INPUT_SCANCODE_RSHIFT = 229,
   INPUT_SCANCODE_RIGHT = 79,
@@ -29,6 +30,7 @@ typedef struct {
   float brake;    /* 0..1 */
   float steering; /* -1 left .. 1 right */
   bool handbrake;
+  bool lower; /* Ctrl: takes power off an aircraft, brakes it on the ground */
 } driving_input_t;
 
 driving_input_t driving_input_from_keys(const unsigned char* keys);

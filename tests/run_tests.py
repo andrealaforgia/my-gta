@@ -34,6 +34,7 @@ GROUPS = (
     "traffic",
     "textures",
     "lidar",
+    "aircraft",
 )
 
 

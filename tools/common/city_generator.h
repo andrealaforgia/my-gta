@@ -38,6 +38,9 @@ typedef struct {
    * for the middle of the extract. */
   double spawn_latitude;
   double spawn_longitude;
+  /* Which side of the city the airport goes: N, E, S or W; empty to let the
+   * generator choose a dry one; a dash for no airport. */
+  char airport_side[4];
 } city_generator_options_t;
 
 typedef struct {

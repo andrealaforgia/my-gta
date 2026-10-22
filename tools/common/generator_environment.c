@@ -575,7 +575,7 @@ bool generate_ground(layout_t* layout, city_generator_stats_t* stats) {
 bool gen_apply_terrain(layout_t* layout) {
   if (!layout->terrain || layout->terrain->cols == 0) return true;
   static const char* surfaces[] = {"park",     "paving", "parking", "junction",
-                                   "pavement", "water",  "road"};
+                                   "pavement", "water",  "road",    "marking"};
   for (size_t c = 0; c < layout->package->chunk_count; c++) {
     city_chunk_t* chunk = &layout->package->chunks[c];
     chunk->bounds = aabb_empty();

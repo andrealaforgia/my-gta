@@ -26,6 +26,7 @@ static city_model_t fixture_model(void) {
 static city_package_t generate_fixture(city_generator_stats_t* stats) {
   city_model_t model = fixture_model();
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   city_package_t package;
   assert(city_generate(&package, &model, &options, "district", stats));
   city_model_free(&model);
@@ -313,6 +314,7 @@ static void parallel_carriageways_share_the_gap_between_them(void) {
   assert(city_import(&model, &osm, city_import_default_options(), "inline"));
   osm_free(&osm);
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   options.lamp_spacing = 0;
   city_package_t package;
   city_generator_stats_t stats;
@@ -364,6 +366,7 @@ static city_package_t generate_inline(const char* xml, city_model_t* model) {
   assert(city_import(model, &osm, city_import_default_options(), "inline"));
   osm_free(&osm);
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, model, &options, "inline", &stats));
@@ -458,6 +461,7 @@ static void everything_follows_the_terrain(void) {
   model.terrain.heights = malloc(sizeof(heights));
   memcpy(model.terrain.heights, heights, sizeof(heights));
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   options.lamp_spacing = 0;
   city_package_t package;
   city_generator_stats_t stats;
@@ -561,6 +565,7 @@ static void buildings_on_a_named_street_get_a_portico(void) {
   assert(city_import(&model, &osm, city_import_default_options(), "inline"));
   osm_free(&osm);
   city_generator_options_t plain_options = city_generator_default_options();
+  snprintf(plain_options.airport_side, sizeof(plain_options.airport_side), "-");
   plain_options.lamp_spacing = 0;
   city_generator_options_t arcade_options = plain_options;
   snprintf(arcade_options.arcade_streets, sizeof(arcade_options.arcade_streets),
@@ -657,6 +662,7 @@ static void single_trees_stand_where_they_are_mapped(void) {
   assert(city_import(&model, &osm, city_import_default_options(), "inline"));
   osm_free(&osm);
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, &model, &options, "tree", &stats));
@@ -784,13 +790,13 @@ static void the_spawn_can_be_set_to_a_place_in_a_larger_extract(void) {
   assert(city_import(&model, &osm, city_import_default_options(), "inline"));
   osm_free(&osm);
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   options.spawn_latitude = 45.0000;
   options.spawn_longitude = 12.0125; /* the eastern road */
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, &model, &options, "two", &stats));
-  local_point_t east =
-      projection_project(&model.projection, 45.0, 12.0125);
+  local_point_t east = projection_project(&model.projection, 45.0, 12.0125);
   assert(fabs(package.spawn_position.x - east.x) < 60.0);
   options.spawn_longitude = 11.9995; /* the western one */
   city_package_free(&package);
@@ -1201,6 +1207,7 @@ static void nothing_is_lifted_twice_on_raised_ground(void) {
   model.terrain.heights = malloc(sizeof(heights));
   memcpy(model.terrain.heights, heights, sizeof(heights));
   city_generator_options_t options = city_generator_default_options();
+  snprintf(options.airport_side, sizeof(options.airport_side), "-");
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, &model, &options, "raised", &stats));

@@ -293,7 +293,7 @@ static void step_entry(driving_stage_t* stage, float dt);
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt) {
   /* On foot the car stands with its handbrake on and the input walks. */
-  driving_input_t parked_car_input = {0.0f, 0.0f, 0.0f, true};
+  driving_input_t parked_car_input = {0.0f, 0.0f, 0.0f, true, false};
   vehicle_update(&stage->vehicle, stage->physics,
                  stage->on_foot ? parked_car_input : input, dt);
   if (stage->on_foot && stage->entering > 0) {

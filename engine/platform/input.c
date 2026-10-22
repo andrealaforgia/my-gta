@@ -5,12 +5,13 @@
 #include "interpolation.h"
 
 driving_input_t driving_input_from_keys(const unsigned char* keys) {
-  driving_input_t input = {0, 0, 0, false};
+  driving_input_t input = {0, 0, 0, false, false};
   if (keys[INPUT_SCANCODE_UP] || keys[INPUT_SCANCODE_W]) input.throttle = 1;
   if (keys[INPUT_SCANCODE_DOWN] || keys[INPUT_SCANCODE_S]) input.brake = 1;
   if (keys[INPUT_SCANCODE_LEFT] || keys[INPUT_SCANCODE_A]) input.steering -= 1;
   if (keys[INPUT_SCANCODE_RIGHT] || keys[INPUT_SCANCODE_D]) input.steering += 1;
   /* Space or Shift: the handbrake in a car, a run on foot. */
+  input.lower = keys[INPUT_SCANCODE_LCTRL] != 0;
   input.handbrake = keys[INPUT_SCANCODE_SPACE] != 0 ||
                     keys[INPUT_SCANCODE_LSHIFT] != 0 ||
                     keys[INPUT_SCANCODE_RSHIFT] != 0;
@@ -27,6 +28,7 @@ driving_input_t driving_input_merge(driving_input_t a, driving_input_t b) {
   merged.brake = larger_magnitude(a.brake, b.brake);
   merged.steering = larger_magnitude(a.steering, b.steering);
   merged.handbrake = a.handbrake || b.handbrake;
+  merged.lower = a.lower || b.lower;
   return merged;
 }
 
