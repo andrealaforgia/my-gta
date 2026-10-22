@@ -958,9 +958,7 @@ static void the_player_on_foot_walks_runs_turns_and_is_stopped_by_walls(void) {
   physics_world_destroy(world);
 }
 
-static void
-a_car_held_up_by_one_that_stands_goes_round_it_when_the_other_lane_is_clear(
-    void) {
+static void a_standing_car_is_gone_round_when_the_other_lane_is_clear(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
   fleet_t fleet;
@@ -1166,7 +1164,7 @@ void run_traffic_tests(void) {
   RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(a_driver_held_up_by_the_player_sounds_the_horn);
-  RUN(a_car_held_up_by_one_that_stands_goes_round_it_when_the_other_lane_is_clear);
+  RUN(a_standing_car_is_gone_round_when_the_other_lane_is_clear);
   RUN(the_satnav_finds_the_way_round_by_road_respecting_one_ways);
   RUN(the_player_on_foot_walks_runs_turns_and_is_stopped_by_walls);
   RUN(police_after_the_player_take_the_way_that_leads_to_them);
