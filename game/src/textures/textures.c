@@ -117,8 +117,11 @@ static void get(const uint8_t* pixels, int x, int y, float* r, float* g,
   *b = (float)p[2] / 255.0f;
 }
 
-/* Multiplies a pixel's colour. */
+/* Multiplies a pixel's colour; coordinates wrap, so features that run off an
+ * edge continue on the other side. */
 static void shade(uint8_t* pixels, int x, int y, float factor) {
+  x = (x % S + S) % S;
+  y = (y % S + S) % S;
   float r, g, b;
   get(pixels, x, y, &r, &g, &b);
   put(pixels, x, y, r * factor, g * factor, b * factor);
@@ -126,6 +129,8 @@ static void shade(uint8_t* pixels, int x, int y, float factor) {
 
 static void blend(uint8_t* pixels, int x, int y, float r, float g, float b,
                   float amount) {
+  x = (x % S + S) % S;
+  y = (y % S + S) % S;
   float pr, pg, pb;
   get(pixels, x, y, &pr, &pg, &pb);
   put(pixels, x, y, mix(pr, r, amount), mix(pg, g, amount), mix(pb, b, amount));
@@ -1124,41 +1129,70 @@ uint8_t* texture_checker(void) {
   return pixels;
 }
 
-static texture_handle_t upload(renderer_t* renderer, uint8_t* pixels) {
+/* The textures are the same every time, so each is painted once per run and
+ * kept (in static storage: about 40 MB) for the next stage to upload from. */
+#define TEXTURE_SLOTS 40
+static uint8_t cache[TEXTURE_SLOTS][S * S * 4];
+static bool cached[TEXTURE_SLOTS];
+
+static texture_handle_t upload_slot(renderer_t* renderer, int slot,
+                                    uint8_t* (*make)(unsigned), unsigned seed) {
   texture_handle_t none = {0};
-  if (!pixels) return none;
-  texture_handle_t handle =
-      renderer_upload_surface_texture(renderer, S, S, pixels);
-  free(pixels);
-  return handle;
+  if (!cached[slot]) {
+    uint8_t* pixels = make(seed);
+    if (!pixels) return none;
+    memcpy(cache[slot], pixels, sizeof(cache[slot]));
+    free(pixels);
+    cached[slot] = true;
+  }
+  return renderer_upload_surface_texture(renderer, S, S, cache[slot]);
 }
+
+static uint8_t* make_checker(unsigned seed) {
+  (void)seed;
+  return texture_checker();
+}
+
+/* Facades take their window columns too: one function per count. */
+static uint8_t* make_facade_one(unsigned seed) {
+  return texture_facade(seed, 1, 1);
+}
+static uint8_t* make_facade_two(unsigned seed) {
+  return texture_facade(seed, 1, 2);
+}
+static uint8_t* make_fresco(unsigned seed) {
+  return texture_facade_fresco(seed);
+}
+static uint8_t* make_brick(unsigned seed) { return texture_facade_brick(seed); }
 
 texture_set_t texture_set_upload(renderer_t* renderer) {
   texture_set_t set;
-  set.asphalt = upload(renderer, texture_asphalt(1));
-  set.road = upload(renderer, texture_road(2));
-  set.concrete = upload(renderer, texture_concrete(3));
-  set.grass = upload(renderer, texture_grass(4));
-  set.earth = upload(renderer, texture_earth(17));
+  int slot = 0;
+  set.asphalt = upload_slot(renderer, slot++, texture_asphalt, 1);
+  set.road = upload_slot(renderer, slot++, texture_road, 2);
+  set.concrete = upload_slot(renderer, slot++, texture_concrete, 3);
+  set.grass = upload_slot(renderer, slot++, texture_grass, 4);
+  set.earth = upload_slot(renderer, slot++, texture_earth, 17);
   static const unsigned facade_seeds[CITY_FACADE_STYLES] = {
       36, 49, 62, 75, 88, 101, 114, 127, 140, 153, 166, 179};
   for (int i = 0; i < CITY_FACADE_STYLES; i++)
-    set.facades[i] = upload(
-        renderer, texture_facade(facade_seeds[i], 1, (i % 3) == 2 ? 2 : 1));
+    set.facades[i] = upload_slot(
+        renderer, slot++, (i % 3) == 2 ? make_facade_two : make_facade_one,
+        facade_seeds[i]);
   set.facade = set.facades[0];
-  set.roof = upload(renderer, texture_roof(6));
-  set.facade_fresco = upload(renderer, texture_facade_fresco(5));
-  set.facade_brick = upload(renderer, texture_facade_brick(23));
-  set.paving = upload(renderer, texture_paving(53));
-  set.door = upload(renderer, texture_door(59));
-  set.shopfront = upload(renderer, texture_shopfront(31));
-  set.roof_slate = upload(renderer, texture_roof_slate(8));
-  set.roof_flat = upload(renderer, texture_roof_flat(9));
-  set.bark = upload(renderer, texture_bark(71));
-  set.foliage = upload(renderer, texture_foliage(72));
-  set.stone = upload(renderer, texture_stone(73));
-  set.planks = upload(renderer, texture_planks(74));
-  set.metal = upload(renderer, texture_metal(75));
-  set.checker = upload(renderer, texture_checker());
+  set.roof = upload_slot(renderer, slot++, texture_roof, 6);
+  set.facade_fresco = upload_slot(renderer, slot++, make_fresco, 5);
+  set.facade_brick = upload_slot(renderer, slot++, make_brick, 23);
+  set.paving = upload_slot(renderer, slot++, texture_paving, 53);
+  set.door = upload_slot(renderer, slot++, texture_door, 59);
+  set.shopfront = upload_slot(renderer, slot++, texture_shopfront, 31);
+  set.roof_slate = upload_slot(renderer, slot++, texture_roof_slate, 8);
+  set.roof_flat = upload_slot(renderer, slot++, texture_roof_flat, 9);
+  set.bark = upload_slot(renderer, slot++, texture_bark, 71);
+  set.foliage = upload_slot(renderer, slot++, texture_foliage, 72);
+  set.stone = upload_slot(renderer, slot++, texture_stone, 73);
+  set.planks = upload_slot(renderer, slot++, texture_planks, 74);
+  set.metal = upload_slot(renderer, slot++, texture_metal, 75);
+  set.checker = upload_slot(renderer, slot++, make_checker, 0);
   return set;
 }
