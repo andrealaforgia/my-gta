@@ -15,8 +15,9 @@
 #include "projection.h"
 
 #define JUNCTION_MAX_ARMS 8
-#define JUNCTION_MAX_POLYGON (JUNCTION_MAX_ARMS * 4)
-#define JUNCTION_CORNER_POINTS 8
+#define JUNCTION_ARC_SEGMENTS 6
+#define JUNCTION_MAX_POLYGON (JUNCTION_MAX_ARMS * (JUNCTION_ARC_SEGMENTS + 4))
+#define JUNCTION_CORNER_POINTS (JUNCTION_ARC_SEGMENTS + 10)
 
 typedef struct {
   double x, z;
@@ -26,13 +27,16 @@ typedef struct {
   plane_vec_t direction; /* unit, leaving the junction */
   double half_width;
   double pavement; /* width, 0 for none */
+  /* Metres of the road there is to spare for rounding the kerb corners at
+   * its end: 0 leaves them sharp. */
+  double room;
 } junction_arm_t;
 
 typedef struct {
   local_point_t polygon[JUNCTION_CORNER_POINTS];
   size_t count;
   /* The road-side edge of the fill, for the kerb: inner points in order. */
-  local_point_t kerb[4];
+  local_point_t kerb[JUNCTION_ARC_SEGMENTS + 3];
   size_t kerb_count;
 } pavement_corner_t;
 

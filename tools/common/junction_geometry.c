@@ -48,7 +48,7 @@ static bool intersect(local_point_t a, plane_vec_t u, local_point_t b,
 }
 
 typedef struct {
-  local_point_t points[2];
+  local_point_t points[JUNCTION_ARC_SEGMENTS + 1];
   size_t count;
   double t_along_first;  /* distance along arm i where its edge ends */
   double s_along_second; /* distance along arm i + 1 where its edge ends */
@@ -92,6 +92,43 @@ static corner_t corner_between(local_point_t centre, junction_arm_t i,
   return corner;
 }
 
+/* Rounds a sharp kerb corner into an arc: tangent to both edges, its centre
+ * inside the block the edges bound. The road then reaches further out along
+ * each arm, which the corner's distances say. `a` and `b` are the arms the
+ * two edges belong to, pointing away from the junction. */
+static void round_corner(corner_t* corner, plane_vec_t a, plane_vec_t b,
+                         double radius, double room) {
+  if (corner->count != 1 || corner->t_along_first <= 0 ||
+      corner->s_along_second <= 0)
+    return;
+  double cosine = a.x * b.x + a.z * b.z;
+  double theta = acos(fmax(-1.0, fmin(1.0, cosine)));
+  /* Nearly straight or a spike: leave it. */
+  if (theta < 0.7 || theta > 2.7) return;
+  double tangent = radius / tan(theta / 2.0);
+  tangent = fmin(tangent, room);
+  if (tangent < 0.6) return;
+  radius = tangent * tan(theta / 2.0);
+  local_point_t c = corner->points[0];
+  plane_vec_t bisector = pv(a.x + b.x, a.z + b.z);
+  double length = hypot(bisector.x, bisector.z);
+  bisector = pv(bisector.x / length, bisector.z / length);
+  local_point_t middle = point_at(c, bisector, radius / sin(theta / 2.0));
+  local_point_t from = point_at(c, a, tangent), to = point_at(c, b, tangent);
+  double phi = M_PI - theta; /* the arc's sweep */
+  for (int k = 0; k <= JUNCTION_ARC_SEGMENTS; k++) {
+    double f = (double)k / JUNCTION_ARC_SEGMENTS;
+    double wa = sin((1.0 - f) * phi) / sin(phi), wb = sin(f * phi) / sin(phi);
+    corner->points[k].x =
+        middle.x + (wa * (from.x - middle.x) + wb * (to.x - middle.x));
+    corner->points[k].z =
+        middle.z + (wa * (from.z - middle.z) + wb * (to.z - middle.z));
+  }
+  corner->count = JUNCTION_ARC_SEGMENTS + 1;
+  corner->t_along_first += tangent;
+  corner->s_along_second += tangent;
+}
+
 static void add_point(local_point_t* polygon, size_t* count, size_t capacity,
                       local_point_t p) {
   if (*count < capacity) polygon[(*count)++] = p;
@@ -115,6 +152,11 @@ bool junction_layout(local_point_t centre, const junction_arm_t* arms,
     road_corner[i] =
         corner_between(centre, sorted[i].arm, sorted[i].arm.half_width,
                        sorted[j].arm, sorted[j].arm.half_width);
+    double radius = fmin(
+        5.5, fmin(sorted[i].arm.half_width, sorted[j].arm.half_width) + 1.5);
+    round_corner(&road_corner[i], sorted[i].arm.direction,
+                 sorted[j].arm.direction, radius,
+                 fmin(sorted[i].arm.room, sorted[j].arm.room));
     if (road_corner[i].t_along_first > cut[i])
       cut[i] = road_corner[i].t_along_first;
     if (road_corner[i].s_along_second > cut[j])

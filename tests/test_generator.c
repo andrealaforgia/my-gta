@@ -1440,14 +1440,14 @@ static void junctions_get_stop_lines_and_zebra_crossings(void) {
   assert(mesh_data_triangle_count(&marking->mesh) >= 4 * 2 * 4);
   aabb_t bounds = mesh_data_bounds(&marking->mesh);
   assert(bounds.min.y > 0.06f && bounds.max.y < 0.08f);
-  /* Nothing is painted more than 12 m from the junction centre. */
+  /* Nothing is painted more than 16 m from the junction centre. */
   const city_part_t* patch = part_for(&package, "junction", 5);
   assert(patch);
   vec3_t centre = aabb_center(mesh_data_bounds(&patch->mesh));
   for (size_t v = 0; v < marking->mesh.vertex_count; v++) {
     vec3_t d = vec3_sub(marking->mesh.vertices[v].position, centre);
     d.y = 0;
-    assert(vec3_length(d) < 12.0f && vec3_length(d) > 3.0f);
+    assert(vec3_length(d) < 16.0f && vec3_length(d) > 3.0f);
   }
   /* A dead end gets none. */
   assert(part_for(&package, "marking", 14) == NULL);

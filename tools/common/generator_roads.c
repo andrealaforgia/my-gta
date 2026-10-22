@@ -310,9 +310,9 @@ static bool generate_stop_signs(layout_t* layout, const city_model_t* model,
     /* Each sign is a pole of its own, so the car can knock it down. */
     city_chunk_t* chunk = gen_chunk_at(layout, foot);
     uint64_t source = gen_pole_source(layout, (uint64_t)junction->node_id);
-    city_part_t* pole = city_chunk_add_part(chunk, "sign_pole",
-                                            PART_COLLIDER_MESH,
-                                            COLLISION_LAYER_PROP, 0.5f, source);
+    city_part_t* pole =
+        city_chunk_add_part(chunk, "sign_pole", PART_COLLIDER_MESH,
+                            COLLISION_LAYER_PROP, 0.5f, source);
     if (!pole || !city_chunk_add_part(chunk, "sign_red", PART_COLLIDER_NONE, 0,
                                       0, source))
       return false;
@@ -464,6 +464,10 @@ bool generate_junction(layout_t* layout, const city_model_t* model,
       arms[arm_count].direction.z = direction.z;
       arms[arm_count].half_width = fits[r].half_width;
       arms[arm_count].pavement = fits[r].pavement;
+      /* A short link has no length to give up to a corner. */
+      arms[arm_count].room =
+          fmax(0.0, polyline_length(road->points, road->point_count) * 0.5 -
+                        arms[arm_count].half_width - 3.0);
       sources[arm_count].road = r;
       sources[arm_count].at_start = end == 0;
       arm_count++;
@@ -547,12 +551,10 @@ static bool generate_lamps(layout_t* layout, const city_road_t* road,
     /* Each lamp is a pole of its own, so the car can knock it down. */
     city_chunk_t* chunk = gen_chunk_at(layout, base);
     uint64_t source = gen_pole_source(layout, (uint64_t)road->source_id);
-    city_part_t* post =
-        city_chunk_add_part(chunk, "lamp", PART_COLLIDER_MESH,
-                            COLLISION_LAYER_PROP, 0.5f, source);
-    if (!post ||
-        !city_chunk_add_part(chunk, "lamp_light", PART_COLLIDER_NONE, 0, 0,
-                             source))
+    city_part_t* post = city_chunk_add_part(chunk, "lamp", PART_COLLIDER_MESH,
+                                            COLLISION_LAYER_PROP, 0.5f, source);
+    if (!post || !city_chunk_add_part(chunk, "lamp_light", PART_COLLIDER_NONE,
+                                      0, 0, source))
       return false;
     post = &chunk->parts[chunk->part_count - 2];
     city_part_t* lights = &chunk->parts[chunk->part_count - 1];

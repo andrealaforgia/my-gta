@@ -22,7 +22,7 @@ static bool inside(const local_point_t* polygon, size_t count, double x,
 
 static junction_arm_t arm(double dx, double dz, double half_width,
                           double pavement) {
-  junction_arm_t a = {{dx, dz}, half_width, pavement};
+  junction_arm_t a = {{dx, dz}, half_width, pavement, 0};
   return a;
 }
 
@@ -155,6 +155,32 @@ static void different_widths_meet_cleanly(void) {
                  0)); /* ribbon, not patch */
 }
 
+static void kerb_corners_are_rounded_when_the_roads_have_room(void) {
+  junction_arm_t arms[4] = {arm(1, 0, 3, 2), arm(0, -1, 3, 2), arm(-1, 0, 3, 2),
+                            arm(0, 1, 3, 2)};
+  for (int i = 0; i < 4; i++) arms[i].room = 50;
+  junction_layout_t layout;
+  assert(junction_layout(origin(), arms, 4, 0.2, &layout));
+  /* The roads are cut back further, to the tangent points of the arcs. */
+  for (int i = 0; i < 4; i++) assert(layout.cut[i] > 5.0);
+  assert(layout.corner_count == 4);
+  for (size_t c = 0; c < layout.corner_count; c++) {
+    const pavement_corner_t* corner = &layout.corners[c];
+    assert(corner->kerb_count == JUNCTION_ARC_SEGMENTS + 3);
+    /* Every point on the arc is clear of the sharp corner (3, 3) and, the
+     * kerb being a fillet, no nearer the middle than the arms' edges. */
+    for (size_t k = 1; k + 1 < corner->kerb_count; k++) {
+      double x = fabs(corner->kerb[k].x), z = fabs(corner->kerb[k].z);
+      assert(x >= 2.99 && z >= 2.99);
+      assert(x + z > 6.0 - 1e-6 || (x > 3.0 && z > 3.0));
+    }
+  }
+  /* A road with no room to spare keeps its sharp corners. */
+  for (int i = 0; i < 4; i++) arms[i].room = 0;
+  assert(junction_layout(origin(), arms, 4, 0.2, &layout));
+  assert(near_to(layout.cut[0], 3.2, 1e-6));
+}
+
 static void polylines_cut_from_both_ends_across_vertices(void) {
   local_point_t points[4] = {{0, 0}, {10, 0}, {10, -10}, {20, -10}};
   local_point_t out[6];
@@ -179,5 +205,6 @@ void run_junction_tests(void) {
   RUN(a_fork_is_cut_back_until_the_ribbons_separate);
   RUN(sharp_wedges_get_no_pavement_corner_over_the_road);
   RUN(different_widths_meet_cleanly);
+  RUN(kerb_corners_are_rounded_when_the_roads_have_room);
   RUN(polylines_cut_from_both_ends_across_vertices);
 }
