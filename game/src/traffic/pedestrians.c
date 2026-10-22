@@ -577,6 +577,8 @@ void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
     renderer_draw_mesh(renderer, meshes->bag,
                        material_rough(vec3(0.35f, 0.22f, 0.12f), 0.9f), model);
   float amplitude = kind == PERSON_JOGGER ? 0.85f : 0.55f;
+  /* Someone really running (the player) throws arms and legs wider. */
+  if (speed > 3.5f) amplitude = fmaxf(amplitude, 1.0f);
   float swing = sinf(phase) * amplitude *
                 fminf(speed, kind == PERSON_JOGGER ? 3.2f : 1.4f) /
                 (kind == PERSON_JOGGER ? 3.2f : 1.4f);

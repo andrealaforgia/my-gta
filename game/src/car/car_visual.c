@@ -531,3 +531,8 @@ void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
     renderer_draw_mesh(renderer, visual->smoke_puff, fire, model);
   }
 }
+
+void car_visual_set_paint(car_visual_t* visual, vec3_t colour) {
+  if (visual->own_paint) return;
+  visual->paint.base_color = colour;
+}

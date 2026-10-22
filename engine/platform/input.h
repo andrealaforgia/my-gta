@@ -12,6 +12,8 @@
 /* SDL scancodes, repeated here so the mapping has no SDL dependency. */
 enum {
   INPUT_SCANCODE_SPACE = 44,
+  INPUT_SCANCODE_LSHIFT = 225,
+  INPUT_SCANCODE_RSHIFT = 229,
   INPUT_SCANCODE_RIGHT = 79,
   INPUT_SCANCODE_LEFT = 80,
   INPUT_SCANCODE_DOWN = 81,

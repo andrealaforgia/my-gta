@@ -746,7 +746,12 @@ static void the_player_can_get_out_walk_get_back_in_and_steal_a_car(void) {
   /* Back by the car: in again. */
   run.stage.walker.position = vec3(car_at.x + 1.8f, car_at.y, car_at.z);
   driving_stage_interact(&run.stage);
-  assert(!run.stage.on_foot);
+  /* They climb in over a second or so, not at once. */
+  assert(run.stage.on_foot && run.stage.entering > 0);
+  drive(&run, stand, 0.3f);
+  assert(run.stage.on_foot);
+  drive(&run, stand, 1.5f);
+  assert(!run.stage.on_foot && run.stage.entering == 0);
   /* Steal one off the road: stand beside a traffic car and get in. */
   driving_stage_interact(&run.stage);
   assert(run.stage.on_foot);
@@ -756,8 +761,15 @@ static void the_player_can_get_out_walk_get_back_in_and_steal_a_car(void) {
   int index_before = run.stage.vehicle_index;
   (void)index_before;
   driving_stage_interact(&run.stage);
+  drive(&run, stand, 2.0f);
   assert(!run.stage.on_foot);
   assert(run.stage.vehicle_index == other.variant);
+  /* It keeps its paint. */
+  vec3_t paint = fleet_paint(other.paint);
+  if (!run.stage.car_visual.own_paint) {
+    vec3_t shown = run.stage.car_visual.paint.base_color;
+    assert(shown.x == paint.x && shown.y == paint.y && shown.z == paint.z);
+  }
   assert(hypotf(car(&run)->position.x - other.position.x,
                 car(&run)->position.z - other.position.z) < 2.5f);
   assert(run.stage.wanted.stars >= 1); /* stealing a car is a crime */

@@ -278,13 +278,17 @@ static void step_the_law(driving_stage_t* stage, bool pole_down, float dt) {
   }
 }
 
+static void step_entry(driving_stage_t* stage, float dt);
+
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt) {
   /* On foot the car stands with its handbrake on and the input walks. */
   driving_input_t parked_car_input = {0.0f, 0.0f, 0.0f, true};
   vehicle_update(&stage->vehicle, stage->physics,
                  stage->on_foot ? parked_car_input : input, dt);
-  if (stage->on_foot) {
+  if (stage->on_foot && stage->entering > 0) {
+    step_entry(stage, dt);
+  } else if (stage->on_foot) {
     walker_input_t walking = {input.throttle - input.brake, input.steering,
                               input.handbrake};
     walker_step(&stage->walker, stage->physics, walking, dt);
@@ -760,11 +764,10 @@ static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
   renderer_draw_text(
       r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
       stage->has_menu
-          ? "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
-            "PAUSE  F1 DEBUG  M MAP  E RADIO  N MUTE  BKSP MENU  ESC QUIT"
-          : "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
-            "PAUSE  F1 DEBUG  M MAP  E RADIO  N MUTE  F11 FULLSCREEN  "
-            "ESC QUIT");
+          ? "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  E RADIO  T "
+            "RAIN  M MAP  N MUTE  BKSP MENU  ESC QUIT"
+          : "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  E RADIO  T "
+            "RAIN  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
 }
 
 /* Centred text. */
@@ -984,8 +987,64 @@ static float distance_to_own_car(const driving_stage_t* stage) {
          stage->vehicle.params.chassis_half_extents.z * 0.6f;
 }
 
+/* The walker gets in: a walk to the driver's door, then down into the seat. */
+static void begin_entry(driving_stage_t* stage) {
+  stage->entering = 0.001f;
+  stage->entry_start = stage->walker.position;
+}
+
+static vec3_t driver_door(const driving_stage_t* stage, float* yaw_out) {
+  const rigid_body_t* car = physics_body(stage->physics, stage->vehicle.body);
+  vec3_t nose = quat_rotate(car->rotation, vec3(0, 0, -1));
+  vec3_t left = vec3(nose.z, 0, -nose.x);
+  float side = stage->vehicle.params.chassis_half_extents.x + 0.5f;
+  *yaw_out = atan2f(left.x, left.z); /* facing the car */
+  return vec3(car->position.x + left.x * side - nose.x * 0.3f,
+              stage->entry_start.y,
+              car->position.z + left.z * side - nose.z * 0.3f);
+}
+
+#define ENTRY_WALK 0.7f
+#define ENTRY_SEAT 0.45f
+
+static void step_entry(driving_stage_t* stage, float dt) {
+  stage->entering += dt;
+  walker_t* w = &stage->walker;
+  float yaw;
+  vec3_t door = driver_door(stage, &yaw);
+  float u = fminf(stage->entering / ENTRY_WALK, 1.0f);
+  float eased = u * u * (3.0f - 2.0f * u);
+  vec3_t from = stage->entry_start;
+  vec3_t at = vec3(from.x + (door.x - from.x) * eased, from.y,
+                   from.z + (door.z - from.z) * eased);
+  float dx = door.x - from.x, dz = door.z - from.z;
+  if (u < 1.0f && dx * dx + dz * dz > 0.01f) w->yaw = atan2f(-dx, -dz);
+  w->speed = u < 1.0f ? WALKER_WALK_SPEED : 0.0f;
+  w->phase += w->speed * dt * 5.2f;
+  if (stage->entering > ENTRY_WALK) {
+    /* Turn to the car and sink in beside the wheel. */
+    float k = fminf((stage->entering - ENTRY_WALK) / ENTRY_SEAT, 1.0f);
+    const rigid_body_t* car = physics_body(stage->physics, stage->vehicle.body);
+    at.x += (car->position.x - door.x) * k * 0.6f;
+    at.z += (car->position.z - door.z) * k * 0.6f;
+    at.y -= 0.9f * k;
+    w->yaw = yaw;
+  }
+  w->position = at;
+  if (stage->entering >= ENTRY_WALK + ENTRY_SEAT) {
+    const rigid_body_t* car = physics_body(stage->physics, stage->vehicle.body);
+    stage->entering = 0;
+    stage->on_foot = false;
+    stage->camera.params = stage->car_camera_params;
+    chase_camera_reset(&stage->camera,
+                       transform_at(car->position, car->rotation));
+  }
+}
+
 void driving_stage_interact(driving_stage_t* stage) {
-  if (stage->paused || stage->map_open || !stage->has_figures) return;
+  if (stage->paused || stage->map_open || !stage->has_figures ||
+      stage->entering > 0)
+    return;
   const rigid_body_t* car = physics_body(stage->physics, stage->vehicle.body);
   if (!stage->on_foot) {
     if (vec3_length(car->velocity) > 3.0f) return; /* not while moving */
@@ -1011,31 +1070,32 @@ void driving_stage_interact(driving_stage_t* stage) {
   }
   /* Back into the car left behind, if it is close. */
   if (distance_to_own_car(stage) < GET_IN_REACH) {
-    stage->on_foot = false;
-    stage->camera.params = stage->car_camera_params;
-    chase_camera_reset(&stage->camera,
-                       transform_at(car->position, car->rotation));
+    begin_entry(stage);
     return;
   }
   /* Or into somebody else's: a car at the kerb, or one on the road. */
   int variant = 0;
   vec3_t position;
+  vec3_t paint = vec3(0.56f, 0.07f, 0.06f);
   float yaw = 0;
   bool got =
       stage->has_fleet &&
       parked_cars_take(&stage->parked, stage->physics, stage->walker.position,
-                       GET_IN_REACH + 1.0f, &variant, &position, &yaw);
+                       GET_IN_REACH + 1.0f, &variant, &position, &yaw, &paint);
   if (!got && stage->traffic)
     got = traffic_take_car(stage->traffic, stage->walker.position,
-                           GET_IN_REACH + 1.0f, &variant, &position, &yaw);
+                           GET_IN_REACH + 1.0f, &variant, &position, &yaw,
+                           &paint);
   if (!got) return;
   if (!driving_stage_set_vehicle(stage, variant,
                                  vec3_add(position, vec3(0, 0.3f, 0)),
                                  quat_from_yaw(yaw)))
     return;
-  stage->on_foot = false;
-  chase_camera_reset(&stage->camera,
-                     transform_at(position, quat_from_yaw(yaw)));
+  /* The car keeps its colour, and the walker climbs in before the wheel is
+   * theirs. */
+  car_visual_set_paint(&stage->car_visual, paint);
+  stage->camera.params = walking_camera_params();
+  begin_entry(stage);
   say(stage, "CAR STOLEN");
   if (stage->missions && stage->traffic &&
       wanted_crime(&stage->wanted) == WANTED_STARTED)

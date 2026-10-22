@@ -60,7 +60,7 @@ int parked_cars_draw(const parked_cars_t* parked, const fleet_t* fleet,
 
 bool parked_cars_take(parked_cars_t* parked, physics_world_t* physics,
                       vec3_t near, float radius, int* variant, vec3_t* position,
-                      float* yaw) {
+                      float* yaw, vec3_t* paint) {
   parked_car_t* best = NULL;
   float best_distance = radius;
   for (size_t i = 0; i < parked->count; i++) {
@@ -73,6 +73,7 @@ bool parked_cars_take(parked_cars_t* parked, physics_world_t* physics,
   *variant = best->variant;
   *position = best->position;
   *yaw = best->yaw;
+  *paint = fleet_paint(best->paint);
   physics_remove_collider(physics, best->collider);
   best->taken = true;
   return true;

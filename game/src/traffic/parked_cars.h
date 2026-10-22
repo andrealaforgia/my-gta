@@ -37,7 +37,7 @@ void parked_cars_destroy(parked_cars_t* parked, physics_world_t* physics);
  * none is near. */
 bool parked_cars_take(parked_cars_t* parked, physics_world_t* physics,
                       vec3_t near, float radius, int* variant, vec3_t* position,
-                      float* yaw);
+                      float* yaw, vec3_t* paint);
 /* Draws those within `range` metres of the eye; returns how many. */
 int parked_cars_draw(const parked_cars_t* parked, const fleet_t* fleet,
                      renderer_t* renderer, vec3_t eye, float range,

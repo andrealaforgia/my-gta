@@ -900,7 +900,7 @@ int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
 }
 
 bool traffic_take_car(traffic_t* t, vec3_t near, float radius, int* variant,
-                      vec3_t* position, float* yaw) {
+                      vec3_t* position, float* yaw, vec3_t* paint) {
   car_t* best = NULL;
   float best_distance = radius;
   for (size_t i = 0; i < t->car_count; i++) {
@@ -912,6 +912,7 @@ bool traffic_take_car(traffic_t* t, vec3_t near, float radius, int* variant,
   *variant = best->variant;
   *position = best->position;
   *yaw = best->yaw;
+  *paint = fleet_paint(best->paint);
   /* It is gone from here: out of sight on some road. */
   best->pursuing = false;
   best->responding = best->on_call;

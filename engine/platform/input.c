@@ -10,7 +10,10 @@ driving_input_t driving_input_from_keys(const unsigned char* keys) {
   if (keys[INPUT_SCANCODE_DOWN] || keys[INPUT_SCANCODE_S]) input.brake = 1;
   if (keys[INPUT_SCANCODE_LEFT] || keys[INPUT_SCANCODE_A]) input.steering -= 1;
   if (keys[INPUT_SCANCODE_RIGHT] || keys[INPUT_SCANCODE_D]) input.steering += 1;
-  input.handbrake = keys[INPUT_SCANCODE_SPACE] != 0;
+  /* Space or Shift: the handbrake in a car, a run on foot. */
+  input.handbrake = keys[INPUT_SCANCODE_SPACE] != 0 ||
+                    keys[INPUT_SCANCODE_LSHIFT] != 0 ||
+                    keys[INPUT_SCANCODE_RSHIFT] != 0;
   return input;
 }
 

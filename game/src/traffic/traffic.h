@@ -111,6 +111,7 @@ float traffic_nearest_pursuer(const traffic_t* traffic, vec3_t point);
  * which is what a player does to steal one: the car is moved to a road out
  * of sight, and what it was is returned. False if none is near. */
 bool traffic_take_car(traffic_t* traffic, vec3_t near, float radius,
-                      int* variant, vec3_t* position, float* yaw);
+                      int* variant, vec3_t* position, float* yaw,
+                      vec3_t* paint);
 
 #endif  // GAME_SRC_TRAFFIC_TRAFFIC_H_

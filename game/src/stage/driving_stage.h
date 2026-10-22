@@ -65,6 +65,8 @@ typedef struct {
   float burning; /* seconds the car has been on fire */
   float blast;   /* seconds since it blew up; 0 while it has not */
   vec3_t blast_at;
+  float entering;     /* seconds into getting into a car; 0 when not */
+  vec3_t entry_start; /* where the walker set off from */
   int people_struck;  /* people the car ran into this step */
   int radio_station;  /* 0 off .. RADIO_STATIONS */
   float radio_banner; /* seconds left to show the station's name */

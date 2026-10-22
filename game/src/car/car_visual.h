@@ -77,6 +77,9 @@ float car_visual_damage_tint(float damage);
 void car_visual_draw_smoke(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, float damage, float time);
 
+/* Paints the body this colour, unless the vehicle has a livery of its own
+ * (police, ambulance, bus), which it keeps. */
+void car_visual_set_paint(car_visual_t* visual, vec3_t colour);
 /* Flames licking up from the bonnet of a car that is on fire. */
 void car_visual_draw_fire(const car_visual_t* visual, renderer_t* renderer,
                           transform_t chassis, float time);
