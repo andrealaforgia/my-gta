@@ -150,6 +150,8 @@ int main(int argc, char* argv[]) {
       input.handbrake = (r >> 12) % 17 == 0;
       if ((r >> 3) % 40 == 0) driving_stage_interact(&stage);
       if ((r >> 3) % 97 == 1) driving_stage_next_vehicle(&stage);
+      if ((r >> 5) % 3 == 0) driving_stage_fire(&stage);
+      if ((r >> 6) % 90 == 0) stage.vehicle.damage = 1.0f;
     }
     driving_stage_step(&stage, input, 1.0f / 120.0f);
     if (trace && i % 6 == 0) {
