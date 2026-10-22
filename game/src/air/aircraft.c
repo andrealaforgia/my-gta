@@ -64,7 +64,7 @@ float aircraft_radius(aircraft_kind_t kind) {
   return kind == AIRCRAFT_PLANE ? 6.0f : 6.5f;
 }
 
-static void move(aircraft_t* a, float flat_speed, float dt) {
+static void advance(aircraft_t* a, float flat_speed, float dt) {
   vec3_t h = aircraft_heading(a);
   a->position.x += h.x * flat_speed * dt;
   a->position.z += h.z * flat_speed * dt;

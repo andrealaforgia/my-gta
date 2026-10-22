@@ -65,7 +65,6 @@ static void a_hard_landing_is_a_crash_and_a_gentle_one_is_not(void) {
   /* Power off, nose steady: it comes down gently and rolls to a stop. */
   aircraft_t gliding = plane_taking_off(40.0f);
   gliding.position.y = 25.0f;
-  for (float t = 0; t < 120.0f && status == AIRCRAFT_FLYING; t += DT);
   status = AIRCRAFT_FLYING;
   for (float t = 0; t < 120.0f && !gliding.on_ground; t += DT)
     status = aircraft_step(&gliding, controls(0, 0, -0.3f), 0, DT);
