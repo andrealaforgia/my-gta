@@ -634,7 +634,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       if (!any_near) car->stop_done = 0;
     }
     /* Someone crossing in front: stop short of them. */
-    for (size_t k = 0; k < t->walker_count; k++) {
+    for (size_t k = 0; k < t->walker_count && car->ghost <= 0; k++) {
       float rx = t->walkers[k].x - car->position.x;
       float rz = t->walkers[k].z - car->position.z;
       float ahead = rx * fx + rz * fz;

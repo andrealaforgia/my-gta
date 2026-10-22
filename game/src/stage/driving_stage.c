@@ -272,10 +272,17 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   if (stage->people) {
     pedestrians_set_focus(stage->people, player_position(stage));
     pedestrians_step(stage->people, player_position(stage), dt);
-    if (stage->traffic)
-      traffic_set_walkers(
-          stage->traffic, stage->walkers,
-          pedestrians_crossing(stage->people, stage->walkers, 64));
+  }
+  if (stage->traffic) {
+    /* People in the road, and the car the player has left standing: cars
+     * stop for them. */
+    size_t standing =
+        stage->people ? pedestrians_crossing(stage->people, stage->walkers, 63)
+                      : 0;
+    if (stage->on_foot)
+      stage->walkers[standing++] =
+          physics_body(stage->physics, stage->vehicle.body)->position;
+    traffic_set_walkers(stage->traffic, stage->walkers, standing);
   }
   rigid_body_t* chassis_body =
       physics_body(stage->physics, stage->vehicle.body);
