@@ -52,7 +52,7 @@ typedef struct {
   bandpass_t pipe_high;
   bandpass_t skid_filter;
   float engine_lowpass; /* two poles that take the hiss off the engine */
-  float engine_lowpass2;
+  float engine_lowpass2, engine_lowpass3;
   float burst_lowpass; /* the exhaust burst is coloured noise, not white */
   float skid_phase;    /* tyre squeal oscillator, 0..1 */
   float skid_wobble;   /* fast flutter phase, 0..1 */

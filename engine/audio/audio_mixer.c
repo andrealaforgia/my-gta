@@ -121,9 +121,9 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
        * piped bursts give the engine its texture. */
       float angle = 2.0f * (float)M_PI * mixer->phase;
       float drone = sinf(angle) * 0.7f + sinf(2.0f * angle) * 0.32f +
-                    sinf(3.0f * angle) * 0.14f + sinf(4.0f * angle) * 0.06f;
+                    sinf(3.0f * angle) * 0.1f;
       float piped = bandpass_run(&mixer->pipe_low, burst) * 1.4f +
-                    bandpass_run(&mixer->pipe_high, burst) * 0.5f;
+                    bandpass_run(&mixer->pipe_high, burst) * 0.25f;
       float intake_target = noise(mixer) *
                             (0.005f + 0.03f * mixer->throttle_smoothed) *
                             (mixer->rpm_smoothed / 6000.0f);
@@ -131,13 +131,15 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
           smooth(mixer->intake_lowpass, intake_target, 0.06f);
       engine = (piped + drone * (0.5f + 0.5f * load) + mixer->intake_lowpass) *
                (0.5f + 0.5f * load) * 2.5f;
-      /* Two gentle poles around 1.2 kHz: the note keeps its edge, the hiss
-       * does not come through. */
-      float cut = 1.0f - expf(-2.0f * (float)M_PI * 1200.0f * dt);
+      /* Poles at 650 Hz: a round engine note, with nothing above it to ring
+       * or whistle as the revs rise and fall. */
+      float cut = 1.0f - expf(-2.0f * (float)M_PI * 650.0f * dt);
       mixer->engine_lowpass = smooth(mixer->engine_lowpass, engine, cut);
       mixer->engine_lowpass2 =
           smooth(mixer->engine_lowpass2, mixer->engine_lowpass, cut);
-      engine = mixer->engine_lowpass2 * 1.3f;
+      mixer->engine_lowpass3 =
+          smooth(mixer->engine_lowpass3, mixer->engine_lowpass2, cut);
+      engine = mixer->engine_lowpass3 * 1.5f;
     }
 
     /* Rubber scrubbing the road: a rough, wandering scrape rather than a
@@ -147,7 +149,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     mixer->skid_wobble += (180.0f + 140.0f * noise(mixer)) * dt;
     if (mixer->skid_wobble >= 1.0f) mixer->skid_wobble -= 1.0f;
     mixer->skid_drift = smooth(mixer->skid_drift, noise(mixer), 0.0008f);
-    float scrape_hz = 640.0f * (1.0f + 3.0f * mixer->skid_drift);
+    float scrape_hz = 300.0f * (1.0f + 0.8f * mixer->skid_drift);
     mixer->skid_phase += scrape_hz * dt;
     if (mixer->skid_phase >= 1.0f) mixer->skid_phase -= 1.0f;
     float scrape_angle = 2.0f * (float)M_PI * mixer->skid_phase;
@@ -155,7 +157,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
         0.55f + 0.45f * sinf(2.0f * (float)M_PI * mixer->skid_wobble);
     float scrape =
         (sinf(scrape_angle) + 0.6f * sinf(2.7f * scrape_angle)) * flutter;
-    float skid = (scrape * 0.16f +
+    float skid = (scrape * 0.04f +
                   bandpass_run(&mixer->skid_filter, noise(mixer)) * 0.35f) *
                  mixer->skid_smoothed * mixer->skid_smoothed;
 
@@ -196,7 +198,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     if (mixer->bird_envelope < 0.01f && day > 0.05f &&
         (noise(mixer) * 0.5f + 0.5f) < mixer->bird_rate * 24000.0f * day) {
       mixer->bird_envelope = 1.0f;
-      mixer->bird_frequency = 3200.0f + 1800.0f * (noise(mixer) * 0.5f + 0.5f);
+      mixer->bird_frequency = 2200.0f + 900.0f * (noise(mixer) * 0.5f + 0.5f);
     }
     float bird = 0;
     if (mixer->bird_envelope > 0.001f) {
@@ -204,7 +206,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       if (mixer->bird_phase >= 1.0f) mixer->bird_phase -= 1.0f;
       mixer->bird_frequency *= 1.0f - 1.5f * dt; /* falls as it sings */
       bird = sinf(2.0f * (float)M_PI * mixer->bird_phase) *
-             mixer->bird_envelope * 0.035f * day;
+             mixer->bird_envelope * 0.01f * day;
       mixer->bird_envelope *= expf(-dt * 38.0f);
     }
     mixer->cricket_gate += 29.0f * dt;
@@ -212,7 +214,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     mixer->cricket_phase += (float)mixer->sample_rate / 11.0f * dt;
     if (mixer->cricket_phase >= 1.0f) mixer->cricket_phase -= 1.0f;
     float cricket = sinf(2.0f * (float)M_PI * mixer->cricket_phase) *
-                    (mixer->cricket_gate < 0.55f ? 1.0f : 0.0f) * 0.02f *
+                    (mixer->cricket_gate < 0.55f ? 1.0f : 0.0f) * 0.007f *
                     mixer->night_smoothed * mixer->city_smoothed;
     /* Rain: a wash of high noise with a patter of drops in it. */
     mixer->rain_smoothed =
