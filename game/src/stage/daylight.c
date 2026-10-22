@@ -49,13 +49,13 @@ render_environment_t daylight_environment(float hour) {
   sun_colour = vec3_scale(sun_colour, fmaxf(0.25f, clamp01(height * 3.0f)));
   vec3_t light = mix(moon_light, sun_colour, day);
 
-  vec3_t day_horizon = vec3(0.62f, 0.74f, 0.9f);
+  vec3_t day_horizon = vec3(0.58f, 0.74f, 0.95f);
   vec3_t dusk_horizon = vec3(0.95f, 0.58f, 0.38f);
   vec3_t night_horizon = vec3(0.03f, 0.04f, 0.08f);
   vec3_t horizon = mix(day_horizon, dusk_horizon, warm * 0.85f);
   horizon = mix(night_horizon, horizon, day);
 
-  vec3_t day_zenith = vec3(0.25f, 0.45f, 0.85f);
+  vec3_t day_zenith = vec3(0.16f, 0.38f, 0.88f);
   vec3_t night_zenith = vec3(0.005f, 0.008f, 0.03f);
   vec3_t zenith = mix(night_zenith, day_zenith, day);
   zenith = mix(zenith, vec3(0.35f, 0.4f, 0.65f), warm * 0.4f * day);
@@ -63,7 +63,7 @@ render_environment_t daylight_environment(float hour) {
   render_environment_t e;
   e.direction = direction;
   e.color = light;
-  e.ambient = 0.06f + 0.24f * day;
+  e.ambient = 0.09f + 0.21f * day;
   e.sky_color = horizon;
   e.fog_start = 150.0f;
   e.fog_end = 900.0f;

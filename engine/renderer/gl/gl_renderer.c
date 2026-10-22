@@ -938,7 +938,7 @@ void renderer_end_frame(renderer_t* r) {
     r->stats.draw_calls++;
   }
   if (r->post) {
-    gl_post_params_t params = {0.82f, 0.35f, 0.85f, 1.4f, 0.25f, 1.15f};
+    gl_post_params_t params = {0.9f, 0.35f, 0.85f, 1.4f, 0.25f, 1.28f};
     mat4_t inverse = mat4_inverse(r->projection);
     gl_post_finish(r->post, r->projection.m, inverse.m, r->sky_vao, &params);
     glViewport(0, 0, r->width, r->height);

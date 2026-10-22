@@ -47,8 +47,11 @@ float vnoise(vec3 p) {
 /* Variation in the surface itself, so that a wall or a pavement is not one
  * flat colour: broad patches, a mid grain and a fine speckle, the finer
  * ones fading out with distance so they never shimmer. */
-float surface_detail(vec3 wp, float distance) {
+float surface_detail(vec3 wp, float distance, float up) {
   float v = (vnoise(wp * 0.45) - 0.5) * 0.16;
+  /* Open ground wears in broad patches: damp, swept, stained. */
+  if (up > 0.8) v += (vnoise(wp * vec3(0.11, 0.0, 0.11) + 5.3) - 0.5) * 0.24 +
+                     (vnoise(wp * vec3(0.04, 0.0, 0.04) + 1.7) - 0.5) * 0.2;
   if (distance < 90.0) {
     float mid_fade = 1.0 - smoothstep(25.0, 90.0, distance);
     v += (vnoise(wp * 2.3 + 7.1) - 0.5) * 0.12 * mid_fade;
@@ -110,11 +113,11 @@ void main() {
   }
   float eye_distance = length(u_eye - v_world_position);
   if (u_emissive <= 0.01 && pane >= 0.5)
-    albedo *= surface_detail(v_world_position, eye_distance);
+    albedo *= surface_detail(v_world_position, eye_distance, normalize(v_normal).y);
   vec3 n = normalize(v_normal);
   if (u_has_texture == 1 && pane >= 0.5 && eye_distance < 60.0)
     n = bump_normal(n, v_world_position, texture_height,
-                    0.2 * (1.0 - smoothstep(8.0, 40.0, eye_distance)));
+                    0.12 * (1.0 - smoothstep(6.0, 30.0, eye_distance)));
   vec3 l = normalize(u_light_direction);
   vec3 v = normalize(u_eye - v_world_position);
   bool water = u_roughness < 0.15 && u_metallic > 0.3 && n.y > 0.9;
