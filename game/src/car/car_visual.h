@@ -18,12 +18,14 @@ typedef struct {
   mesh_handle_t rear_lights;
   mesh_handle_t trim;
   mesh_handle_t wheel;
+  mesh_handle_t wheel_alloy; /* the rim: spokes and a hub, in bright metal */
   material_t paint;
   material_t glass_material;
   material_t light_material;
   material_t rear_light_material;
   material_t trim_material;
   material_t rubber;
+  material_t alloy;
   vec3_t wheel_centres[4]; /* hubs at rest, chassis frame: FL FR RL RR */
   float wheel_radius;
   float ride_height;   /* chassis centre above the road on its wheels */

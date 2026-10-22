@@ -76,6 +76,18 @@ float shadow_factor(vec3 n, vec3 l) {
   return lit / 16.0;
 }
 
+/* Relief from the texture itself: the light and dark of a surface (the mortar
+ * between bricks, cracks in asphalt, plaster grain) is taken as height and
+ * tilts the normal, so that low sun picks the texture out. */
+vec3 bump_normal(vec3 n, vec3 p, float height, float strength) {
+  vec3 dpdx = dFdx(p), dpdy = dFdy(p);
+  float dhx = dFdx(height), dhy = dFdy(height);
+  vec3 r1 = cross(dpdy, n), r2 = cross(n, dpdx);
+  float det = dot(dpdx, r1);
+  vec3 grad = sign(det) * (dhx * r1 + dhy * r2);
+  return normalize(abs(det) * n - strength * grad);
+}
+
 vec3 sky_reflection(vec3 r) {
   vec3 sky = mix(u_sky_color, u_zenith_color, smoothstep(0.0, 0.7, r.y));
   vec3 ground = u_sky_color * 0.55 + vec3(0.02);
@@ -85,15 +97,20 @@ vec3 sky_reflection(vec3 r) {
 void main() {
   vec3 albedo = u_base_color;
   float pane = 1.0;
+  float texture_height = 0.0;
   if (u_has_texture == 1) {
     vec4 texel = texture(u_texture, v_uv);
     albedo *= texel.rgb;
     pane = texel.a;
+    texture_height = dot(texel.rgb, vec3(0.3, 0.59, 0.11));
   }
   float eye_distance = length(u_eye - v_world_position);
   if (u_emissive <= 0.01 && pane >= 0.5)
     albedo *= surface_detail(v_world_position, eye_distance);
   vec3 n = normalize(v_normal);
+  if (u_has_texture == 1 && pane >= 0.5 && eye_distance < 60.0)
+    n = bump_normal(n, v_world_position, texture_height,
+                    0.2 * (1.0 - smoothstep(8.0, 40.0, eye_distance)));
   vec3 l = normalize(u_light_direction);
   vec3 v = normalize(u_eye - v_world_position);
   bool water = u_roughness < 0.15 && u_metallic > 0.3 && n.y > 0.9;

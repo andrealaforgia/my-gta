@@ -69,6 +69,13 @@ static void draw_optional(renderer_t* renderer, mesh_handle_t mesh,
   if (mesh.id != 0) renderer_draw_mesh(renderer, mesh, material, model);
 }
 
+static void draw_wheel(const car_visual_t* visual, renderer_t* renderer,
+                       transform_t wheel) {
+  mat4_t model = transform_to_matrix(wheel);
+  renderer_draw_mesh(renderer, visual->wheel, visual->rubber, model);
+  renderer_draw_mesh(renderer, visual->wheel_alloy, visual->alloy, model);
+}
+
 /* A flat ring in the xy plane about the origin, facing +z, between two
  * radii and `half_z` thick each way. */
 static void add_ring(mesh_data_t* mesh, float outer, float inner, float half_z,
@@ -89,6 +96,37 @@ static void add_ring(mesh_data_t* mesh, float outer, float inner, float half_z,
     mesh_data_add_quad(mesh, ib1, ob1, ob0, ib0, 1); /* back */
     mesh_data_add_quad(mesh, ob0, ob1, oo1, oo0, 1); /* outer wall */
     mesh_data_add_quad(mesh, ib0, io0, io1, ib1, 1); /* inner wall */
+  }
+}
+
+/* Turns the vertices from `first` on about the x axis. */
+static void rotate_x_from(mesh_data_t* mesh, size_t first, float angle) {
+  float c = cosf(angle), s = sinf(angle);
+  for (size_t i = first; i < mesh->vertex_count; i++) {
+    vertex_t* v = &mesh->vertices[i];
+    float y = v->position.y * c - v->position.z * s;
+    float z = v->position.y * s + v->position.z * c;
+    v->position.y = y, v->position.z = z;
+    float ny = v->normal.y * c - v->normal.z * s;
+    float nz = v->normal.y * s + v->normal.z * c;
+    v->normal.y = ny, v->normal.z = nz;
+  }
+}
+
+/* A rim: a dished disc, a raised hub and five spokes, on both faces. */
+static void add_alloy(mesh_data_t* mesh, float radius, float width) {
+  for (int side = -1; side <= 1; side += 2) {
+    float x = side * width * 0.5f;
+    mesh_data_add_cylinder_x(mesh, vec3(x, 0, 0), radius * 0.64f, width * 0.05f,
+                             24);
+    mesh_data_add_cylinder_x(mesh, vec3(x + side * width * 0.04f, 0, 0),
+                             radius * 0.17f, width * 0.1f, 12);
+    for (int k = 0; k < 5; k++) {
+      size_t first = mesh->vertex_count;
+      mesh_data_add_box(mesh, vec3(x + side * width * 0.03f, radius * 0.38f, 0),
+                        vec3(width * 0.05f, radius * 0.24f, radius * 0.06f));
+      rotate_x_from(mesh, first, 2.0f * (float)M_PI * (float)k / 5.0f);
+    }
   }
 }
 
@@ -160,6 +198,19 @@ car_visual_t car_visual_create(renderer_t* renderer,
   mesh_data_add_box(&trim_mesh, vec3(0, floor + 0.1f * h.y, L),
                     vec3(w * 0.9f, h.y * 0.12f, 0.06f));
 
+  /* Wing mirrors, door seams and a grille between the headlights. */
+  for (int side = -1; side <= 1; side += 2) {
+    mesh_data_add_box(&trim_mesh,
+                      vec3(side * (w + 0.07f), sill + 0.14f, -L * 0.3f),
+                      vec3(0.06f, 0.045f, 0.03f));
+    for (int seam = 0; seam < 3; seam++)
+      mesh_data_add_box(&trim_mesh,
+                        vec3(side * (w * 0.995f), floor + 0.5f * h.y,
+                             -L * 0.28f + seam * L * 0.42f),
+                        vec3(0.006f, h.y * 0.3f, 0.008f));
+  }
+  mesh_data_add_box(&trim_mesh, vec3(0, floor + 0.42f * h.y, -L - 0.005f),
+                    vec3(w * 0.32f, h.y * 0.08f, 0.02f));
   /* Police cars are saloons with livery and a light bar; everything else
    * that is not a plain car replaces the saloon body with its own. */
   body_style_t style = body_style_from_name(p->body);
@@ -185,14 +236,16 @@ car_visual_t car_visual_create(renderer_t* renderer,
   }
 
   mesh_data_t wheel = mesh_data_create();
-  mesh_data_add_cylinder_x(&wheel, vec3_zero(), p->wheel_radius, p->wheel_width,
-                           24);
-  mesh_data_add_box(&wheel, vec3_zero(),
-                    vec3(p->wheel_width * 0.55f, p->wheel_radius * 0.12f,
-                         p->wheel_radius * 0.62f));
-  mesh_data_add_box(&wheel, vec3_zero(),
-                    vec3(p->wheel_width * 0.55f, p->wheel_radius * 0.62f,
-                         p->wheel_radius * 0.12f));
+  /* The tyre: the tread, with a rounded shoulder on each side. */
+  mesh_data_add_cylinder_x(&wheel, vec3_zero(), p->wheel_radius,
+                           p->wheel_width * 0.8f, 28);
+  for (int side = -1; side <= 1; side += 2)
+    mesh_data_add_cylinder_x(&wheel, vec3(side * p->wheel_width * 0.4f, 0, 0),
+                             p->wheel_radius * 0.93f, p->wheel_width * 0.2f,
+                             28);
+  mesh_data_t alloy = mesh_data_create();
+  add_alloy(&alloy, p->wheel_radius, p->wheel_width);
+  visual.wheel_alloy = upload(renderer, &alloy);
 
   float rest_hub_y = p->wheel_attach_height - p->suspension_rest_length * 0.65f;
   for (int i = 0; i < 4; i++)
@@ -284,6 +337,8 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.rear_light_material = material_rough(vec3(0.8f, 0.08f, 0.05f), 0.3f);
   visual.trim_material = material_rough(vec3(0.12f, 0.12f, 0.13f), 0.7f);
   visual.rubber = material_rough(vec3(0.08f, 0.08f, 0.08f), 0.9f);
+  visual.alloy = material_rough(vec3(0.72f, 0.74f, 0.78f), 0.28f);
+  visual.alloy.metallic = 0.9f;
   return visual;
 }
 
@@ -295,6 +350,7 @@ void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
   for (size_t i = 0; i < sizeof(optional) / sizeof(optional[0]); i++)
     if (optional[i].id != 0) renderer_release_mesh(renderer, optional[i]);
   renderer_release_mesh(renderer, visual->wheel);
+  renderer_release_mesh(renderer, visual->wheel_alloy);
   renderer_release_mesh(renderer, visual->smoke_puff);
   renderer_release_mesh(renderer, visual->dashboard);
   renderer_release_mesh(renderer, visual->wheel_rim);
@@ -343,16 +399,14 @@ void car_visual_draw(const car_visual_t* visual, renderer_t* renderer,
   draw_body(visual, renderer, model, paint, headlights, tail_lights, clock);
   for (int i = 0; i < VEHICLE_WHEEL_COUNT; i++) {
     transform_t wheel = vehicle_wheel_transform(vehicle, chassis, i);
-    renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
-                       transform_to_matrix(wheel));
+    draw_wheel(visual, renderer, wheel);
     if (i >= 2) {
       /* Tandem axles turn with the driven one. */
       for (int k = i % 2; k < visual->extra_wheel_count; k += 2) {
         transform_t extra = wheel;
         extra.position =
             transform_point(chassis, visual->extra_wheel_centres[k]);
-        renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
-                           transform_to_matrix(extra));
+        draw_wheel(visual, renderer, extra);
       }
     }
   }
@@ -385,8 +439,7 @@ void car_visual_draw_still(const car_visual_t* visual, renderer_t* renderer,
         transform_point(chassis, i < 4 ? visual->wheel_centres[i]
                                        : visual->extra_wheel_centres[i - 4]);
     wheel.rotation = quat_multiply(chassis.rotation, spin);
-    renderer_draw_mesh(renderer, visual->wheel, visual->rubber,
-                       transform_to_matrix(wheel));
+    draw_wheel(visual, renderer, wheel);
   }
 }
 
