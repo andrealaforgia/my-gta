@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
   size_t jerk_count = jerk ? traffic_car_count(stage.traffic) : 0;
   traffic_car_t* jerk_before =
       jerk_count ? calloc(jerk_count, sizeof(traffic_car_t)) : NULL;
-  int jerk_events = 0;
+  int jerk_events = 0, overlaps = 0;
   /* SNAPSHOT_TRACE=file writes where every traffic car is, twenty times a
    * second, for plotting. */
   FILE* trace = getenv("SNAPSHOT_TRACE") && stage.traffic
@@ -142,6 +142,28 @@ int main(int argc, char* argv[]) {
         fprintf(trace, "%zu %.2f %.2f %.3f %.2f\n", k, now.position.x,
                 now.position.z, now.yaw, now.speed);
       }
+    }
+    if (jerk && i % 12 == 0) {
+      /* Cars on top of one another (centres under 1.8 m apart). */
+      for (size_t k = 0; k < jerk_count; k++)
+        for (size_t m = k + 1; m < jerk_count; m++) {
+          traffic_car_t a = traffic_car(stage.traffic, k),
+                        b = traffic_car(stage.traffic, m);
+          if (hypotf(a.position.x - b.position.x, a.position.z - b.position.z) <
+              1.8f) {
+            if (overlaps < 40)
+              printf(
+                  "overlap at %.1f s: cars %zu (route %d speed %.1f variant "
+                  "%d) "
+                  "and %zu (route %d speed %.1f variant %d) at %.1f %.1f / "
+                  "%.1f "
+                  "%.1f yaws %.2f %.2f\n",
+                  (float)i / 120.0f, k, a.route, a.speed, a.variant, m, b.route,
+                  b.speed, b.variant, a.position.x, a.position.z, b.position.x,
+                  b.position.z, a.yaw, b.yaw);
+            overlaps++;
+          }
+        }
     }
     if (jerk) {
       for (size_t k = 0; k < jerk_count; k++) {
@@ -220,6 +242,8 @@ int main(int argc, char* argv[]) {
   }
   free(stood);
   free(longest);
+  if (jerk) printf("overlap samples: %d\n", overlaps);
+  free(jerk_before);
   if (soak)
     printf(
         "soak done: %d crimes' stars now %d, cash %d, delivered %d, failed "

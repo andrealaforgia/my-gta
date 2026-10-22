@@ -93,8 +93,12 @@ static void sample(const lane_t* lane, float d, int direction, float* x,
   route_path_sample(&lane->path, d, direction, x, z, dx, dz, ground);
 }
 
+/* How far right of the centre line a car drives: a quarter of the road's
+ * width, but on a narrow road close to the edge, so two cars passing do not
+ * touch (a 3.5 m street puts them 2.8 m apart, not 1.75). */
 static float lane_offset(const lane_t* lane) {
-  float offset = lane->route->width * 0.25f;
+  float width = lane->route->width;
+  float offset = fmaxf(width * 0.25f, fminf(width * 0.4f, 1.5f));
   return offset > 1.9f ? 1.9f : offset;
 }
 
@@ -642,6 +646,15 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       float rx = other.x - car->position.x, rz = other.z - car->position.z;
       float ahead = rx * fx + rz * fz;
       float side = fabsf(rx * -fz + rz * fx);
+      /* Never drive into a car that is level with or just ahead of one's own
+       * nose, going the same way (two that merge at a junction at once): the
+       * one behind, or the higher number if level, waits. */
+      if (j < t->car_count && rx * rx + rz * rz < 3.2f * 3.2f) {
+        float ofx = -sinf(t->cars[j].yaw), ofz = -cosf(t->cars[j].yaw);
+        if (ofx * fx + ofz * fz > 0.5f && ahead > -1.0f &&
+            (ahead > 0.3f || j < i))
+          must_stop = true;
+      }
       float side_limit = fmaxf(2.1f, own_half_width + other_half_width + 0.3f);
       if (j < t->car_count) {
         /* Oncoming cars on a narrow road squeeze past each other. */
