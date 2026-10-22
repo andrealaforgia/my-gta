@@ -41,6 +41,7 @@ typedef struct {
   int traffic_cars;   /* moving cars about the city; parked cars always stand */
   int pedestrians;    /* people on the pavements */
   float rain;         /* 0 clear to 1 pouring at the start */
+  bool has_menu;      /* Backspace may go back to the start menu */
 } stage_options_t;
 
 typedef struct {
@@ -84,6 +85,8 @@ typedef struct {
   bool map_open; /* M: the city map over a paused game */
   texture_handle_t map_texture;
   bool show_debug;
+  bool has_menu;
+  bool back_to_menu; /* the player asked for the start menu */
   bool quit;
   float simulated_seconds;
   double frame_ms;

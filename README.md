@@ -76,6 +76,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | N | mute |
 | F1 | debug overlay |
 | F11 | fullscreen |
+| Backspace | back to the start menu, to choose another city |
 | Esc | quit (in the start menu too; arrows or W/S and Enter choose) |
 
 A game controller steers with the left stick, accelerates and brakes with

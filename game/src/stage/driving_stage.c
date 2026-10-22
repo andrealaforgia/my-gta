@@ -34,6 +34,7 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   stage->renderer = renderer;
   stage->audio = audio;
   stage->show_debug = options.show_debug;
+  stage->has_menu = options.has_menu;
   stage->physics = physics_world_create();
   if (!stage->physics) return false;
   stage->world = world_create();
@@ -567,8 +568,12 @@ static void draw_hud(driving_stage_t* stage) {
   }
   float bottom = (float)stage->window->drawable_height - 12 * scale;
   renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
-                     "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P PAUSE  F1 "
-                     "DEBUG  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
+                     stage->has_menu
+                         ? "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
+                           "PAUSE  F1 DEBUG  M MAP  N MUTE  BKSP MENU  ESC QUIT"
+                         : "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
+                           "PAUSE  F1 DEBUG  M MAP  N MUTE  F11 FULLSCREEN  "
+                           "ESC QUIT");
 }
 
 void driving_stage_set_rain(driving_stage_t* stage, float rain) {
@@ -769,6 +774,10 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
     chase_camera_reset(&stage->camera,
                        transform_at(stage->vehicle.spawn_position,
                                     stage->vehicle.spawn_rotation));
+  }
+  if (events.back_to_menu && stage->has_menu) {
+    stage->back_to_menu = true;
+    stage->quit = true;
   }
   if (events.toggle_pause) stage->paused = !stage->paused;
   if (events.toggle_map) stage->map_open = !stage->map_open;

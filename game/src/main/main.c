@@ -136,33 +136,35 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
   city_entry_t cities[CITY_LIST_MAX];
-  if (!options.scene_chosen) {
-    size_t count = city_list(CITIES_DIRECTORY, cities, CITY_LIST_MAX);
-    if (count > 0) {
-      int choice = city_menu_run(&window, renderer, cities, count, 0);
-      if (choice == -2) {
-        renderer_destroy(renderer);
-        window_close(&window);
-        return EXIT_SUCCESS;
-      }
-      if (choice >= 0) {
-        options.stage.scene = SCENE_CITY;
-        options.stage.city_package = cities[choice].path;
-      }
-    }
-  }
+  size_t city_count = 0;
+  if (!options.scene_chosen)
+    city_count = city_list(CITIES_DIRECTORY, cities, CITY_LIST_MAX);
+  options.stage.has_menu = city_count > 0;
   audio_device_t audio;
   bool has_audio = !options.no_audio && audio_device_open(&audio);
-  driving_stage_t stage;
   int status = EXIT_SUCCESS;
-  if (driving_stage_init(&stage, &window, renderer, has_audio ? &audio : NULL,
-                         options.stage)) {
-    driving_stage_run(&stage);
-  } else {
-    LOG_ERROR("main", "could not start the driving stage");
-    status = EXIT_FAILURE;
+  int choice = 0;
+  bool again = true;
+  while (again) {
+    again = false;
+    if (city_count > 0) {
+      /* The start menu: the test track or a city; Backspace comes back. */
+      choice = city_menu_run(&window, renderer, cities, city_count, choice + 1);
+      if (choice == -2) break;
+      options.stage.scene = choice >= 0 ? SCENE_CITY : SCENE_TEST_TRACK;
+      if (choice >= 0) options.stage.city_package = cities[choice].path;
+    }
+    driving_stage_t stage;
+    if (driving_stage_init(&stage, &window, renderer, has_audio ? &audio : NULL,
+                           options.stage)) {
+      driving_stage_run(&stage);
+      again = stage.back_to_menu;
+    } else {
+      LOG_ERROR("main", "could not start the driving stage");
+      status = EXIT_FAILURE;
+    }
+    driving_stage_destroy(&stage);
   }
-  driving_stage_destroy(&stage);
   if (has_audio) audio_device_close(&audio);
   renderer_destroy(renderer);
   window_close(&window);

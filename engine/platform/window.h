@@ -33,6 +33,7 @@ typedef struct {
   bool toggle_map;
   bool next_vehicle;
   bool toggle_weather;
+  bool back_to_menu;
 } window_events_t;
 
 /* What a menu hears: the arrows, W and S, Return, Esc and the controller. */
