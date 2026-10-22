@@ -172,6 +172,76 @@ static void a_moved_box_collider_blocks_rays_where_it_now_stands(void) {
   physics_world_destroy(world);
 }
 
+static void the_collider_grid_finds_what_is_near_and_follows_moves_and_removals(
+    void) {
+  physics_world_t* world = physics_world_create();
+  /* A 5 km ground, far bigger than a grid cell, and a lattice of boxes. */
+  vec3_t ground[4] = {vec3(-2500, 0, 2500), vec3(2500, 0, 2500),
+                      vec3(2500, 0, -2500), vec3(-2500, 0, -2500)};
+  uint32_t ground_indices[6] = {0, 1, 2, 0, 2, 3};
+  physics_add_static_mesh(world, ground, 4, ground_indices, 6,
+                          COLLISION_LAYER_GROUND, 1.0f, 0);
+  collider_handle_t boxes[40 * 40];
+  for (int j = 0; j < 40; j++)
+    for (int i = 0; i < 40; i++)
+      boxes[j * 40 + i] = physics_add_static_box(
+          world,
+          transform_at(vec3((float)(i * 10 - 200), 1.0f + 0.01f * (float)i,
+                            (float)(j * 10 - 200)),
+                       quat_identity()),
+          vec3(1, 1, 1), COLLISION_LAYER_PROP, 0.5f, (uint64_t)(j * 40 + i));
+  ray_cast_result_t hit;
+  /* Down onto a box top, and onto bare ground between the boxes. */
+  ray_t on_box = {vec3(70, 50, -30), vec3(0, -1, 0)};
+  assert(physics_ray_cast(world, on_box, 100.0f, COLLISION_LAYER_ALL, &hit));
+  assert(hit.layer == COLLISION_LAYER_PROP &&
+         fabsf(hit.hit.point.y - 2.27f) < 0.001f);
+  assert(hit.source_id == (uint64_t)(17 * 40 + 27));
+  ray_t between = {vec3(75, 50, -25), vec3(0, -1, 0)};
+  assert(physics_ray_cast(world, between, 100.0f, COLLISION_LAYER_ALL, &hit));
+  assert(hit.layer == COLLISION_LAYER_GROUND &&
+         fabsf(hit.hit.point.y) < 0.001f);
+  /* Sideways along a row, through a few cells. */
+  ray_t along = {vec3(-400, 1, -30), vec3(1, 0, 0)};
+  assert(physics_ray_cast(world, along, 1000.0f, COLLISION_LAYER_PROP, &hit));
+  assert(fabsf(hit.hit.point.x + 201.0f) < 0.001f);
+  /* Far from everything but the ground. */
+  ray_t away = {vec3(2000, 5, 2000), vec3(0, -1, 0)};
+  assert(physics_ray_cast(world, away, 20.0f, COLLISION_LAYER_PROP, &hit) ==
+         false);
+  assert(physics_ray_cast(world, away, 20.0f, COLLISION_LAYER_GROUND, &hit));
+  /* A box moved across many cells is found where it is now, not where it was.
+   */
+  physics_set_static_box_transform(
+      world, boxes[17 * 40 + 27],
+      transform_at(vec3(1500, 3, 1500), quat_identity()));
+  assert(physics_ray_cast(world, on_box, 100.0f, COLLISION_LAYER_PROP, &hit) ==
+         false);
+  ray_t there = {vec3(1500, 50, 1500), vec3(0, -1, 0)};
+  assert(physics_ray_cast(world, there, 100.0f, COLLISION_LAYER_PROP, &hit));
+  assert(fabsf(hit.hit.point.y - 4.0f) < 0.001f);
+  /* Removed, it is gone; its slot is used again by the next one. */
+  physics_remove_collider(world, boxes[17 * 40 + 27]);
+  assert(physics_ray_cast(world, there, 100.0f, COLLISION_LAYER_PROP, &hit) ==
+         false);
+  size_t before = physics_collider_count(world);
+  collider_handle_t again = physics_add_static_box(
+      world, transform_at(vec3(-1800, 1, 900), quat_identity()), vec3(1, 1, 1),
+      COLLISION_LAYER_PROP, 0.5f, 99999);
+  assert(again.id == boxes[17 * 40 + 27].id &&
+         physics_collider_count(world) == before);
+  ray_t reused = {vec3(-1800, 50, 900), vec3(0, -1, 0)};
+  assert(physics_ray_cast(world, reused, 100.0f, COLLISION_LAYER_PROP, &hit));
+  assert(hit.source_id == 99999);
+  /* A body dropped among them still lands on a box and rests. */
+  body_handle_t body =
+      physics_add_body(world, vec3(-200, 6, -200), quat_identity(), 100.0f,
+                       vec3(0.4f, 0.25f, 0.4f));
+  simulate(world, 3.0f);
+  assert(physics_body(world, body)->position.y > 1.9f);
+  physics_world_destroy(world);
+}
+
 void run_physics_tests(void) {
   RUN(a_moved_box_collider_blocks_rays_where_it_now_stands);
   RUN(a_dropped_box_lands_on_the_ground_and_rests);
@@ -182,4 +252,5 @@ void run_physics_tests(void) {
   RUN(forces_at_a_point_turn_the_body);
   RUN(previous_state_is_kept_for_interpolation);
   RUN(colliders_can_be_listed_for_debug_drawing);
+  RUN(the_collider_grid_finds_what_is_near_and_follows_moves_and_removals);
 }

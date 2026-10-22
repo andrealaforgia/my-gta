@@ -33,25 +33,21 @@ static bool ground_at(const physics_world_t* physics, float x, float z,
  * height, rays go out in several directions and anything closer than the
  * walker's radius pushes back along its normal. */
 static void keep_clear(walker_t* walker, const physics_world_t* physics) {
-  static const float heights[2] = {0.4f, 1.1f};
   static const int directions = 8;
-  for (int pass = 0; pass < 2; pass++) {
-    for (int h = 0; h < 2; h++) {
-      for (int d = 0; d < directions; d++) {
-        float angle = 6.2831853f * (float)d / (float)directions;
-        vec3_t dir = vec3(cosf(angle), 0, sinf(angle));
-        ray_t ray = {vec3_add(walker->position, vec3(0, heights[h], 0)), dir};
-        ray_cast_result_t hit;
-        if (!physics_ray_cast(physics, ray, WALKER_RADIUS, OBSTACLES, &hit))
-          continue;
-        float push = WALKER_RADIUS - hit.hit.distance;
-        vec3_t normal = hit.hit.normal;
-        float flat = sqrtf(normal.x * normal.x + normal.z * normal.z);
-        if (flat < 0.2f) continue; /* the top or bottom of something */
-        walker->position.x += normal.x / flat * push;
-        walker->position.z += normal.z / flat * push;
-      }
-    }
+  /* At the height of a knee-high wall, which everything of concern reaches. */
+  for (int d = 0; d < directions; d++) {
+    float angle = 6.2831853f * (float)d / (float)directions;
+    vec3_t dir = vec3(cosf(angle), 0, sinf(angle));
+    ray_t ray = {vec3_add(walker->position, vec3(0, 0.55f, 0)), dir};
+    ray_cast_result_t hit;
+    if (!physics_ray_cast(physics, ray, WALKER_RADIUS, OBSTACLES, &hit))
+      continue;
+    float push = WALKER_RADIUS - hit.hit.distance;
+    vec3_t normal = hit.hit.normal;
+    float flat = sqrtf(normal.x * normal.x + normal.z * normal.z);
+    if (flat < 0.2f) continue; /* the top or bottom of something */
+    walker->position.x += normal.x / flat * push;
+    walker->position.z += normal.z / flat * push;
   }
 }
 
@@ -76,7 +72,8 @@ void walker_step(walker_t* walker, const physics_world_t* physics,
     walker->position.x = nx;
     walker->position.z = nz;
   }
-  keep_clear(walker, physics);
+  if (fabsf(walker->speed) > 0.05f || input.turn != 0.0f)
+    keep_clear(walker, physics); /* standing still, nothing to push */
   /* Down to the ground, falling if it has dropped away. */
   if (ground_at(physics, walker->position.x, walker->position.z,
                 walker->position.y + 1.4f, 8.0f, &ground)) {

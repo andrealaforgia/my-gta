@@ -16,6 +16,22 @@
 #define PENETRATION_CORRECTION \
   0.3f /* fraction of the penetration recovered per step */
 
+/* The static colliders are kept in a hash grid of square cells on the ground
+ * plane, so that a ray or a body looks only at what is near it. A collider is
+ * listed in every cell its bounds overlap; one so large that it would take
+ * more than MAX_CELLS_PER_COLLIDER goes on a short list that is always
+ * looked at. */
+#define CELL_SIZE 24.0f
+#define MAX_CELLS_PER_COLLIDER 256
+#define MAX_CELLS_PER_QUERY 1500
+
+typedef struct {
+  int32_t cx, cz;
+  uint32_t* items;
+  uint32_t count, capacity;
+  bool used;
+} grid_cell_t;
+
 struct physics_world {
   vec3_t gravity;
   rigid_body_t bodies[MAX_BODIES];
@@ -23,13 +39,36 @@ struct physics_world {
   size_t collider_count;
   contact_event_t contacts[MAX_CONTACTS];
   size_t contact_count;
+  /* Free collider slots, the most recently freed last. */
+  uint32_t* free_slots;
+  size_t free_count;
+  /* The grid. */
+  grid_cell_t* cells;
+  size_t cell_capacity, cell_count;
+  uint32_t* oversize;
+  size_t oversize_count, oversize_capacity;
+  /* Scratch for queries: the candidates found, and a stamp per collider so
+   * each is listed once. */
+  uint32_t* candidates;
+  size_t candidate_count, candidate_capacity;
+  uint32_t* stamps;
+  uint32_t stamp;
 };
 
 physics_world_t* physics_world_create(void) {
   physics_world_t* world = calloc(1, sizeof(physics_world_t));
   if (!world) return NULL;
   world->colliders = calloc(MAX_COLLIDERS, sizeof(static_collider_t));
-  if (!world->colliders) {
+  world->free_slots = malloc(MAX_COLLIDERS * sizeof(uint32_t));
+  world->stamps = calloc(MAX_COLLIDERS, sizeof(uint32_t));
+  world->cell_capacity = 1024;
+  world->cells = calloc(world->cell_capacity, sizeof(grid_cell_t));
+  if (!world->colliders || !world->free_slots || !world->stamps ||
+      !world->cells) {
+    free(world->colliders);
+    free(world->free_slots);
+    free(world->stamps);
+    free(world->cells);
     free(world);
     return NULL;
   }
@@ -43,6 +82,12 @@ void physics_world_destroy(physics_world_t* world) {
     free(world->colliders[i].vertices);
     free(world->colliders[i].indices);
   }
+  for (size_t i = 0; i < world->cell_capacity; i++) free(world->cells[i].items);
+  free(world->cells);
+  free(world->oversize);
+  free(world->candidates);
+  free(world->stamps);
+  free(world->free_slots);
   free(world->colliders);
   free(world);
 }
@@ -54,15 +99,173 @@ vec3_t physics_world_gravity(const physics_world_t* world) {
   return world->gravity;
 }
 
+/* ---- the grid ---- */
+
+static size_t cell_hash(int32_t cx, int32_t cz, size_t capacity) {
+  uint32_t h = (uint32_t)cx * 73856093u ^ (uint32_t)cz * 19349663u;
+  return h & (capacity - 1);
+}
+
+static grid_cell_t* find_cell(physics_world_t* world, int32_t cx, int32_t cz,
+                              bool create);
+
+static bool grow_cells(physics_world_t* world) {
+  size_t capacity = world->cell_capacity * 2;
+  grid_cell_t* cells = calloc(capacity, sizeof(grid_cell_t));
+  if (!cells) return false;
+  for (size_t i = 0; i < world->cell_capacity; i++) {
+    grid_cell_t* old = &world->cells[i];
+    if (!old->used) continue;
+    size_t h = cell_hash(old->cx, old->cz, capacity);
+    while (cells[h].used) h = (h + 1) & (capacity - 1);
+    cells[h] = *old;
+  }
+  free(world->cells);
+  world->cells = cells;
+  world->cell_capacity = capacity;
+  return true;
+}
+
+static grid_cell_t* find_cell(physics_world_t* world, int32_t cx, int32_t cz,
+                              bool create) {
+  size_t h = cell_hash(cx, cz, world->cell_capacity);
+  while (world->cells[h].used) {
+    if (world->cells[h].cx == cx && world->cells[h].cz == cz)
+      return &world->cells[h];
+    h = (h + 1) & (world->cell_capacity - 1);
+  }
+  if (!create) return NULL;
+  if ((world->cell_count + 1) * 2 > world->cell_capacity) {
+    if (!grow_cells(world)) return NULL;
+    return find_cell(world, cx, cz, true);
+  }
+  grid_cell_t* cell = &world->cells[h];
+  cell->used = true;
+  cell->cx = cx;
+  cell->cz = cz;
+  world->cell_count++;
+  return cell;
+}
+
+static void cell_range(aabb_t bounds, int32_t* x0, int32_t* z0, int32_t* x1,
+                       int32_t* z1) {
+  *x0 = (int32_t)floorf(bounds.min.x / CELL_SIZE);
+  *x1 = (int32_t)floorf(bounds.max.x / CELL_SIZE);
+  *z0 = (int32_t)floorf(bounds.min.z / CELL_SIZE);
+  *z1 = (int32_t)floorf(bounds.max.z / CELL_SIZE);
+}
+
+static bool list_add(uint32_t** items, uint32_t* count, uint32_t* capacity,
+                     uint32_t value) {
+  if (*count == *capacity) {
+    uint32_t grown = *capacity ? *capacity * 2 : 4;
+    uint32_t* bigger = realloc(*items, grown * sizeof(uint32_t));
+    if (!bigger) return false;
+    *items = bigger;
+    *capacity = grown;
+  }
+  (*items)[(*count)++] = value;
+  return true;
+}
+
+static void grid_insert(physics_world_t* world, uint32_t index) {
+  aabb_t bounds = world->colliders[index].bounds;
+  int32_t x0, z0, x1, z1;
+  cell_range(bounds, &x0, &z0, &x1, &z1);
+  int64_t cells = (int64_t)(x1 - x0 + 1) * (int64_t)(z1 - z0 + 1);
+  if (cells > MAX_CELLS_PER_COLLIDER) {
+    uint32_t count = (uint32_t)world->oversize_count,
+             capacity = (uint32_t)world->oversize_capacity;
+    list_add(&world->oversize, &count, &capacity, index);
+    world->oversize_count = count;
+    world->oversize_capacity = capacity;
+    return;
+  }
+  for (int32_t cz = z0; cz <= z1; cz++)
+    for (int32_t cx = x0; cx <= x1; cx++) {
+      grid_cell_t* cell = find_cell(world, cx, cz, true);
+      if (cell) list_add(&cell->items, &cell->count, &cell->capacity, index);
+    }
+}
+
+static void list_remove(uint32_t* items, uint32_t* count, uint32_t value) {
+  for (uint32_t i = 0; i < *count; i++)
+    if (items[i] == value) {
+      items[i] = items[--(*count)];
+      return;
+    }
+}
+
+static void grid_remove(physics_world_t* world, uint32_t index, aabb_t bounds) {
+  int32_t x0, z0, x1, z1;
+  cell_range(bounds, &x0, &z0, &x1, &z1);
+  int64_t cells = (int64_t)(x1 - x0 + 1) * (int64_t)(z1 - z0 + 1);
+  if (cells > MAX_CELLS_PER_COLLIDER) {
+    uint32_t count = (uint32_t)world->oversize_count;
+    list_remove(world->oversize, &count, index);
+    world->oversize_count = count;
+    return;
+  }
+  for (int32_t cz = z0; cz <= z1; cz++)
+    for (int32_t cx = x0; cx <= x1; cx++) {
+      grid_cell_t* cell = find_cell(world, cx, cz, false);
+      if (cell) list_remove(cell->items, &cell->count, index);
+    }
+}
+
+static int compare_indices(const void* a, const void* b) {
+  uint32_t x = *(const uint32_t*)a, y = *(const uint32_t*)b;
+  return x < y ? -1 : (x > y);
+}
+
+static void candidate_add(physics_world_t* world, uint32_t index) {
+  if (world->stamps[index] == world->stamp) return;
+  world->stamps[index] = world->stamp;
+  uint32_t count = (uint32_t)world->candidate_count,
+           capacity = (uint32_t)world->candidate_capacity;
+  list_add(&world->candidates, &count, &capacity, index);
+  world->candidate_count = count;
+  world->candidate_capacity = capacity;
+}
+
+/* Lists, in the order of their slots, the colliders whose bounds may overlap
+ * the box (its footprint is what the grid sees), in world->candidates. */
+static void gather(physics_world_t* world, aabb_t box) {
+  world->candidate_count = 0;
+  if (++world->stamp == 0) {
+    memset(world->stamps, 0, MAX_COLLIDERS * sizeof(uint32_t));
+    world->stamp = 1;
+  }
+  int32_t x0, z0, x1, z1;
+  cell_range(box, &x0, &z0, &x1, &z1);
+  int64_t cells = (int64_t)(x1 - x0 + 1) * (int64_t)(z1 - z0 + 1);
+  if (cells > MAX_CELLS_PER_QUERY) {
+    /* Too wide to be worth walking: everything is a candidate. */
+    for (uint32_t i = 0; i < world->collider_count; i++)
+      if (world->colliders[i].used) candidate_add(world, i);
+    return;
+  }
+  for (int32_t cz = z0; cz <= z1; cz++)
+    for (int32_t cx = x0; cx <= x1; cx++) {
+      grid_cell_t* cell = find_cell(world, cx, cz, false);
+      if (!cell) continue;
+      for (uint32_t k = 0; k < cell->count; k++)
+        candidate_add(world, cell->items[k]);
+    }
+  for (size_t k = 0; k < world->oversize_count; k++)
+    candidate_add(world, world->oversize[k]);
+  qsort(world->candidates, world->candidate_count, sizeof(uint32_t),
+        compare_indices);
+}
+
 /* ---- colliders ---- */
 
 static static_collider_t* new_collider(physics_world_t* world,
                                        collider_handle_t* handle) {
-  for (size_t i = 0; i < world->collider_count; i++) {
-    if (!world->colliders[i].used) {
-      handle->id = (uint32_t)i + 1;
-      return &world->colliders[i];
-    }
+  if (world->free_count > 0) {
+    uint32_t slot = world->free_slots[--world->free_count];
+    handle->id = slot + 1;
+    return &world->colliders[slot];
   }
   if (world->collider_count >= MAX_COLLIDERS) {
     LOG_ERROR("physics", "collider table full (%d)", MAX_COLLIDERS);
@@ -91,6 +294,7 @@ collider_handle_t physics_add_static_box(physics_world_t* world,
   collider->friction = friction;
   collider->source_id = source_id;
   collider->used = true;
+  grid_insert(world, handle.id - 1);
   return handle;
 }
 
@@ -100,9 +304,11 @@ void physics_set_static_box_transform(physics_world_t* world,
   if (handle.id == 0 || handle.id > world->collider_count) return;
   static_collider_t* collider = &world->colliders[handle.id - 1];
   if (!collider->used || collider->shape != COLLIDER_SHAPE_BOX) return;
+  grid_remove(world, handle.id - 1, collider->bounds);
   collider->transform = transform;
   collider->bounds = aabb_transform(
       aabb_from_center(vec3_zero(), collider->half_extents), transform);
+  grid_insert(world, handle.id - 1);
 }
 
 collider_handle_t physics_add_static_mesh(
@@ -141,15 +347,19 @@ collider_handle_t physics_add_static_mesh(
   collider->friction = friction;
   collider->source_id = source_id;
   collider->used = true;
+  grid_insert(world, handle.id - 1);
   return handle;
 }
 
 void physics_remove_collider(physics_world_t* world, collider_handle_t handle) {
   if (handle.id == 0 || handle.id > world->collider_count) return;
   static_collider_t* collider = &world->colliders[handle.id - 1];
+  if (!collider->used) return;
+  grid_remove(world, handle.id - 1, collider->bounds);
   free(collider->vertices);
   free(collider->indices);
   memset(collider, 0, sizeof(*collider));
+  world->free_slots[world->free_count++] = handle.id - 1;
 }
 
 size_t physics_collider_count(const physics_world_t* world) {
@@ -328,13 +538,22 @@ static bool ray_collider(const static_collider_t* collider, ray_t ray,
   return found;
 }
 
-bool physics_ray_cast(const physics_world_t* world, ray_t ray,
+bool physics_ray_cast(const physics_world_t* const_world, ray_t ray,
                       float max_distance, uint32_t layer_mask,
                       ray_cast_result_t* result) {
+  /* The grid's scratch lists are reused; they are not part of the world's
+   * state as far as the caller can tell. */
+  physics_world_t* world = (physics_world_t*)const_world;
   ray_hit_t best;
   best.distance = INFINITY;
   bool found = false;
-  for (size_t i = 0; i < world->collider_count; i++) {
+  vec3_t end = vec3_add_scaled(ray.origin, ray.direction, max_distance);
+  aabb_t swept = aabb_empty();
+  swept = aabb_include(swept, ray.origin);
+  swept = aabb_include(swept, end);
+  gather(world, swept);
+  for (size_t k = 0; k < world->candidate_count; k++) {
+    size_t i = world->candidates[k];
     const static_collider_t* collider = &world->colliders[i];
     if (!collider->used || !(collider->layer & layer_mask)) continue;
     if (ray_collider(collider, ray, max_distance, &best)) {
@@ -387,6 +606,7 @@ static size_t find_contacts(physics_world_t* world, rigid_body_t* body,
   aabb_t body_bounds =
       aabb_transform(aabb_from_center(vec3_zero(), body->half_extents),
                      transform_at(body->position, body->rotation));
+  gather(world, body_bounds);
   for (int corner = 0; corner < 8 && count < capacity; corner++) {
     vec3_t h = body->half_extents;
     vec3_t local = vec3((corner & 1) ? h.x : -h.x, (corner & 2) ? h.y : -h.y,
@@ -400,7 +620,8 @@ static size_t find_contacts(physics_world_t* world, rigid_body_t* body,
     best.distance = INFINITY;
     size_t hit_index = 0;
     bool found = false;
-    for (size_t i = 0; i < world->collider_count; i++) {
+    for (size_t k = 0; k < world->candidate_count; k++) {
+      size_t i = world->candidates[k];
       const static_collider_t* collider = &world->colliders[i];
       if (!collider->used || !aabb_overlaps(body_bounds, collider->bounds))
         continue;

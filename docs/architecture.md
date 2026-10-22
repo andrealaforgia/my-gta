@@ -125,6 +125,16 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
   (450 m) and a car is only ever put on the road beyond it and clear of
   other cars.
 
+## Physics queries
+
+Static colliders (65 000 in a big city) are kept in a hash grid of 24 m
+cells on the ground plane; a ray or a body's contact search lists only the
+colliders in the cells its bounds touch, in slot order so ties come out as
+they did from a plain scan. Colliders too large to list in 256 cells (and
+queries too wide to be worth walking) fall back to the whole list. Freed
+slots are reused from a stack. This took a minute of Pordenone with traffic
+from about 9 s of CPU to under 2 s, and the load from 11 s to 6 s.
+
 ## Streaming
 
 The cooked package is read whole (a few seconds and about 400 MB for the

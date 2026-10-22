@@ -96,8 +96,43 @@ int main(int argc, char* argv[]) {
   /* SNAPSHOT_CRIME starts a police chase and reports it every five seconds. */
   bool crime = getenv("SNAPSHOT_CRIME") != NULL && stage.traffic;
   if (crime) wanted_crime(&stage.wanted);
+  /* SNAPSHOT_SOAK drives about at random, getting out and in, stealing cars
+   * and breaking in changes of vehicle, and checks that nothing goes wrong. */
+  bool soak = getenv("SNAPSHOT_SOAK") != NULL;
+  unsigned soak_random = 12345;
   for (int i = 0; i < steps; i++) {
+    if (soak && i % 60 == 0) {
+      soak_random = soak_random * 1664525u + 1013904223u;
+      unsigned r = soak_random >> 8;
+      input.throttle = (r % 10) < 7 ? 1.0f : 0.0f;
+      input.brake = (r % 10) == 9 ? 1.0f : 0.0f;
+      input.steering = ((float)((r >> 4) % 200) - 100.0f) / 100.0f;
+      input.handbrake = (r >> 12) % 17 == 0;
+      if ((r >> 3) % 40 == 0) driving_stage_interact(&stage);
+      if ((r >> 3) % 97 == 1) driving_stage_next_vehicle(&stage);
+    }
     driving_stage_step(&stage, input, 1.0f / 120.0f);
+    if (soak) {
+      vec3_t at =
+          stage.on_foot
+              ? stage.walker.position
+              : physics_body(stage.physics, stage.vehicle.body)->position;
+      if (!isfinite(at.x) || !isfinite(at.y) || !isfinite(at.z) ||
+          at.y < -50.0f || at.y > 500.0f) {
+        printf("SOAK FAILED at %d s: position %.1f %.1f %.1f\n", i / 120, at.x,
+               at.y, at.z);
+        return EXIT_FAILURE;
+      }
+      for (size_t k = 0; stage.traffic && k < traffic_car_count(stage.traffic);
+           k++) {
+        traffic_car_t car = traffic_car(stage.traffic, k);
+        if (!isfinite(car.position.x) || !isfinite(car.position.z) ||
+            car.speed > 60.0f) {
+          printf("SOAK FAILED at %d s: traffic car %zu\n", i / 120, k);
+          return EXIT_FAILURE;
+        }
+      }
+    }
     if (crime && i % 240 == 0) {
       const rigid_body_t* me = physics_body(stage.physics, stage.vehicle.body);
       float chaser = 0;
@@ -134,6 +169,12 @@ int main(int argc, char* argv[]) {
   }
   free(stood);
   free(longest);
+  if (soak)
+    printf(
+        "soak done: %d crimes' stars now %d, cash %d, delivered %d, failed "
+        "%d\n",
+        0, stage.wanted.stars, stage.mission.cash, stage.mission.delivered,
+        stage.mission.failed);
   stage.fps = 60;
   stage.view_mode = getenv("SNAPSHOT_VIEW") ? atoi(getenv("SNAPSHOT_VIEW")) : 0;
   stage.map_open = getenv("SNAPSHOT_MAP") != NULL;
