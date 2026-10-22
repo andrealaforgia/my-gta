@@ -224,8 +224,9 @@ bool city_package_write(const city_package_t* package, const char* directory) {
             package->airport.z, package->airport.yaw, package->airport.length,
             package->airport.width);
   for (size_t i = 0; i < package->aircraft_count; i++)
-    fprintf(file, "aircraft %d %.2f %.2f %.4f\n", package->aircraft[i].kind,
-            package->aircraft[i].x, package->aircraft[i].z,
+    fprintf(file, "aircraft %d %.2f %.2f %.2f %.4f\n",
+            package->aircraft[i].kind, package->aircraft[i].x,
+            package->aircraft[i].y, package->aircraft[i].z,
             package->aircraft[i].yaw);
   for (size_t i = 0; i < package->bus_stop_count; i++)
     fprintf(file, "busstop %.3f %.3f\n", package->bus_stops[2 * i],
@@ -340,8 +341,8 @@ bool city_package_read(city_package_t* package, const char* directory) {
     } else if (strncmp(line, "aircraft ", 9) == 0) {
       if (package->aircraft_count < CITY_PACKAGE_MAX_AIRCRAFT) {
         city_aircraft_t* craft = &package->aircraft[package->aircraft_count];
-        ok = sscanf(line, "aircraft %d %f %f %f", &craft->kind, &craft->x,
-                    &craft->z, &craft->yaw) == 4;
+        ok = sscanf(line, "aircraft %d %f %f %f %f", &craft->kind, &craft->x,
+                    &craft->y, &craft->z, &craft->yaw) == 5;
         if (ok) package->aircraft_count++;
       }
     } else if (strncmp(line, "route ", 6) == 0) {

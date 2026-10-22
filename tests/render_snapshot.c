@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "air_stage.h"
 #include "city_menu.h"
 #include "driving_stage.h"
 #include "log.h"
@@ -93,12 +94,34 @@ int main(int argc, char* argv[]) {
   }
   driving_input_t input = {1.0f, 0.0f, steering, false};
   /* SNAPSHOT_FOOT gets out of the car after a short drive and walks. */
-  bool on_foot = getenv("SNAPSHOT_FOOT") != NULL;
+  /* SNAPSHOT_FLY=n then steps into the nth aircraft at the airport and takes
+   * off with a fixed script: full power, the nose up after nine seconds. */
+  int fly = getenv("SNAPSHOT_FLY") ? atoi(getenv("SNAPSHOT_FLY")) : -1;
+  bool on_foot = getenv("SNAPSHOT_FOOT") != NULL || fly >= 0;
   if (on_foot) {
     driving_input_t brake = {0.0f, 1.0f, 0.0f, true};
     for (int i = 0; i < 120 * 3; i++)
       driving_stage_step(&stage, brake, 1.0f / 120.0f);
     driving_stage_interact(&stage);
+    if (fly >= 0 && (size_t)fly < stage.aircraft_count) {
+      aircraft_t* craft = &stage.aircraft[fly];
+      const city_airport_t* airport = &stage.scene.package->airport;
+      if (craft->kind == AIRCRAFT_PLANE && airport->present) {
+        /* A plane starts at the end of the runway, nose along it. */
+        vec3_t axis = vec3(-sinf(airport->yaw), 0, -cosf(airport->yaw));
+        float x = airport->x - axis.x * 420.0f,
+              z = airport->z - axis.z * 420.0f;
+        ray_t down = {vec3(x, 400.0f, z), vec3(0, -1, 0)};
+        ray_cast_result_t hit;
+        if (physics_ray_cast(stage.physics, down, 800.0f,
+                             COLLISION_LAYER_GROUND, &hit))
+          craft->position = vec3(x, hit.hit.point.y, z);
+        craft->yaw = airport->yaw;
+      }
+      vec3_t at = craft->position;
+      stage.walker.position = vec3(at.x + 3.0f, at.y, at.z);
+      driving_stage_interact(&stage);
+    }
     /* SNAPSHOT_SHOOT fires the pistol, so the shot shows the tracer. */
     if (getenv("SNAPSHOT_SHOOT")) {
       driving_input_t stand = {0.0f, 0.0f, 0.0f, false};
@@ -152,6 +175,14 @@ int main(int argc, char* argv[]) {
       if ((r >> 3) % 97 == 1) driving_stage_next_vehicle(&stage);
       if ((r >> 5) % 3 == 0) driving_stage_fire(&stage);
       if ((r >> 6) % 90 == 0) stage.vehicle.damage = 1.0f;
+    }
+    if (fly >= 0 && stage.piloting > 0) {
+      float t = (float)i / 120.0f;
+      bool plane = stage.aircraft[stage.piloting - 1].kind == AIRCRAFT_PLANE;
+      input.throttle = 0, input.brake = 0, input.handbrake = true;
+      input.steering = steering;
+      if (plane && t > 9.0f) input.brake = t < 16.0f ? 1.0f : 0.0f;
+      if (!plane && t > 8.0f) input.throttle = 1.0f;
     }
     driving_stage_step(&stage, input, 1.0f / 120.0f);
     if (trace && i % 6 == 0) {
@@ -244,7 +275,9 @@ int main(int argc, char* argv[]) {
         if (stood[k] > longest[k]) longest[k] = stood[k];
       }
     }
-    if (i % 2 == 0) {
+    if (i % 2 == 0 && stage.piloting > 0) {
+      air_stage_follow(&stage, 1.0f / 60.0f);
+    } else if (i % 2 == 0) {
       const rigid_body_t* body =
           physics_body(stage.physics, stage.vehicle.body);
       chase_camera_update(&stage.camera,
@@ -268,6 +301,21 @@ int main(int argc, char* argv[]) {
         "%d\n",
         0, stage.wanted.stars, stage.mission.cash, stage.mission.delivered,
         stage.mission.failed);
+  if (fly >= 0) {
+    size_t loaded = 0;
+    for (size_t k = 0; k < stage.scene.package->chunk_count; k++)
+      loaded += stage.scene.chunk_states[k].loaded;
+    printf("chunks loaded %zu of %zu, camera at %.0f %.0f %.0f, drawn %d\n",
+           loaded, stage.scene.package->chunk_count, stage.camera.position.x,
+           stage.camera.position.y, stage.camera.position.z, stage.last_drawn);
+  }
+  if (fly >= 0)
+    printf(
+        "flight: piloting %d, %.0f m up, %.0f km/h, blast %.1f\n",
+        stage.piloting,
+        stage.piloting ? stage.aircraft[stage.piloting - 1].position.y : 0.0f,
+        stage.piloting ? stage.aircraft[stage.piloting - 1].speed * 3.6f : 0.0f,
+        stage.blast);
   stage.fps = 60;
   stage.view_mode = getenv("SNAPSHOT_VIEW") ? atoi(getenv("SNAPSHOT_VIEW")) : 0;
   stage.map_open = getenv("SNAPSHOT_MAP") != NULL;

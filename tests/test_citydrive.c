@@ -21,11 +21,13 @@
 
 static const char* package_directory = "/tmp/gta-like-test-citydrive";
 static const char* hill_directory = "/tmp/gta-like-test-citydrive-hill";
+static const char* airport_directory = "/tmp/gta-like-test-citydrive-airport";
 
 /* Ground at 100 m on the west side rising 0.08 m per metre to the east. */
 static float hill_height(float x) { return 100.0f + 0.08f * x; }
 
-static void cook_fixture_city_into(const char* directory, bool hilly) {
+static void cook_fixture_city_into(const char* directory, bool hilly,
+                                   bool airport) {
   osm_data_t osm;
   assert(osm_load(&osm, "tests/fixtures/district.osm"));
   city_model_t model;
@@ -42,7 +44,8 @@ static void cook_fixture_city_into(const char* directory, bool hilly) {
     memcpy(model.terrain.heights, heights, sizeof(heights));
   }
   city_generator_options_t options = city_generator_default_options();
-  snprintf(options.airport_side, sizeof(options.airport_side), "-");
+  if (!airport)
+    snprintf(options.airport_side, sizeof(options.airport_side), "-");
   city_package_t package;
   city_generator_stats_t stats;
   assert(city_generate(&package, &model, &options, "district", &stats));
@@ -52,8 +55,9 @@ static void cook_fixture_city_into(const char* directory, bool hilly) {
 }
 
 static void cook_fixture_city(void) {
-  cook_fixture_city_into(package_directory, false);
-  cook_fixture_city_into(hill_directory, true);
+  cook_fixture_city_into(package_directory, false, false);
+  cook_fixture_city_into(hill_directory, true, false);
+  cook_fixture_city_into(airport_directory, false, true);
 }
 
 typedef struct {
@@ -585,6 +589,81 @@ static void a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged(void) {
   stop(&run);
 }
 
+/* Walks to the plane, climbs in, and flies it off the runway. */
+static void a_plane_can_be_stolen_and_flown_off_the_runway(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  assert(stage->has_air && stage->aircraft_count == 5);
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(stage); /* out of the car */
+  assert(stage->on_foot);
+  /* A plane starts on the apron: put it on the runway, nose along it. */
+  const city_airport_t* airport = &stage->scene.package->airport;
+  vec3_t axis = vec3(-sinf(airport->yaw), 0, -cosf(airport->yaw));
+  aircraft_t* plane = &stage->aircraft[0];
+  assert(plane->kind == AIRCRAFT_PLANE);
+  /* Streamed in around the runway's end, so the ground is there to ride. */
+  vec3_t start =
+      vec3(airport->x - axis.x * 380.0f, 5.0f, airport->z - axis.z * 380.0f);
+  scene_stream(&stage->scene, start, 1 << 20);
+  ray_t down = {vec3(start.x, 100.0f, start.z), vec3(0, -1, 0)};
+  ray_cast_result_t hit;
+  assert(physics_ray_cast(stage->physics, down, 300.0f, COLLISION_LAYER_GROUND,
+                          &hit));
+  plane->position = vec3(start.x, hit.hit.point.y, start.z);
+  plane->yaw = airport->yaw;
+  stage->walker.position = vec3(start.x + 3.0f, plane->position.y, start.z);
+  driving_stage_interact(stage);
+  assert(stage->piloting == 1);
+  /* Full power; the nose up once it is quick enough. */
+  float height = 0;
+  for (int i = 0; i < 120 * 25 && stage->piloting; i++) {
+    float t = (float)i / 120.0f;
+    driving_input_t fly = {0, t > 8.0f && t < 14.0f ? 1.0f : 0.0f, 0, true,
+                           false};
+    driving_stage_step(stage, fly, 1.0f / 120.0f);
+    height = fmaxf(height, plane->position.y - hit.hit.point.y);
+  }
+  assert(stage->piloting == 1 && !plane->on_ground && height > 10.0f);
+  /* The walker rides along, so the city follows the plane. */
+  assert(near_to(stage->walker.position.x, plane->position.x, 0.01f));
+  stop(&run);
+}
+
+static void a_crash_blows_the_aircraft_up_and_puts_it_back_on_its_stand(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(stage);
+  aircraft_t* heli = &stage->aircraft[3];
+  assert(heli->kind == AIRCRAFT_HELICOPTER);
+  vec3_t home = heli->position;
+  scene_stream(&stage->scene, home, 1 << 20);
+  stage->walker.position = vec3(home.x + 3.0f, home.y, home.z);
+  driving_stage_interact(stage);
+  assert(stage->piloting == 4);
+  /* Climb for a few seconds, then let it fall from there. */
+  driving_input_t up = {0, 0, 0, true, false};
+  for (int i = 0; i < 120 * 7; i++)
+    driving_stage_step(stage, up, 1.0f / 120.0f);
+  assert(heli->position.y > home.y + 10.0f);
+  for (int i = 0; i < 120 * 6 && stage->piloting; i++) {
+    heli->climb = -30.0f; /* dropping like a stone */
+    driving_stage_step(stage, stand, 1.0f / 120.0f);
+  }
+  assert(stage->piloting == 0 && stage->blast > 0);
+  for (int i = 0; i < 120 * 4; i++)
+    driving_stage_step(stage, stand, 1.0f / 120.0f);
+  assert(stage->blast == 0 && !stage->on_foot);
+  assert(near_to(stage->aircraft[3].position.x, home.x, 0.01f) &&
+         stage->aircraft[3].on_ground);
+  stop(&run);
+}
+
 static void walls_are_grubbier_at_the_foot_but_roads_are_not(void) {
   city_run_t run;
   start(&run);
@@ -863,6 +942,8 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
+  RUN(a_plane_can_be_stolen_and_flown_off_the_runway);
+  RUN(a_crash_blows_the_aircraft_up_and_puts_it_back_on_its_stand);
   RUN(the_map_and_the_pause_silence_the_engine);
   RUN(the_player_can_get_out_walk_get_back_in_and_steal_a_car);
   RUN(the_menu_lists_the_cooked_cities_by_name_and_wraps_round);

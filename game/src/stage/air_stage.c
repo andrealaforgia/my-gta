@@ -1,0 +1,243 @@
+#include "air_stage.h"
+
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#define BOARD_REACH 9.0f
+#define AIRCRAFT_LAYERS (COLLISION_LAYER_GROUND | COLLISION_LAYER_BUILDING)
+
+void air_stage_init(driving_stage_t* stage) {
+  const city_package_t* package = stage->scene.package;
+  if (!package || package->aircraft_count == 0) return;
+  stage->air_visual = aircraft_visual_create(stage->renderer);
+  stage->has_air = true;
+  for (size_t i = 0; i < package->aircraft_count; i++) {
+    const city_aircraft_t* craft = &package->aircraft[i];
+    stage->aircraft[i] =
+        aircraft_create((aircraft_kind_t)craft->kind,
+                        vec3(craft->x, craft->y, craft->z), craft->yaw);
+    stage->aircraft_home[i] = stage->aircraft[i];
+  }
+  stage->aircraft_count = package->aircraft_count;
+}
+
+void air_stage_destroy(driving_stage_t* stage) {
+  if (stage->has_air)
+    aircraft_visual_destroy(&stage->air_visual, stage->renderer);
+  stage->has_air = false;
+}
+
+const aircraft_t* air_stage_piloted(const driving_stage_t* stage) {
+  return stage->piloting > 0 ? &stage->aircraft[stage->piloting - 1] : NULL;
+}
+
+/* From the air much more of the city is wanted in. */
+static void set_streaming(driving_stage_t* stage, bool wide) {
+  stage->scene.stream_load_radius = wide ? 1500.0f : 800.0f;
+  stage->scene.stream_unload_radius = wide ? 1700.0f : 1000.0f;
+}
+
+static chase_camera_params_t camera_for(aircraft_kind_t kind) {
+  chase_camera_params_t p = chase_camera_default_params();
+  p.distance = kind == AIRCRAFT_PLANE ? 17.0f : 19.0f;
+  p.height = kind == AIRCRAFT_PLANE ? 4.5f : 6.0f;
+  p.look_height = 1.5f;
+  p.look_ahead = 0.0f;
+  p.max_look_ahead = 0.0f;
+  p.position_rate = 4.0f;
+  p.look_rate = 6.0f;
+  p.collision_margin = 0.0f;
+  p.fov_y = 1.05f;
+  return p;
+}
+
+static transform_t camera_target(const aircraft_t* a) {
+  /* Level: the view does not roll with the wings. */
+  return transform_at(vec3_add(a->position, vec3(0, 1.5f, 0)),
+                      quat_from_yaw(a->yaw));
+}
+
+static int nearest_index(const driving_stage_t* stage) {
+  int best = -1;
+  float best_distance = BOARD_REACH;
+  for (size_t i = 0; i < stage->aircraft_count; i++) {
+    const aircraft_t* a = &stage->aircraft[i];
+    float d = hypotf(a->position.x - stage->walker.position.x,
+                     a->position.z - stage->walker.position.z);
+    if (d < best_distance) best = (int)i, best_distance = d;
+  }
+  return best;
+}
+
+const aircraft_t* air_stage_nearest(const driving_stage_t* stage) {
+  if (!stage->has_air || stage->piloting > 0) return NULL;
+  int best = nearest_index(stage);
+  return best < 0 ? NULL : &stage->aircraft[best];
+}
+
+bool air_stage_board(driving_stage_t* stage) {
+  if (!stage->has_air || stage->piloting > 0) return false;
+  int best = nearest_index(stage);
+  if (best < 0) return false;
+  stage->piloting = best + 1;
+  set_streaming(stage, true);
+  stage->saved_camera_params = stage->camera.params;
+  stage->camera.params = camera_for(stage->aircraft[best].kind);
+  chase_camera_reset(&stage->camera, camera_target(&stage->aircraft[best]));
+  stage->walker.speed = 0;
+  driving_stage_say(stage, stage->aircraft[best].kind == AIRCRAFT_PLANE
+                               ? "PLANE STOLEN"
+                               : "HELICOPTER STOLEN");
+  driving_stage_commit_crime(stage);
+  return true;
+}
+
+bool air_stage_leave(driving_stage_t* stage) {
+  const aircraft_t* a = air_stage_piloted(stage);
+  if (!a) return false;
+  if (!a->on_ground || a->speed > 3.0f) return false;
+  /* Out on the left of the aircraft. */
+  vec3_t heading = aircraft_heading(a);
+  vec3_t left = vec3(heading.z, 0, -heading.x);
+  vec3_t feet = vec3_add(a->position, vec3_scale(left, 2.8f));
+  stage->walker.position = feet;
+  stage->walker.yaw = a->yaw;
+  stage->walker.speed = 0;
+  stage->piloting = 0;
+  set_streaming(stage, false);
+  stage->camera.params = stage->saved_camera_params;
+  chase_camera_reset(&stage->camera,
+                     transform_at(vec3_add(feet, vec3(0, 0.9f, 0)),
+                                  quat_from_yaw(stage->walker.yaw)));
+  return true;
+}
+
+void air_stage_stop(driving_stage_t* stage) {
+  if (stage->piloting > 0) {
+    stage->aircraft[stage->piloting - 1] =
+        stage->aircraft_home[stage->piloting - 1];
+    stage->camera.params = stage->saved_camera_params;
+  }
+  stage->piloting = 0;
+  set_streaming(stage, false);
+}
+
+/* The area the city's ground covers, which an aircraft is kept over. */
+static bool over_the_world(const driving_stage_t* stage, vec3_t p,
+                           vec3_t* middle) {
+  const city_package_t* package = stage->scene.package;
+  if (!package || package->chunk_count == 0) return true;
+  float lo_x = 1e30f, lo_z = 1e30f, hi_x = -1e30f, hi_z = -1e30f;
+  for (size_t i = 0; i < package->chunk_count; i++) {
+    const aabb_t* b = &package->chunks[i].bounds;
+    lo_x = fminf(lo_x, b->min.x), hi_x = fmaxf(hi_x, b->max.x);
+    lo_z = fminf(lo_z, b->min.z), hi_z = fmaxf(hi_z, b->max.z);
+  }
+  *middle = vec3((lo_x + hi_x) / 2, 0, (lo_z + hi_z) / 2);
+  return p.x > lo_x + 30 && p.x < hi_x - 30 && p.z > lo_z + 30 &&
+         p.z < hi_z - 30;
+}
+
+static float height_under(const driving_stage_t* stage, vec3_t p) {
+  ray_t down = {vec3(p.x, p.y + 2.0f, p.z), vec3(0, -1, 0)};
+  ray_cast_result_t hit;
+  if (physics_ray_cast(stage->physics, down, 3000.0f, AIRCRAFT_LAYERS, &hit))
+    return hit.hit.point.y;
+  return -1000.0f; /* nothing streamed in: do not fall through the world */
+}
+
+/* Whether the aircraft is about to fly into a wall. */
+static bool about_to_hit(const driving_stage_t* stage, const aircraft_t* a,
+                         float dt) {
+  vec3_t v = aircraft_velocity(a);
+  float speed = vec3_length(v);
+  if (speed < 3.0f) return false;
+  vec3_t direction = vec3_scale(v, 1.0f / speed);
+  float reach = speed * dt * 2.0f + aircraft_radius(a->kind) * 0.5f;
+  ray_t ahead = {
+      vec3_add(a->position, vec3(0, aircraft_height(a->kind) * 0.5f, 0)),
+      direction};
+  ray_cast_result_t hit;
+  return physics_ray_cast(stage->physics, ahead, reach,
+                          COLLISION_LAYER_BUILDING, &hit);
+}
+
+void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt) {
+  aircraft_t* a = &stage->aircraft[stage->piloting - 1];
+  float ground = height_under(stage, a->position);
+  if (ground < -999.0f) ground = a->position.y - 0.001f; /* hold in the air */
+  /* Past the edge of the map the aircraft is turned back towards it. */
+  vec3_t middle;
+  if (!over_the_world(stage, a->position, &middle)) {
+    float want =
+        atan2f(-(middle.x - a->position.x), -(middle.z - a->position.z));
+    float off = want - a->yaw;
+    off -= 6.2831853f * floorf(off / 6.2831853f + 0.5f);
+    a->yaw += fmaxf(-1.0f, fminf(1.0f, off)) * dt;
+    driving_stage_say(stage, "TURN BACK");
+  }
+  bool crashed = about_to_hit(stage, a, dt);
+  if (!crashed)
+    crashed = aircraft_step(a, aircraft_controls_from_input(input), ground,
+                            dt) == AIRCRAFT_CRASHED;
+  /* The walker rides along, so what follows the player follows the aircraft. */
+  stage->walker.position = a->position;
+  stage->walker.speed = 0;
+  if (crashed) {
+    driving_stage_crash_at(stage, vec3_add(a->position, vec3(0, 1.0f, 0)));
+    stage->aircraft[stage->piloting - 1] =
+        stage->aircraft_home[stage->piloting - 1];
+    stage->piloting = 0;
+    set_streaming(stage, false);
+  }
+}
+
+void air_stage_follow(driving_stage_t* stage, float frame_seconds) {
+  const aircraft_t* a = air_stage_piloted(stage);
+  if (!a) return;
+  chase_camera_update(&stage->camera, camera_target(a), aircraft_velocity(a),
+                      NULL, frame_seconds);
+}
+
+void air_stage_draw(driving_stage_t* stage, float night) {
+  (void)night;
+  if (!stage->has_air) return;
+  for (size_t i = 0; i < stage->aircraft_count; i++) {
+    const aircraft_t* a = &stage->aircraft[i];
+    float dx = a->position.x - stage->camera.position.x;
+    float dz = a->position.z - stage->camera.position.z;
+    if (dx * dx + dz * dz > 700.0f * 700.0f) continue;
+    aircraft_visual_draw(&stage->air_visual, stage->renderer, a, (int)i);
+  }
+}
+
+void air_stage_draw_gauge(driving_stage_t* stage) {
+  const aircraft_t* a = air_stage_piloted(stage);
+  if (!a) return;
+  renderer_t* r = stage->renderer;
+  float width = (float)stage->window->drawable_width;
+  float height = (float)stage->window->drawable_height;
+  float scale = width / 640.0f;
+  if (scale < 2) scale = 2;
+  float x = width - 120.0f * scale, y = height - 70.0f * scale;
+  char line[48];
+  snprintf(line, sizeof(line), "%3.0f KM/H",
+           vec3_length(aircraft_velocity(a)) * 3.6f);
+  renderer_draw_text(r, x, y, scale * 1.6f, vec3(1, 1, 1), line);
+  y += 14.0f * scale;
+  float ground = height_under(stage, a->position);
+  snprintf(line, sizeof(line), "ALT %3.0f M",
+           ground < -999.0f ? 0.0f : a->position.y - ground);
+  renderer_draw_text(r, x, y, scale * 1.6f, vec3(0.7f, 0.9f, 1.0f), line);
+  y += 14.0f * scale;
+  if (a->kind == AIRCRAFT_PLANE) {
+    float bar = 100.0f * scale;
+    renderer_draw_screen_line(r, x, y + 4 * scale, x + bar, y + 4 * scale,
+                              4 * scale, vec3(0.12f, 0.12f, 0.14f));
+    renderer_draw_screen_line(r, x, y + 4 * scale, x + bar * a->power,
+                              y + 4 * scale, 4 * scale, vec3(0.4f, 0.9f, 0.4f));
+    renderer_draw_text(r, x, y + 8 * scale, scale, vec3(0.7f, 0.75f, 0.85f),
+                       "POWER");
+  }
+}

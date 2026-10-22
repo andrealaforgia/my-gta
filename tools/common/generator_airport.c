@@ -199,12 +199,15 @@ static bool stand_aircraft(layout_t* layout, const frame_t* f, int kind,
   city_package_t* package = layout->package;
   if (package->aircraft_count >= CITY_PACKAGE_MAX_AIRCRAFT) return true;
   local_point_t at = frame_point(f, u, w);
-  /* Noses towards the runway. */
+  /* Noses along the runway, so the first turn is onto a link. */
   city_aircraft_t* craft = &package->aircraft[package->aircraft_count++];
   craft->kind = kind;
   craft->x = (float)at.x;
+  craft->y = (float)gen_terrain_at(layout, at.x, at.z) +
+             layout->options->road_height +
+             (kind == AIRCRAFT_PLANE ? 0.02f : 0.1f);
   craft->z = (float)at.z;
-  craft->yaw = (float)atan2(f->toward.x, f->toward.z);
+  craft->yaw = (float)atan2(-f->axis.x, -f->axis.z);
   return true;
 }
 

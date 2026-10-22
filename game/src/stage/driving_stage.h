@@ -8,6 +8,8 @@
 
 #include <stdbool.h>
 
+#include "aircraft.h"
+#include "aircraft_visual.h"
 #include "audio_device.h"
 #include "audio_mixer.h"
 #include "car_visual.h"
@@ -94,7 +96,14 @@ typedef struct {
   mission_markers_t mission_markers;
   float mission_ground; /* road height at the destination */
   bool has_figures;     /* meshes for drawing people, so the player can walk */
-  bool on_foot;         /* out of the car, walking */
+  bool on_foot;         /* out of the car, walking (or flying: see piloting) */
+  aircraft_visual_t air_visual;
+  bool has_air;
+  aircraft_t aircraft[CITY_PACKAGE_MAX_AIRCRAFT];
+  aircraft_t aircraft_home[CITY_PACKAGE_MAX_AIRCRAFT]; /* where it stands */
+  size_t aircraft_count;
+  int piloting; /* 0 on the ground, else the aircraft flown, from 1 */
+  chase_camera_params_t saved_camera_params; /* kept while flying */
   walker_t walker;
   int walker_outfit;
   chase_camera_params_t car_camera_params; /* kept while on foot */
@@ -140,6 +149,12 @@ void driving_stage_interact(driving_stage_t* stage);
 /* Fires the pistol, when on foot: the first thing in the way is hit. A
  * person who goes down makes it a crime. Returns true if a shot was fired. */
 bool driving_stage_fire(driving_stage_t* stage);
+/* A line across the screen for a moment. */
+void driving_stage_say(driving_stage_t* stage, const char* text);
+/* The player did something the law minds (stealing an aircraft). */
+void driving_stage_commit_crime(driving_stage_t* stage);
+/* The player's vehicle blows up at `at`; the player wakes at the start. */
+void driving_stage_crash_at(driving_stage_t* stage, vec3_t at);
 /* Makes the player's vehicle fleet variant `index`, at a place and facing. */
 bool driving_stage_set_vehicle(driving_stage_t* stage, int index,
                                vec3_t position, quat_t rotation);

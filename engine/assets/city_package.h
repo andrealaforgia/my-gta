@@ -102,7 +102,7 @@ typedef enum { AIRCRAFT_PLANE, AIRCRAFT_HELICOPTER } aircraft_kind_t;
  * (yaw as for the spawn). */
 typedef struct {
   int kind; /* aircraft_kind_t */
-  float x, z, yaw;
+  float x, y, z, yaw;
 } city_aircraft_t;
 
 /* The airport beside the city: the middle of its runway, the way the runway
