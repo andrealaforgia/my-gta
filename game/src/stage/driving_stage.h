@@ -62,6 +62,8 @@ typedef struct {
   bool paused;
   float rain; /* 0..1, eased towards rain_target */
   float rain_target;
+  int radio_station;  /* 0 off .. RADIO_STATIONS */
+  float radio_banner; /* seconds left to show the station's name */
   float rain_clock;   /* animates the falling drops */
   char street[48];    /* the street under the car, for the screen */
   float street_clock; /* seconds since it was last looked up */

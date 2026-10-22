@@ -10,6 +10,8 @@
 
 #include <stdbool.h>
 
+#include "radio.h"
+
 typedef struct {
   bool engine_running;
   float rpm;
@@ -25,6 +27,7 @@ typedef struct {
   bool horn;               /* the horn is held down */
   float siren;             /* 0..1: an emergency siren, louder as it nears */
   float other_horn;        /* 0..1: another driver's horn, louder as it nears */
+  int radio_station;       /* 0 off, 1..RADIO_STATIONS: the car radio */
 } audio_state_t;
 
 typedef struct {
@@ -72,6 +75,7 @@ typedef struct {
   float bell_timer;      /* seconds until the next strike */
   float bell_age;        /* seconds since the current strike */
   float bell_phases[4];
+  radio_t radio;
 } audio_mixer_t;
 
 audio_state_t audio_state_default(void);

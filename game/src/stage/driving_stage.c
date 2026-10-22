@@ -108,6 +108,7 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   skid_marks_reset(&stage->skid_marks);
   stage->skid_strip = skid_mark_mesh_create(renderer);
   stage->rain = options.rain;
+  stage->radio_station = 1;
   stage->rain_target = options.rain;
   stage->hour = options.start_hour;
   stage->hour_seconds = options.hour_seconds;
@@ -168,6 +169,7 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
   state.engine_running = !stage->on_foot;
   state.horn = stage->horn && !stage->on_foot;
   state.rain = stage->rain;
+  state.radio_station = stage->on_foot ? 0 : stage->radio_station;
   state.city = 1.0f * (1.0f - 0.7f * stage->rain);
   state.night = daylight_lamp_glow(stage->hour);
   if (stage->traffic) {
@@ -381,6 +383,8 @@ void driving_stage_advance(driving_stage_t* stage, driving_input_t input,
     else
       stage->rain = fmaxf(stage->rain_target, stage->rain - step);
     stage->rain_clock += (float)frame_seconds;
+    stage->radio_banner =
+        fmaxf(0.0f, stage->radio_banner - (float)frame_seconds);
   }
   if (!stage->paused && !stage->map_open && stage->hour_seconds > 0) {
     float before = stage->hour;
@@ -567,6 +571,28 @@ static void draw_street_name(driving_stage_t* stage) {
                      stage->street);
 }
 
+/* The radio's station, on a plate under the street name for a few seconds
+ * after the dial is turned. */
+static void draw_radio_banner(driving_stage_t* stage) {
+  if (stage->radio_banner <= 0 || stage->on_foot) return;
+  renderer_t* r = stage->renderer;
+  float scale = (float)stage->window->drawable_width / 640.0f;
+  if (scale < 2) scale = 2;
+  float text_scale = scale * 1.2f;
+  const char* name = radio_station_name(stage->radio_station);
+  float width = (float)strlen(name) * 6.0f * text_scale;
+  float x = ((float)stage->window->drawable_width - width) * 0.5f;
+  float y = 44.0f * scale;
+  texture_handle_t none = {0};
+  renderer_draw_screen_image(r, none, x - 6 * scale, y - 4 * scale,
+                             width + 12 * scale, 7 * text_scale + 8 * scale,
+                             vec3(0.04f, 0.05f, 0.07f), 0.7f);
+  renderer_draw_text(
+      r, x, y, text_scale,
+      stage->radio_station ? vec3(1.0f, 0.78f, 0.35f) : vec3(0.7f, 0.7f, 0.72f),
+      name);
+}
+
 /* The stars under the street name, flashing red and blue while police are
  * after the player, and a line across the screen for the news of the moment:
  * wanted, busted, lost them. */
@@ -688,13 +714,14 @@ static void draw_minimap(driving_stage_t* stage) {
 static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
   renderer_t* r = stage->renderer;
   float bottom = (float)stage->window->drawable_height - 12 * scale;
-  renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
-                     stage->has_menu
-                         ? "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
-                           "PAUSE  F1 DEBUG  M MAP  N MUTE  BKSP MENU  ESC QUIT"
-                         : "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
-                           "PAUSE  F1 DEBUG  M MAP  N MUTE  F11 FULLSCREEN  "
-                           "ESC QUIT");
+  renderer_draw_text(
+      r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
+      stage->has_menu
+          ? "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
+            "PAUSE  F1 DEBUG  M MAP  E RADIO  N MUTE  BKSP MENU  ESC QUIT"
+          : "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
+            "PAUSE  F1 DEBUG  M MAP  E RADIO  N MUTE  F11 FULLSCREEN  "
+            "ESC QUIT");
 }
 
 /* Centred text. */
@@ -1149,6 +1176,7 @@ void driving_stage_render(driving_stage_t* stage) {
     }
     draw_minimap(stage);
     draw_street_name(stage);
+    draw_radio_banner(stage);
     draw_law(stage);
   }
   renderer_end_frame(r);
@@ -1176,6 +1204,10 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   if (events.toggle_mute && stage->audio)
     audio_device_toggle_mute(stage->audio);
   if (events.next_vehicle) driving_stage_next_vehicle(stage);
+  if (events.next_station && !stage->on_foot) {
+    stage->radio_station = radio_next_station(stage->radio_station);
+    stage->radio_banner = 2.5f;
+  }
   if (events.toggle_weather)
     driving_stage_set_rain(stage, stage->rain_target > 0.5f ? 0.0f : 1.0f);
   if (events.toggle_camera) {

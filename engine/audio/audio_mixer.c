@@ -6,8 +6,8 @@
 #define CYLINDERS 4
 
 audio_state_t audio_state_default(void) {
-  audio_state_t state = {false, 0, 0, 0, 0,     2.0f, 0.8f,
-                         0,     0, 0, 0, false, 0,    0};
+  audio_state_t state = {false, 0, 0, 0,     0, 2.0f, 0.8f, 0,
+                         0,     0, 0, false, 0, 0,    0};
   return state;
 }
 
@@ -45,6 +45,7 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   mixer.rpm_smoothed = 900;
   mixer.bell_age = 99.0f;
   mixer.bird_rate = 1.0f / (48000.0f * 2.5f);
+  radio_init(&mixer.radio, sample_rate);
   bandpass_set(&mixer.pipe_low, 150, 1.4f, sample_rate);
   bandpass_set(&mixer.pipe_high, 420, 2.5f, sample_rate);
   bandpass_set(&mixer.skid_filter, 1300, 1.2f, sample_rate);
@@ -93,6 +94,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
   float dt = 1.0f / (float)mixer->sample_rate;
   float smoothing = 1.0f - expf(-dt * 12.0f);
   float gain = distance_gain(s->listener_distance) * s->master_volume;
+  radio_tune(&mixer->radio, s->radio_station);
   for (int i = 0; i < frames; i++) {
     mixer->rpm_smoothed = smooth(mixer->rpm_smoothed, s->rpm, smoothing);
     mixer->throttle_smoothed =
@@ -300,9 +302,9 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       }
       bell *= 0.16f;
     }
-    out[i] =
-        soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bird +
-                   cricket + bell + rain + horn + other_horn + siren) *
-                  gain);
+    out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
+                        bird + cricket + bell + rain + horn + other_horn +
+                        siren + radio_next(&mixer->radio) * 0.5f) *
+                       gain);
   }
 }

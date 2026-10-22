@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "audio_mixer.h"
@@ -358,7 +359,56 @@ static void a_siren_alternates_two_tones_and_swells_as_it_nears(void) {
   assert(peak(out, RATE) < 0.002f);
 }
 
+static void the_radio_plays_three_distinct_stations_softly_and_goes_off(void) {
+  float* out = malloc(sizeof(float) * RATE * 4);
+  float level[RADIO_STATIONS + 1];
+  float distinct[RADIO_STATIONS + 1];
+  for (int station = 0; station <= RADIO_STATIONS; station++) {
+    radio_t radio;
+    radio_init(&radio, RATE);
+    radio_tune(&radio, station);
+    for (int i = 0; i < RATE * 4; i++) out[i] = radio_next(&radio);
+    level[station] = rms(out, RATE * 4);
+    assert(peak(out, RATE * 4) <= 1.0f);
+    /* Everything above 3 kHz is hat and edge only: little of the energy. */
+    float high = 0,
+          coefficient = 1.0f - expf(-2.0f * (float)M_PI * 3000.0f / RATE);
+    float low = 0;
+    for (int i = 0; i < RATE * 4; i++) {
+      low += (out[i] - low) * coefficient;
+      high += (out[i] - low) * (out[i] - low);
+    }
+    distinct[station] = sqrtf(high / (RATE * 4));
+    assert(station == 0 || distinct[station] < level[station] * 0.6f);
+  }
+  assert(level[0] == 0.0f);
+  for (int station = 1; station <= RADIO_STATIONS; station++) {
+    assert(level[station] > 0.05f && level[station] < 0.7f);
+    for (int other = station + 1; other <= RADIO_STATIONS; other++)
+      assert(fabsf(level[station] - level[other]) > 0.002f ||
+             fabsf(distinct[station] - distinct[other]) > 0.002f);
+  }
+  /* The dial runs through the stations and back to off. */
+  int dial = 0, seen = 0;
+  do {
+    dial = radio_next_station(dial);
+    seen++;
+  } while (dial != 0);
+  assert(seen == RADIO_STATIONS + 1);
+  /* In the mixer it is audible only when tuned in. */
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  state.radio_station = 2;
+  render(&mixer, state, out, RATE);
+  assert(rms(out, RATE) > 0.02f);
+  state.radio_station = 0;
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE) < 0.01f);
+  free(out);
+}
+
 void run_audio_tests(void) {
+  RUN(the_radio_plays_three_distinct_stations_softly_and_goes_off);
   RUN(a_siren_alternates_two_tones_and_swells_as_it_nears);
   RUN(the_horn_is_a_two_note_chord_that_starts_and_stops_quickly);
   RUN(rain_is_a_soft_wash_that_is_louder_in_heavier_rain);
