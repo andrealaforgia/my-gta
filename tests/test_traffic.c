@@ -677,6 +677,43 @@ static void a_car_follows_the_curve_through_a_corner_without_jumping(void) {
   renderer_destroy(renderer);
 }
 
+static void a_driver_held_up_by_the_player_sounds_the_horn(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[1] = {route(west, 1, 2, 1)};
+  traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 3);
+  traffic_car_place(traffic, 0, 0, 1, 40.0f);
+  /* The player sits in the lane a few metres ahead of the car. */
+  vec3_t player = vec3(traffic_car(traffic, 0).position.x + 9.0f, 0.5f,
+                       traffic_car(traffic, 0).position.z);
+  float first_honk = -1;
+  bool quiet_at_first = true;
+  for (int step = 0; step < 120 * 12; step++) {
+    traffic_step(traffic, world, player, vec3_zero(), 1.0f / 120.0f);
+    bool honking = traffic_nearest_honk(traffic, player) < 100.0f;
+    if (step < 120 * 2 && honking) quiet_at_first = false;
+    if (honking && first_honk < 0) first_honk = (float)step / 120.0f;
+  }
+  assert(quiet_at_first); /* patient at first */
+  assert(first_honk > 3.0f && first_honk < 8.0f);
+  assert(traffic_car(traffic, 0).speed < 0.3f); /* it did not drive through */
+  /* With nobody in the way there is no horn. */
+  traffic_t* free_road = traffic_create(routes, 1, world, &fleet, 1, 3);
+  traffic_car_place(free_road, 0, 0, 1, 40.0f);
+  for (int step = 0; step < 120 * 8; step++) {
+    traffic_step(free_road, world, vec3(1000, 0, 1000), vec3_zero(),
+                 1.0f / 120.0f);
+    assert(traffic_nearest_honk(free_road, vec3(0, 0, 0)) > 1e6f);
+  }
+  traffic_destroy(free_road, world);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -828,6 +865,7 @@ void run_traffic_tests(void) {
   RUN(a_bus_halts_at_a_bus_stop_for_a_while_and_goes_on);
   RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
+  RUN(a_driver_held_up_by_the_player_sounds_the_horn);
   RUN(a_car_follows_the_curve_through_a_corner_without_jumping);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);

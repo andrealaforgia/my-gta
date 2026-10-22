@@ -6,7 +6,8 @@
 #define CYLINDERS 4
 
 audio_state_t audio_state_default(void) {
-  audio_state_t state = {false, 0, 0, 0, 0, 2.0f, 0.8f, 0, 0, 0, 0, false, 0};
+  audio_state_t state = {false, 0, 0, 0, 0,     2.0f, 0.8f,
+                         0,     0, 0, 0, false, 0,    0};
   return state;
 }
 
@@ -242,6 +243,21 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
           sinf(2.0f * (float)M_PI * mixer->horn_phase_b) * 0.7f + b * 0.2f;
       horn = (wa + wb) * 0.17f * mixer->horn_level;
     }
+    /* Another driver's horn: a higher pair, quick to start and stop. */
+    mixer->other_horn_level +=
+        (s->other_horn - mixer->other_horn_level) * 0.01f;
+    float other_horn = 0;
+    if (mixer->other_horn_level > 0.002f) {
+      mixer->other_horn_phase_a += 370.0f * dt;
+      mixer->other_horn_phase_b += 465.0f * dt;
+      if (mixer->other_horn_phase_a >= 1.0f) mixer->other_horn_phase_a -= 1.0f;
+      if (mixer->other_horn_phase_b >= 1.0f) mixer->other_horn_phase_b -= 1.0f;
+      float wa = sinf(2.0f * (float)M_PI * mixer->other_horn_phase_a) * 0.7f +
+                 (mixer->other_horn_phase_a * 2.0f - 1.0f) * 0.2f;
+      float wb = sinf(2.0f * (float)M_PI * mixer->other_horn_phase_b) * 0.7f +
+                 (mixer->other_horn_phase_b * 2.0f - 1.0f) * 0.2f;
+      other_horn = (wa + wb) * 0.15f * mixer->other_horn_level;
+    }
     /* A siren: two tones in turn, 435 and 580 Hz, a little under half a
      * second each, with the pitch gliding between them. */
     mixer->siren_level += (s->siren - mixer->siren_level) * 0.0008f * 48000.0f /
@@ -282,8 +298,9 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       }
       bell *= 0.16f;
     }
-    out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
-                        bird + cricket + bell + rain + horn + siren) *
-                       gain);
+    out[i] =
+        soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bird +
+                   cricket + bell + rain + horn + other_horn + siren) *
+                  gain);
   }
 }

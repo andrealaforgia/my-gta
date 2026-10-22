@@ -74,6 +74,9 @@ void traffic_car_set_kind(traffic_t* traffic, size_t index, int variant,
                           bool responding);
 /* Distance from a point to the nearest emergency vehicle that is on a call
  * (beacons flashing, siren sounding), 1e9 with none. */
+/* Distance to the nearest car that is sounding its horn at the player, who
+ * has held it up for a while, or a huge number if none is. */
+float traffic_nearest_honk(const traffic_t* t, vec3_t point);
 float traffic_nearest_siren(const traffic_t* traffic, vec3_t point);
 /* Whether car `index` is on a call. */
 bool traffic_car_responding(const traffic_t* traffic, size_t index);

@@ -31,6 +31,8 @@ typedef struct {
   float raw_x, raw_z, raw_yaw;
   float error_x, error_z, error_yaw;
   bool changed_lane;
+  float player_wait; /* seconds held up by the player's car */
+  bool honking;
   float waited;  /* seconds spent standing still */
   float ghost;   /* metres left to go through others, after a deadlock */
   float dwell;   /* seconds stood at a bus stop */
@@ -450,6 +452,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     car->lateral += (car->lateral_goal - car->lateral) * fminf(1.0f, 2.5f * dt);
     float limit = target;
     bool must_stop = false;
+    bool held_by_player = false;
     float gap_to_stop = 1e9f;
     for (size_t j = 0; j <= t->car_count; j++) {
       vec3_t other;
@@ -488,6 +491,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
         if (fabsf(ofx * fx + ofz * fz) < 0.5f && ahead > 7.0f) continue;
       }
       float gap = ahead - (own_half_length + other_half_length + 0.6f);
+      if (j == t->car_count && gap < 4.0f) held_by_player = true;
       if (gap < gap_to_stop) gap_to_stop = gap;
       /* Follow at the leader's pace when there is room. */
       if (gap > 4.0f)
@@ -595,6 +599,13 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       car->speed = fmaxf(limit, car->speed - slowdown);
     }
     car->braking = car->speed < before - 0.002f || must_stop;
+    /* Held up by the player for a while, a driver leans on the horn. */
+    if (held_by_player && car->speed < 0.3f)
+      car->player_wait += dt;
+    else
+      car->player_wait = 0;
+    car->honking =
+        car->player_wait > 3.0f && fmodf(car->player_wait - 3.0f, 2.2f) < 0.35f;
     car->s += car->speed * dt;
     /* Deadlocks are rare but would last for ever: after a long stand, go on
      * through the others for a little way. */
@@ -631,6 +642,17 @@ float traffic_nearest_siren(const traffic_t* t, vec3_t point) {
 
 bool traffic_car_responding(const traffic_t* t, size_t index) {
   return t->cars[index].responding;
+}
+
+float traffic_nearest_honk(const traffic_t* t, vec3_t point) {
+  float nearest = 1e9f;
+  for (size_t i = 0; i < t->car_count; i++) {
+    if (!t->cars[i].honking) continue;
+    float d = hypotf(t->cars[i].position.x - point.x,
+                     t->cars[i].position.z - point.z);
+    if (d < nearest) nearest = d;
+  }
+  return nearest;
 }
 
 float traffic_nearest_distance(const traffic_t* t, vec3_t point) {
