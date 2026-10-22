@@ -93,7 +93,7 @@ static aircraft_status_t step_plane(aircraft_t* a, aircraft_controls_t c,
     a->roll = 0;
     a->path = 0;
     a->climb = 0;
-    move(a, a->speed, dt);
+    advance(a, a->speed, dt);
     a->position.y = ground;
     float lift = a->speed / LIFT_OFF_SPEED;
     if (lift * lift > 1.0f && a->pitch > 0.06f) {
@@ -117,7 +117,7 @@ static aircraft_status_t step_plane(aircraft_t* a, aircraft_controls_t c,
   a->yaw_rate = clampf(turn, -1.0f, 1.0f);
   a->yaw += a->yaw_rate * dt;
   a->climb = a->speed * sinf(a->path);
-  move(a, a->speed * cosf(a->path), dt);
+  advance(a, a->speed * cosf(a->path), dt);
   if (a->position.y <= ground) {
     float sink = -a->climb;
     bool hard = sink > HARD_LANDING || fabsf(a->roll) > 0.4f || a->path < -0.3f;
@@ -151,7 +151,7 @@ static aircraft_status_t step_helicopter(aircraft_t* a, aircraft_controls_t c,
   a->pitch = ease(a->pitch, -a->speed / 42.0f * 0.3f, 2.0f, dt);
   a->roll =
       ease(a->roll, c.roll * 0.3f * fminf(1.0f, a->speed / 8.0f), 2.0f, dt);
-  move(a, a->speed, dt);
+  advance(a, a->speed, dt);
   a->on_ground = false;
   if (a->position.y <= ground) {
     bool hard = -a->climb > HARD_LANDING + 3.0f;
