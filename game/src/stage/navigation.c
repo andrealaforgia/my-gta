@@ -53,8 +53,9 @@ static bool usable(const city_route_t* route, float length) {
 
 void nav_destroy(nav_t* nav) {
   if (!nav) return;
-  if (nav->cumulative)
+  if (nav->cumulative) {
     for (size_t r = 0; r < nav->route_count; r++) free(nav->cumulative[r]);
+  }
   free(nav->cumulative);
   free(nav->lengths);
   free(nav->node_ids);
