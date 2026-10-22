@@ -614,6 +614,44 @@ static void the_sea_lies_on_the_right_of_a_coastline_and_is_walled(void) {
   }
 }
 
+static void a_coast_cut_into_ways_still_makes_one_sea(void) {
+  /* The same eastward coast as one way, and as two that meet at a node. */
+  const char* one_way =
+      "<way id=\"30\"><nd ref=\"1\"/><nd ref=\"5\"/><nd ref=\"2\"/>"
+      "<tag k=\"natural\" v=\"coastline\"/></way>";
+  const char* two_ways =
+      "<way id=\"30\"><nd ref=\"1\"/><nd ref=\"5\"/>"
+      "<tag k=\"natural\" v=\"coastline\"/></way>"
+      "<way id=\"32\"><nd ref=\"5\"/><nd ref=\"2\"/>"
+      "<tag k=\"natural\" v=\"coastline\"/></way>";
+  double wet[2];
+  for (int variant = 0; variant < 2; variant++) {
+    char xml[1600];
+    snprintf(xml, sizeof(xml),
+             "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" "
+             "maxlat=\"45.002\" maxlon=\"12.003\"/>"
+             "<node id=\"1\" lat=\"45.0005\" lon=\"11.9995\"/>"
+             "<node id=\"5\" lat=\"45.0005\" lon=\"12.0010\"/>"
+             "<node id=\"2\" lat=\"45.0005\" lon=\"12.0025\"/>"
+             "<node id=\"3\" lat=\"45.0016\" lon=\"12.0000\"/>"
+             "<node id=\"4\" lat=\"45.0016\" lon=\"12.0020\"/>%s"
+             "<way id=\"31\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+             "v=\"residential\"/></way></osm>",
+             variant == 0 ? one_way : two_ways);
+    osm_data_t osm;
+    assert(osm_parse(&osm, xml));
+    city_model_t model;
+    assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+    osm_free(&osm);
+    assert(model.barrier_count == 1);
+    double coast_z = model.barriers[0].points[0].z;
+    wet[variant] = water_area_on_side(&model, coast_z, true);
+    assert(water_area_on_side(&model, coast_z, false) < 1.0);
+    city_model_free(&model);
+  }
+  assert(wet[0] > 20000.0 && fabs(wet[0] - wet[1]) < 1.0);
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -658,5 +696,6 @@ void run_city_tests(void) {
   RUN(street_furniture_is_imported_and_survives_the_model);
   RUN(walls_fences_and_hedges_are_imported_and_survive_the_model);
   RUN(the_sea_lies_on_the_right_of_a_coastline_and_is_walled);
+  RUN(a_coast_cut_into_ways_still_makes_one_sea);
   RUN(the_model_round_trips_through_its_text_format);
 }
