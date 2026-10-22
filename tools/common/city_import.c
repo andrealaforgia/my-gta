@@ -1080,119 +1080,149 @@ static size_t clip_to_rectangle(const local_point_t* in, size_t count,
   return n;
 }
 
-/* The sea of one coastline, which has the land on its left and the sea on
- * its right: the coast closed round the extract's edge on the sea side, cut
- * into 100 m pieces so that each belongs to a chunk near it. */
-static void lay_sea(city_model_t* model, int64_t source_id,
-                    const local_point_t* coast, size_t count,
-                    const extent_t* extent) {
-  local_point_t* ring = malloc((count + 12) * sizeof(local_point_t));
-  local_point_t* other = malloc((count + 12) * sizeof(local_point_t));
-  if (!ring || !other) {
-    free(ring);
-    free(other);
-    return;
+/* A stretch of coastline inside the extract, closed off at the extract's
+ * edge at both ends: it starts and ends on the edge. */
+typedef struct {
+  local_point_t* points;
+  size_t count;
+  double s_start, s_end; /* positions round the edge */
+  int64_t source_id;
+  bool linked;
+} coast_run_t;
+
+/* Fills one ring of sea, clockwise (the sea is on the right of the coast):
+ * triangulated, and every triangle cut into 100 m pieces so that each
+ * belongs to a chunk near it. */
+static void fill_sea(city_model_t* model, int64_t source_id,
+                     local_point_t* ring, size_t count) {
+  if (count < 3 || signed_area(ring, count) >= 0) return;
+  /* Anticlockwise for the triangulator. */
+  for (size_t i = 0; i < count / 2; i++) {
+    local_point_t tmp = ring[i];
+    ring[i] = ring[count - 1 - i];
+    ring[count - 1 - i] = tmp;
   }
-  size_t n = 0;
-  for (size_t i = 0; i < count; i++) {
-    ring[n].x = fmin(fmax(coast[i].x, extent->low_x), extent->high_x);
-    ring[n].z = fmin(fmax(coast[i].z, extent->low_z), extent->high_z);
-    if (n == 0 ||
-        hypot(ring[n].x - ring[n - 1].x, ring[n].z - ring[n - 1].z) > 0.1)
-      n++;
+  uint32_t* indices = malloc(3 * (count - 2) * sizeof(uint32_t));
+  if (!indices) return;
+  bool clean;
+  size_t triangles = triangulate_polygon(ring, count, indices, &clean);
+  const double cell = 100.0;
+  for (size_t t = 0; t < triangles; t++) {
+    local_point_t tri[3] = {ring[indices[3 * t]], ring[indices[3 * t + 1]],
+                            ring[indices[3 * t + 2]]};
+    double min_x = fmin(tri[0].x, fmin(tri[1].x, tri[2].x));
+    double max_x = fmax(tri[0].x, fmax(tri[1].x, tri[2].x));
+    double min_z = fmin(tri[0].z, fmin(tri[1].z, tri[2].z));
+    double max_z = fmax(tri[0].z, fmax(tri[1].z, tri[2].z));
+    for (double gx = floor(min_x / cell); gx * cell <= max_x; gx += 1.0)
+      for (double gz = floor(min_z / cell); gz * cell <= max_z; gz += 1.0) {
+        extent_t box = {gx * cell, gz * cell, (gx + 1) * cell, (gz + 1) * cell};
+        local_point_t piece[16];
+        size_t pn = clip_to_rectangle(tri, 3, &box, piece);
+        if (pn < 3) continue;
+        ring_t r = {piece, NULL, pn};
+        add_area(model, source_id, AREA_WATER, &r);
+      }
   }
-  if (n < 2) {
-    free(ring);
-    free(other);
-    return;
-  }
-  /* Carry both ends straight on to the edge of the extract. */
-  local_point_t start = leave_extent(extent, ring[0], ring[0].x - ring[1].x,
-                                     ring[0].z - ring[1].z);
-  local_point_t end =
-      leave_extent(extent, ring[n - 1], ring[n - 1].x - ring[n - 2].x,
-                   ring[n - 1].z - ring[n - 2].z);
+  free(indices);
+}
+
+/* Joins the runs end to start round the edge of the extract, clockwise (the
+ * sea being on the right of the coast), into rings of sea, and fills them. */
+static void sea_from_runs(city_model_t* model, coast_run_t* runs,
+                          size_t run_count, const extent_t* extent) {
   double perimeter = 2 * (extent->high_x - extent->low_x) +
                      2 * (extent->high_z - extent->low_z);
-  double s_start = edge_position(extent, start),
-         s_end = edge_position(extent, end);
-  local_point_t* best = NULL;
-  size_t best_count = 0;
   double corners[4];
   for (int c = 0; c < 4; c++)
     corners[c] = edge_position(extent, edge_corner(extent, c));
-  for (int direction = 0; direction < 2 && !best; direction++) {
-    /* Round the edge from the end of the coast back to its start, one way
-     * or the other: the corners met on the way, nearest first. */
-    double to_start = direction == 0
-                          ? fmod(s_start - s_end + perimeter, perimeter)
-                          : fmod(s_end - s_start + perimeter, perimeter);
-    double along[4];
-    int order[4] = {0, 1, 2, 3};
-    for (int c = 0; c < 4; c++)
-      along[c] = direction == 0
-                     ? fmod(corners[c] - s_end + perimeter, perimeter)
-                     : fmod(s_end - corners[c] + perimeter, perimeter);
-    for (int i = 0; i < 4; i++)
-      for (int j = i + 1; j < 4; j++)
-        if (along[order[j]] < along[order[i]]) {
-          int tmp = order[i];
-          order[i] = order[j];
-          order[j] = tmp;
-        }
-    size_t m = 0;
-    for (size_t i = 0; i < n; i++) other[m++] = ring[i];
-    other[m++] = end;
-    for (int i = 0; i < 4; i++)
-      if (along[order[i]] > 0.01 && along[order[i]] < to_start - 0.01)
-        other[m++] = edge_corner(extent, order[i]);
-    other[m++] = start;
-    /* The sea is on the right of the coast, so its ring runs clockwise. */
-    if (signed_area(other, m) < 0) {
-      best = malloc(m * sizeof(local_point_t));
-      if (best) {
-        memcpy(best, other, m * sizeof(local_point_t));
-        best_count = m;
+  size_t total = 0;
+  for (size_t i = 0; i < run_count; i++) total += runs[i].count + 6;
+  local_point_t* ring = malloc((total + 8) * sizeof(local_point_t));
+  if (!ring) return;
+  for (size_t first = 0; first < run_count; first++) {
+    if (runs[first].linked) continue;
+    size_t n = 0, current = first;
+    bool closed = false;
+    for (size_t guard = 0; guard <= run_count && !closed; guard++) {
+      coast_run_t* run = &runs[current];
+      run->linked = true;
+      for (size_t k = 0; k < run->count; k++) ring[n++] = run->points[k];
+      /* On from this run's end, clockwise, to the nearest start. */
+      size_t next = run_count;
+      double best = 1e30;
+      for (size_t q = 0; q < run_count; q++) {
+        if (runs[q].linked && q != first) continue;
+        double d = fmod(runs[q].s_start - run->s_end + perimeter, perimeter);
+        if (d < best) best = d, next = q;
       }
+      if (next == run_count) break;
+      for (int c = 0; c < 4; c++) {
+        double along = fmod(corners[c] - run->s_end + perimeter, perimeter);
+        if (along > 0.01 && along < best - 0.01)
+          ring[n++] = edge_corner(extent, c);
+      }
+      if (next == first)
+        closed = true;
+      else
+        current = next;
     }
+    if (closed) fill_sea(model, runs[first].source_id, ring, n);
   }
   free(ring);
-  free(other);
-  if (!best) return;
-  /* Anticlockwise for the triangulator. */
-  for (size_t i = 0; i < best_count / 2; i++) {
-    local_point_t tmp = best[i];
-    best[i] = best[best_count - 1 - i];
-    best[best_count - 1 - i] = tmp;
-  }
-  uint32_t* indices = malloc(3 * (best_count - 2) * sizeof(uint32_t));
-  if (indices) {
-    bool clean;
-    size_t triangles = triangulate_polygon(best, best_count, indices, &clean);
-    const double cell = 100.0;
-    for (size_t t = 0; t < triangles; t++) {
-      local_point_t tri[3] = {best[indices[3 * t]], best[indices[3 * t + 1]],
-                              best[indices[3 * t + 2]]};
-      double min_x = fmin(tri[0].x, fmin(tri[1].x, tri[2].x));
-      double max_x = fmax(tri[0].x, fmax(tri[1].x, tri[2].x));
-      double min_z = fmin(tri[0].z, fmin(tri[1].z, tri[2].z));
-      double max_z = fmax(tri[0].z, fmax(tri[1].z, tri[2].z));
-      for (double gx = floor(min_x / cell); gx * cell <= max_x; gx += 1.0)
-        for (double gz = floor(min_z / cell); gz * cell <= max_z; gz += 1.0) {
-          extent_t box = {gx * cell, gz * cell, (gx + 1) * cell,
-                          (gz + 1) * cell};
-          local_point_t piece[16];
-          size_t pn = clip_to_rectangle(tri, 3, &box, piece);
-          if (pn < 3) continue;
-          ring_t r = {piece, NULL, pn};
-          add_area(model, source_id, AREA_WATER, &r);
-        }
-    }
-    free(indices);
-  }
-  free(best);
 }
 
+/* Stretches of the coastlines that lie inside the extract. */
+static bool add_run(coast_run_t** runs, size_t* count, size_t* capacity,
+                    const local_point_t* points, size_t n, int64_t source_id,
+                    const extent_t* extent) {
+  if (n < 2) return true;
+  local_point_t* own = malloc((n + 2) * sizeof(local_point_t));
+  if (!own) return false;
+  size_t m = 1; /* room for the start at the edge */
+  for (size_t i = 0; i < n; i++) {
+    local_point_t p = {fmin(fmax(points[i].x, extent->low_x), extent->high_x),
+                       fmin(fmax(points[i].z, extent->low_z), extent->high_z)};
+    if (m == 1 || hypot(p.x - own[m - 1].x, p.z - own[m - 1].z) > 0.1)
+      own[m++] = p;
+  }
+  if (m < 3) {
+    free(own);
+    return true;
+  }
+  /* Carry both ends straight on to the edge. */
+  own[0] =
+      leave_extent(extent, own[1], own[1].x - own[2].x, own[1].z - own[2].z);
+  local_point_t end =
+      leave_extent(extent, own[m - 1], own[m - 1].x - own[m - 2].x,
+                   own[m - 1].z - own[m - 2].z);
+  own[m++] = end;
+  if (*count == *capacity) {
+    size_t grown = *capacity ? *capacity * 2 : 8;
+    coast_run_t* bigger = realloc(*runs, grown * sizeof(coast_run_t));
+    if (!bigger) {
+      free(own);
+      return false;
+    }
+    *runs = bigger;
+    *capacity = grown;
+  }
+  coast_run_t* run = &(*runs)[(*count)++];
+  run->points = own;
+  run->count = m;
+  run->s_start = edge_position(extent, own[0]);
+  run->s_end = edge_position(extent, own[m - 1]);
+  run->source_id = source_id;
+  run->linked = false;
+  return true;
+}
+
+/* A coastline has the land on its left and the sea on its right. The sea is
+ * laid as water over everything to the right of the coast, out to the edge of
+ * the extract, with a low sea wall along the coast to keep cars out. The
+ * coast is often cut into several ways and may leave the extract and come
+ * back (a harbour mole), so the ways are joined end to end first, split where
+ * nodes are missing, and the stretches joined round the edge. */
 static void import_coast(city_model_t* model, const osm_data_t* osm) {
   local_point_t corner_a = projection_project(
       &model->projection, model->bounds.min_lat, model->bounds.min_lon);
@@ -1201,29 +1231,95 @@ static void import_coast(city_model_t* model, const osm_data_t* osm) {
   extent_t extent = {fmin(corner_a.x, corner_b.x), fmin(corner_a.z, corner_b.z),
                      fmax(corner_a.x, corner_b.x),
                      fmax(corner_a.z, corner_b.z)};
+  /* The coastline ways as chains of node ids, joined where one ends at the
+   * node another starts from. */
+  size_t chain_count = 0;
+  int64_t** chains = NULL;
+  size_t* chain_sizes = NULL;
+  int64_t* chain_sources = NULL;
   for (size_t i = 0; i < osm->way_count; i++) {
     const osm_way_t* way = &osm->ways[i];
     const char* natural = osm_tag(way->tags, way->tag_count, "natural");
-    if (!natural || strcmp(natural, "coastline") != 0) continue;
-    cleaned_way_t cleaned = {0};
-    if (!clean_way(osm, &model->projection, way, &cleaned) ||
-        cleaned.point_count < 2) {
-      free(cleaned.points);
-      free(cleaned.node_ids);
+    if (!natural || strcmp(natural, "coastline") != 0 || way->node_count < 2)
       continue;
-    }
-    lay_sea(model, way->id, cleaned.points, cleaned.point_count, &extent);
-    city_barrier_t* wall = city_model_add_barrier(model);
-    if (wall) {
-      wall->source_id = way->id;
-      wall->kind = BARRIER_SEAWALL;
-      wall->points = cleaned.points;
-      wall->point_count = cleaned.point_count;
-    } else {
-      free(cleaned.points);
-    }
-    free(cleaned.node_ids);
+    int64_t** grown_chains =
+        realloc(chains, (chain_count + 1) * sizeof(*chains));
+    size_t* grown_sizes =
+        realloc(chain_sizes, (chain_count + 1) * sizeof(size_t));
+    int64_t* grown_sources =
+        realloc(chain_sources, (chain_count + 1) * sizeof(int64_t));
+    if (grown_chains) chains = grown_chains;
+    if (grown_sizes) chain_sizes = grown_sizes;
+    if (grown_sources) chain_sources = grown_sources;
+    if (!grown_chains || !grown_sizes || !grown_sources) break;
+    chains[chain_count] = malloc(way->node_count * sizeof(int64_t));
+    if (!chains[chain_count]) break;
+    memcpy(chains[chain_count], way->node_refs,
+           way->node_count * sizeof(int64_t));
+    chain_sizes[chain_count] = way->node_count;
+    chain_sources[chain_count] = way->id;
+    chain_count++;
   }
+  for (bool joined = true; joined;) {
+    joined = false;
+    for (size_t a = 0; a < chain_count && !joined; a++)
+      for (size_t b = 0; b < chain_count && !joined; b++) {
+        if (a == b || chains[a][chain_sizes[a] - 1] != chains[b][0]) continue;
+        int64_t* both = realloc(
+            chains[a], (chain_sizes[a] + chain_sizes[b]) * sizeof(int64_t));
+        if (!both) continue;
+        memcpy(both + chain_sizes[a], chains[b] + 1,
+               (chain_sizes[b] - 1) * sizeof(int64_t));
+        chains[a] = both;
+        chain_sizes[a] += chain_sizes[b] - 1;
+        free(chains[b]);
+        chains[b] = chains[chain_count - 1];
+        chain_sizes[b] = chain_sizes[chain_count - 1];
+        chain_sources[b] = chain_sources[chain_count - 1];
+        chain_count--;
+        joined = true;
+      }
+  }
+  coast_run_t* runs = NULL;
+  size_t run_count = 0, run_capacity = 0;
+  for (size_t c = 0; c < chain_count; c++) {
+    bool island = chains[c][0] == chains[c][chain_sizes[c] - 1];
+    local_point_t* stretch = malloc(chain_sizes[c] * sizeof(local_point_t));
+    size_t n = 0;
+    for (size_t i = 0; stretch && i <= chain_sizes[c] && !island; i++) {
+      const osm_node_t* node =
+          i < chain_sizes[c] ? osm_find_node(osm, chains[c][i]) : NULL;
+      if (node) {
+        stretch[n++] =
+            projection_project(&model->projection, node->lat, node->lon);
+        continue;
+      }
+      /* A node is missing, so the coast is out of the extract here. */
+      if (n >= 2) {
+        add_run(&runs, &run_count, &run_capacity, stretch, n, chain_sources[c],
+                &extent);
+        city_barrier_t* wall = city_model_add_barrier(model);
+        if (wall) {
+          wall->points = malloc(n * sizeof(local_point_t));
+          if (wall->points) {
+            memcpy(wall->points, stretch, n * sizeof(local_point_t));
+            wall->point_count = n;
+            wall->source_id = chain_sources[c];
+            wall->kind = BARRIER_SEAWALL;
+          }
+        }
+      }
+      n = 0;
+    }
+    free(stretch);
+  }
+  sea_from_runs(model, runs, run_count, &extent);
+  for (size_t i = 0; i < run_count; i++) free(runs[i].points);
+  free(runs);
+  for (size_t c = 0; c < chain_count; c++) free(chains[c]);
+  free(chains);
+  free(chain_sizes);
+  free(chain_sources);
 }
 
 /* ---- areas ---- */
