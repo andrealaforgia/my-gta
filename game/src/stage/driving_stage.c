@@ -279,9 +279,18 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
           nav_path(stage->nav, at.x, at.z, stage->mission.x, stage->mission.z,
                    stage->satnav, 1024, NULL);
     }
-    if (mission_step(&stage->mission, stage->scene.routes,
-                     stage->scene.route_count, at.x, at.z,
-                     dt) == MISSION_STARTED) {
+    mission_event_t started =
+        mission_step(&stage->mission, stage->scene.routes,
+                     stage->scene.route_count, at.x, at.z, dt);
+    /* A destination no road leads to is no use: ask for another. */
+    if (started == MISSION_STARTED && stage->nav &&
+        nav_path(stage->nav, at.x, at.z, stage->mission.x, stage->mission.z,
+                 stage->satnav, 1024, NULL) == 0) {
+      stage->mission.active = false;
+      stage->mission.pause = 0.5f;
+      started = MISSION_NOTHING;
+    }
+    if (started == MISSION_STARTED) {
       ray_t down = {vec3(stage->mission.x, 300.0f, stage->mission.z),
                     vec3(0, -1, 0)};
       ray_cast_result_t hit;

@@ -400,6 +400,17 @@ static void plan_next(traffic_t* t, car_t* car) {
       for (int c = 0; c < count; c++)
         if (candidates[c][0] == route && candidates[c][1] == (forward ? 1 : -1))
           pick = c;
+    } else {
+      /* No road is known to lead there: at least head the right way, to the
+       * road whose far end is nearest the player. */
+      float nearest = 1e30f;
+      for (int c = 0; c < count; c++) {
+        const lane_t* lane = &t->lanes[candidates[c][0]];
+        float x, z, dx, dz, g;
+        sample(lane, lane->length, candidates[c][1], &x, &z, &dx, &dz, &g);
+        float d = hypotf(x - t->player.x, z - t->player.z);
+        if (d < nearest) nearest = d, pick = c;
+      }
     }
   }
   car->planned_route = candidates[pick][0];
@@ -466,9 +477,19 @@ static void send_pursuers(traffic_t* t, float dt) {
       continue;
     float d =
         hypotf(car->position.x - t->player.x, car->position.z - t->player.z);
-    if (d < TRAFFIC_VISIBLE_RANGE + 20.0f && t->has_focus) {
-      /* In sight: another road, out of it. */
-      recycle(t, car);
+    /* It must start out of sight, and on a road that leads to the player if
+     * the roads are known. */
+    int route, forward;
+    bool leads =
+        !t->nav || nav_next_hop(t->nav, car->route, car->direction > 0,
+                                t->player.x, t->player.z, &route, &forward);
+    if ((d < TRAFFIC_VISIBLE_RANGE + 20.0f || !leads) && t->has_focus) {
+      for (int tries = 0; tries < 24; tries++) {
+        recycle(t, car);
+        if (!t->nav || nav_next_hop(t->nav, car->route, car->direction > 0,
+                                    t->player.x, t->player.z, &route, &forward))
+          break;
+      }
       pose(t, car, true, 0);
     }
     car->pursuing = true;

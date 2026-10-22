@@ -48,7 +48,9 @@ static int node_index(const nav_t* nav, int64_t id) {
 }
 
 static bool usable(const city_route_t* route, float length) {
-  return route->drivable && route->point_count >= 2 && length > 1.0f;
+  /* Cars cannot turn into anything under six metres, so neither does the
+   * satnav. */
+  return route->drivable && route->point_count >= 2 && length >= 6.0f;
 }
 
 void nav_destroy(nav_t* nav) {
@@ -214,26 +216,88 @@ typedef struct {
   float off;   /* metres from the road */
 } snap_t;
 
-static snap_t snap(const nav_t* nav, float x, float z) {
-  snap_t best = {-1, 0, 1e30f};
-  for (size_t r = 0; r < nav->route_count; r++) {
-    const city_route_t* route = &nav->routes[r];
-    if (!usable(route, nav->lengths[r])) continue;
-    for (size_t k = 1; k < route->point_count; k++) {
-      float ax = route->points[2 * k - 2], az = route->points[2 * k - 1];
-      float bx = route->points[2 * k], bz = route->points[2 * k + 1];
-      float dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
-      float t = l2 > 1e-6f ? ((x - ax) * dx + (z - az) * dz) / l2 : 0;
-      t = t < 0 ? 0 : (t > 1 ? 1 : t);
-      float off = hypotf(x - (ax + dx * t), z - (az + dz * t));
-      if (off < best.off) {
-        best.off = off, best.route = (int)r;
-        best.along = nav->cumulative[r][k - 1] +
-                     t * (nav->cumulative[r][k] - nav->cumulative[r][k - 1]);
-      }
+static snap_t snap_route(const nav_t* nav, size_t r, float x, float z) {
+  snap_t best = {(int)r, 0, 1e30f};
+  const city_route_t* route = &nav->routes[r];
+  for (size_t k = 1; k < route->point_count; k++) {
+    float ax = route->points[2 * k - 2], az = route->points[2 * k - 1];
+    float bx = route->points[2 * k], bz = route->points[2 * k + 1];
+    float dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+    float t = l2 > 1e-6f ? ((x - ax) * dx + (z - az) * dz) / l2 : 0;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    float off = hypotf(x - (ax + dx * t), z - (az + dz * t));
+    if (off < best.off) {
+      best.off = off;
+      best.along = nav->cumulative[r][k - 1] +
+                   t * (nav->cumulative[r][k] - nav->cumulative[r][k - 1]);
     }
   }
   return best;
+}
+
+static snap_t snap(const nav_t* nav, float x, float z) {
+  snap_t best = {-1, 0, 1e30f};
+  for (size_t r = 0; r < nav->route_count; r++) {
+    if (!usable(&nav->routes[r], nav->lengths[r])) continue;
+    snap_t candidate = snap_route(nav, r, x, z);
+    if (candidate.off < best.off) best = candidate;
+  }
+  return best;
+}
+
+/* Runs the search to the end from whatever nodes have been given a distance
+ * with relax(). */
+static void search(nav_t* nav) {
+  while (nav->heap_size > 0) {
+    int node = nav->heap[0];
+    heap_swap(nav, 0, nav->heap_size - 1);
+    nav->heap_size--;
+    nav->heap_position[node] = -2;
+    if (nav->heap_size > 0) heap_down(nav, 0);
+    for (int e = nav->first_edge[node]; e < nav->first_edge[node + 1]; e++) {
+      int to = nav->edges[e].to;
+      if (nav->heap_position[to] == -2) continue;
+      relax(nav, to, nav->distance[node] + nav->edges[e].length, e);
+    }
+  }
+}
+
+static void reset_search(nav_t* nav) {
+  for (int i = 0; i < nav->node_count; i++) {
+    nav->distance[i] = 1e30f;
+    nav->came_by[i] = -1;
+    nav->heap_position[i] = -1;
+  }
+  nav->heap_size = 0;
+}
+
+/* After a search: the road to arrive at (x, z) by. A spot may lie near a
+ * road that cannot be reached (a one-way spur, an island), so among the
+ * roads within 40 m of the nearest the cheapest to reach is taken, the walk
+ * from its road counting double. `from`, if given, is where the search began:
+ * its own road can be driven along directly. Returns route -1 if none. */
+static snap_t best_target(const nav_t* nav, float x, float z,
+                          const snap_t* from) {
+  snap_t nearest = snap(nav, x, z);
+  snap_t best = {-1, 0, 1e30f};
+  if (nearest.route < 0) return best;
+  float best_cost = 1e30f;
+  for (size_t r = 0; r < nav->route_count; r++) {
+    const city_route_t* route = &nav->routes[r];
+    if (!usable(route, nav->lengths[r])) continue;
+    snap_t c = snap_route(nav, r, x, z);
+    if (c.off > nearest.off + 40.0f) continue;
+    float cost = nav->distance[node_index(nav, route->start_node)] + c.along;
+    if (!route->oneway)
+      cost = fminf(cost, nav->distance[node_index(nav, route->end_node)] +
+                             (nav->lengths[r] - c.along));
+    if (from && (int)r == from->route &&
+        (c.along >= from->along || !route->oneway))
+      cost = fminf(cost, fabsf(c.along - from->along));
+    cost += 2.0f * c.off;
+    if (cost < best_cost) best_cost = cost, best = c;
+  }
+  return best_cost >= 1e29f ? (snap_t){-1, 0, 1e30f} : best;
 }
 
 /* ---- the polyline ---- */
@@ -290,39 +354,27 @@ static void slice(const nav_t* nav, writer_t* w, int route, float from,
 size_t nav_path(nav_t* nav, float from_x, float from_z, float to_x, float to_z,
                 float* out, size_t max_points, float* length) {
   if (!nav || max_points < 2) return 0;
-  snap_t a = snap(nav, from_x, from_z), b = snap(nav, to_x, to_z);
-  if (a.route < 0 || b.route < 0) return 0;
-  const city_route_t *ra = &nav->routes[a.route], *rb = &nav->routes[b.route];
-  float la = nav->lengths[a.route], lb = nav->lengths[b.route];
-  /* Straight along one road, if it can be driven that way. */
-  float direct = 1e30f;
-  if (a.route == b.route && (b.along >= a.along || !ra->oneway))
-    direct = fabsf(b.along - a.along);
-  for (int i = 0; i < nav->node_count; i++) {
-    nav->distance[i] = 1e30f;
-    nav->came_by[i] = -1;
-    nav->heap_position[i] = -1;
-  }
-  nav->heap_size = 0;
+  snap_t a = snap(nav, from_x, from_z);
+  if (a.route < 0) return 0;
+  const city_route_t* ra = &nav->routes[a.route];
+  float la = nav->lengths[a.route];
+  reset_search(nav);
   /* Leave the start's road by either end it allows. */
   int end_a = node_index(nav, ra->end_node),
       start_a = node_index(nav, ra->start_node);
   relax(nav, end_a, la - a.along, -1);
   if (!ra->oneway) relax(nav, start_a, a.along, -1);
+  search(nav);
+  snap_t b = best_target(nav, to_x, to_z, &a);
+  if (b.route < 0) return 0;
+  const city_route_t* rb = &nav->routes[b.route];
+  float lb = nav->lengths[b.route];
+  /* Straight along one road, if it can be driven that way. */
+  float direct = 1e30f;
+  if (a.route == b.route && (b.along >= a.along || !ra->oneway))
+    direct = fabsf(b.along - a.along);
   int goal_from_start = node_index(nav, rb->start_node);
   int goal_from_end = node_index(nav, rb->end_node);
-  while (nav->heap_size > 0) {
-    int node = nav->heap[0];
-    heap_swap(nav, 0, nav->heap_size - 1);
-    nav->heap_size--;
-    nav->heap_position[node] = -2;
-    if (nav->heap_size > 0) heap_down(nav, 0);
-    for (int e = nav->first_edge[node]; e < nav->first_edge[node + 1]; e++) {
-      int to = nav->edges[e].to;
-      if (nav->heap_position[to] == -2) continue;
-      relax(nav, to, nav->distance[node] + nav->edges[e].length, e);
-    }
-  }
   /* Arrive by the start of the target road, or by its end against the flow
    * if it is two-way. */
   float via_start = nav->distance[goal_from_start] + b.along;
@@ -370,31 +422,15 @@ bool nav_next_hop(nav_t* nav, int route, int forward, float to_x, float to_z,
                   int* next_route, int* next_forward) {
   if (!nav || route < 0 || (size_t)route >= nav->route_count) return false;
   const city_route_t* here = &nav->routes[route];
-  snap_t b = snap(nav, to_x, to_z);
+  int origin = node_index(nav, forward ? here->end_node : here->start_node);
+  if (origin < 0) return false;
+  reset_search(nav);
+  relax(nav, origin, 0, -1);
+  search(nav);
+  snap_t b = best_target(nav, to_x, to_z, NULL);
   if (b.route < 0 || b.route == route) return false;
   const city_route_t* rb = &nav->routes[b.route];
   float lb = nav->lengths[b.route];
-  int origin = node_index(nav, forward ? here->end_node : here->start_node);
-  if (origin < 0) return false;
-  for (int i = 0; i < nav->node_count; i++) {
-    nav->distance[i] = 1e30f;
-    nav->came_by[i] = -1;
-    nav->heap_position[i] = -1;
-  }
-  nav->heap_size = 0;
-  relax(nav, origin, 0, -1);
-  while (nav->heap_size > 0) {
-    int node = nav->heap[0];
-    heap_swap(nav, 0, nav->heap_size - 1);
-    nav->heap_size--;
-    nav->heap_position[node] = -2;
-    if (nav->heap_size > 0) heap_down(nav, 0);
-    for (int e = nav->first_edge[node]; e < nav->first_edge[node + 1]; e++) {
-      int to = nav->edges[e].to;
-      if (nav->heap_position[to] == -2) continue;
-      relax(nav, to, nav->distance[node] + nav->edges[e].length, e);
-    }
-  }
   int goal_from_start = node_index(nav, rb->start_node);
   int goal_from_end = node_index(nav, rb->end_node);
   float via_start = nav->distance[goal_from_start] + b.along;
