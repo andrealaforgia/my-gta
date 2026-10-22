@@ -517,13 +517,16 @@ static void draw_law(driving_stage_t* stage) {
   float scale = width / 640.0f;
   if (scale < 2) scale = 2;
   if (stage->wanted.stars > 0) {
-    char line[48] = "WANTED ";
-    for (int i = 0; i < stage->wanted.stars; i++) strcat(line, "* ");
+    char line[48];
+    int used = snprintf(line, sizeof(line), "WANTED ");
+    for (int i = 0; i < stage->wanted.stars && used + 3 < (int)sizeof(line);
+         i++)
+      used += snprintf(line + used, sizeof(line) - (size_t)used, "* ");
     float text_scale = scale * 1.6f;
     float w = (float)strlen(line) * 6 * text_scale;
     bool red = fmodf(stage->rain_clock * 3.0f, 2.0f) < 1.0f;
     vec3_t colour = red ? vec3(1.0f, 0.25f, 0.2f) : vec3(0.35f, 0.5f, 1.0f);
-    float x = (width - w) * 0.5f, y = 34.0f * scale;
+    float x = (width - w) * 0.5f, y = 52.0f * scale;
     renderer_draw_text(r, x + text_scale * 0.4f, y + text_scale * 0.4f,
                        text_scale, vec3(0, 0, 0), line);
     renderer_draw_text(r, x, y, text_scale, colour, line);
