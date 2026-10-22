@@ -85,6 +85,12 @@ $(SOUND): tests/render_sound.c $(ENGINE_LIB)
 sound: $(SOUND)
 	./$(SOUND) engine.wav
 
+# The mesh shader lives in a .frag file and is embedded as C strings.
+engine/renderer/gl/mesh_fragment.inc: engine/renderer/gl/shaders/mesh.frag scripts/embed_shader.py
+	python3 scripts/embed_shader.py mesh_fragment $< $@
+
+engine/renderer/gl/gl_renderer.o: engine/renderer/gl/mesh_fragment.inc
+
 %.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c -o $@ $<
 

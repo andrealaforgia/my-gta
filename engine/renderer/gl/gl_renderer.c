@@ -12,6 +12,7 @@
 #endif
 
 #include "font5x7.h"
+#include "gl_post.h"
 #include "log.h"
 #include "renderer.h"
 
@@ -76,6 +77,7 @@ struct renderer {
   render_environment_t environment;
   draw_t* draws;
   size_t draw_count;
+  gl_post_t* post; /* NULL: draw straight to the window */
   GLuint shadow_program;
   GLuint shadow_fbo;
   GLuint shadow_texture;
@@ -106,114 +108,7 @@ static const char* mesh_vertex_source =
     "  gl_Position = u_view_projection * world;\n"
     "}\n";
 
-static const char* mesh_fragment_source =
-    "#version 410 core\n"
-    "in vec3 v_world_position;\n"
-    "in vec3 v_normal;\n"
-    "in vec2 v_uv;\n"
-    "in vec4 v_light_position;\n"
-    "uniform sampler2DShadow u_shadow_map;\n"
-    "uniform int u_has_shadows;\n"
-    "uniform int u_debug_shadows;\n"
-    "uniform vec3 u_base_color;\n"
-    "uniform float u_metallic;\n"
-    "uniform float u_roughness;\n"
-    "uniform float u_emissive;\n"
-    "uniform float u_window_glow;\n"
-    "uniform float u_wall_ao;\n"
-    "uniform int u_has_texture;\n"
-    "uniform sampler2D u_texture;\n"
-    "uniform vec3 u_light_direction;\n"
-    "uniform vec3 u_light_color;\n"
-    "uniform float u_ambient;\n"
-    "uniform vec3 u_eye;\n"
-    "uniform vec3 u_sky_color;\n"
-    "uniform vec3 u_spot_position;\n"
-    "uniform vec3 u_spot_direction;\n"
-    "uniform float u_spot_intensity;\n"
-    "uniform float u_fog_start;\n"
-    "uniform float u_fog_end;\n"
-    "out vec4 out_color;\n"
-    "float shadow_factor(vec3 n, vec3 l) {\n"
-    "  if (u_has_shadows == 0) return 1.0;\n"
-    "  vec3 p = v_light_position.xyz / v_light_position.w * 0.5 + 0.5;\n"
-    "  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) "
-    "return 1.0;\n"
-    "  float bias = max(0.0006 * (1.0 - dot(n, l)), 0.0002);\n"
-    "  float texel = 1.0 / 2048.0;\n"
-    "  float lit = 0.0;\n"
-    "  for (int x = -1; x <= 1; x++)\n"
-    "    for (int y = -1; y <= 1; y++)\n"
-    "      lit += texture(u_shadow_map, vec3(p.xy + vec2(x, y) * texel, p.z - "
-    "bias));\n"
-    "  return lit / 9.0;\n"
-    "}\n"
-    "void main() {\n"
-    "  vec3 albedo = u_base_color;\n"
-    "  float pane = 1.0;\n"
-    "  if (u_has_texture == 1) {\n"
-    "    vec4 texel = texture(u_texture, v_uv);\n"
-    "    albedo *= texel.rgb;\n"
-    "    pane = texel.a;\n"
-    "  }\n"
-    "  vec3 n = normalize(v_normal);\n"
-    "  bool shiny = u_roughness < 0.25 && u_metallic > 0.3;\n"
-    "  if (shiny && u_roughness < 0.15 && n.y > 0.9) {\n"
-    "    n = normalize(n + vec3(0.05 * sin(v_world_position.x * 1.9 + "
-    "v_world_position.z * 0.7), 0.0,\n"
-    "                           0.05 * sin(v_world_position.z * 1.4 - "
-    "v_world_position.x * 0.9)));\n"
-    "  }\n"
-    "  vec3 l = normalize(u_light_direction);\n"
-    "  vec3 v = normalize(u_eye - v_world_position);\n"
-    "  vec3 h = normalize(l + v);\n"
-    "  float n_dot_l = max(dot(n, l), 0.0);\n"
-    "  float shininess = mix(256.0, 4.0, u_roughness);\n"
-    "  float spec = pow(max(dot(n, h), 0.0), shininess) * (1.0 - u_roughness * "
-    "0.7);\n"
-    "  vec3 specular_tint = mix(vec3(0.04), albedo, u_metallic);\n"
-    "  vec3 diffuse = albedo * (1.0 - u_metallic);\n"
-    "  vec3 hemisphere = mix(albedo * 0.35, albedo, n.y * 0.5 + 0.5);\n"
-    "  float shadow = shadow_factor(n, l);\n"
-    "  vec3 color = hemisphere * u_ambient\n"
-    "             + (diffuse * n_dot_l + specular_tint * spec * n_dot_l) * "
-    "u_light_color * shadow;\n"
-    "  if (shiny) {\n"
-    "    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 4.0);\n"
-    "    color = mix(color, u_sky_color * (0.35 + 0.65 * u_ambient / 0.3), "
-    "0.06 + 0.5 * fresnel);\n"
-    "  }\n"
-    "  if (u_wall_ao > 0.0) {\n"
-    "    float up = max(v_uv.y * 3.2, 0.0);\n"
-    "    color *= mix(1.0 - 0.42 * u_wall_ao, 1.0, smoothstep(0.0, 1.8, up));\n"
-    "  }\n"
-    "  color += albedo * u_emissive;\n"
-    "  if (u_window_glow > 0.0 && pane < 0.5) {\n"
-    "    vec3 cell = floor(vec3(v_world_position.x + v_world_position.z, "
-    "v_world_position.y, 0.0) * vec3(0.33, 0.3, 1.0));\n"
-    "    float h = fract(sin(dot(cell.xy, vec2(12.9898, 78.233))) * "
-    "43758.5453);\n"
-    "    float lit = step(0.52, h) * u_window_glow;\n"
-    "    color = mix(color, vec3(1.0, 0.78, 0.42) * (0.7 + 0.5 * h), lit);\n"
-    "  }\n"
-    "  if (u_spot_intensity > 0.0) {\n"
-    "    vec3 to_point = v_world_position - u_spot_position;\n"
-    "    float d = length(to_point);\n"
-    "    vec3 ray = to_point / max(d, 0.001);\n"
-    "    float cone = smoothstep(0.55, 0.93, dot(ray, "
-    "normalize(u_spot_direction)));\n"
-    "    float facing = max(dot(n, -ray), 0.0);\n"
-    "    float falloff = 1.0 / (1.0 + 0.012 * d * d);\n"
-    "    color += albedo * vec3(1.0, 0.94, 0.78) * u_spot_intensity * cone * "
-    "facing * falloff;\n"
-    "  }\n"
-    "  float distance = length(u_eye - v_world_position);\n"
-    "  float fog = clamp((distance - u_fog_start) / (u_fog_end - u_fog_start), "
-    "0.0, 1.0);\n"
-    "  color = mix(color, u_sky_color, fog);\n"
-    "  if (u_debug_shadows == 1) color = vec3(shadow);\n"
-    "  out_color = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);\n"
-    "}\n";
+#include "mesh_fragment.inc" /* generated from shaders/mesh.frag */
 
 static const char* line_vertex_source =
     "#version 410 core\n"
@@ -290,6 +185,7 @@ static const char* sky_fragment_source =
     "uniform float u_cloud_cover;\n"
     "uniform float u_cloud_time;\n"
     "uniform float u_cloud_light;\n"
+    "uniform int u_srgb_out;\n"
     "out vec4 out_color;\n"
     "float hash2(vec2 p) {\n"
     "  p = fract(p * vec2(0.1031, 0.1030));\n"
@@ -361,7 +257,8 @@ static const char* sky_fragment_source =
     "  }\n"
     "  if (dir.y < 0.0) color = mix(u_horizon, u_horizon * 0.8, "
     "min(-dir.y * 4.0, 1.0));\n"
-    "  out_color = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);\n"
+    "  out_color = vec4(u_srgb_out == 1 ? pow(color, vec3(1.0 / 2.2)) : color, "
+    "1.0);\n"
     "}\n";
 
 static const char* shadow_vertex_source =
@@ -376,10 +273,10 @@ static const char* shadow_fragment_source =
     "#version 410 core\n"
     "void main() {}\n";
 
-static GLuint compile_shader(GLenum type, const char* source,
-                             const char* name) {
+static GLuint compile_shader_parts(GLenum type, const char* const* parts,
+                                   GLsizei count, const char* name) {
   GLuint shader = glCreateShader(type);
-  glShaderSource(shader, 1, &source, NULL);
+  glShaderSource(shader, count, parts, NULL);
   glCompileShader(shader);
   GLint ok = 0;
   glGetShaderiv(shader, GL_COMPILE_STATUS, &ok);
@@ -393,10 +290,12 @@ static GLuint compile_shader(GLenum type, const char* source,
   return shader;
 }
 
-static GLuint link_program(const char* vertex, const char* fragment,
-                           const char* name) {
-  GLuint vs = compile_shader(GL_VERTEX_SHADER, vertex, name);
-  GLuint fs = compile_shader(GL_FRAGMENT_SHADER, fragment, name);
+static GLuint compile_shader(GLenum type, const char* source,
+                             const char* name) {
+  return compile_shader_parts(type, &source, 1, name);
+}
+
+static GLuint link_shaders(GLuint vs, GLuint fs, const char* name) {
   if (!vs || !fs) return 0;
   GLuint program = glCreateProgram();
   glAttachShader(program, vs);
@@ -416,6 +315,12 @@ static GLuint link_program(const char* vertex, const char* fragment,
   return program;
 }
 
+static GLuint link_program(const char* vertex, const char* fragment,
+                           const char* name) {
+  return link_shaders(compile_shader(GL_VERTEX_SHADER, vertex, name),
+                      compile_shader(GL_FRAGMENT_SHADER, fragment, name), name);
+}
+
 static void check_gl(const char* where) {
   GLenum error = glGetError();
   if (error != GL_NO_ERROR)
@@ -425,8 +330,12 @@ static void check_gl(const char* where) {
 renderer_t* renderer_create(int drawable_width, int drawable_height) {
   renderer_t* r = calloc(1, sizeof(renderer_t));
   if (!r) return NULL;
-  r->mesh_program =
-      link_program(mesh_vertex_source, mesh_fragment_source, "mesh");
+  r->mesh_program = link_shaders(
+      compile_shader(GL_VERTEX_SHADER, mesh_vertex_source, "mesh"),
+      compile_shader_parts(GL_FRAGMENT_SHADER, mesh_fragment_parts,
+                           MESH_FRAGMENT_PART_COUNT,
+                           "mesh"),
+      "mesh");
   r->line_program =
       link_program(line_vertex_source, line_fragment_source, "line");
   r->text_program =
@@ -539,6 +448,7 @@ void renderer_destroy(renderer_t* r) {
     texture_handle_t handle = {i};
     if (r->textures[i]) renderer_release_texture(r, handle);
   }
+  gl_post_destroy(r->post);
   if (r->white_texture) glDeleteTextures(1, &r->white_texture);
   if (r->shadow_texture) glDeleteTextures(1, &r->shadow_texture);
   if (r->shadow_fbo) glDeleteFramebuffers(1, &r->shadow_fbo);
@@ -561,6 +471,9 @@ void renderer_resize(renderer_t* r, int drawable_width, int drawable_height) {
   r->width = drawable_width > 0 ? drawable_width : 1;
   r->height = drawable_height > 0 ? drawable_height : 1;
   glViewport(0, 0, r->width, r->height);
+  gl_post_destroy(r->post);
+  r->post =
+      getenv("GTA_NO_POST") ? NULL : gl_post_create(r->width, r->height, 4);
 }
 
 mesh_handle_t renderer_upload_mesh(renderer_t* r, const mesh_data_t* mesh) {
@@ -758,6 +671,8 @@ static void shadow_pass(renderer_t* r) {
 static void draw_sky(renderer_t* r) {
   const render_environment_t* env = &r->environment;
   glUseProgram(r->sky_program);
+  glUniform1i(glGetUniformLocation(r->sky_program, "u_srgb_out"),
+              r->post ? 0 : 1);
   mat4_t inverse = mat4_inverse(r->view_projection);
   glUniformMatrix4fv(
       glGetUniformLocation(r->sky_program, "u_inverse_view_projection"), 1,
@@ -788,8 +703,11 @@ static void draw_sky(renderer_t* r) {
 static void main_pass(renderer_t* r) {
   const render_environment_t* env = &r->environment;
   vec3_t sky = env->sky_color;
-  glClearColor(powf(sky.x, 1.0f / 2.2f), powf(sky.y, 1.0f / 2.2f),
-               powf(sky.z, 1.0f / 2.2f), 1.0f);
+  if (r->post)
+    glClearColor(sky.x, sky.y, sky.z, 1.0f);
+  else
+    glClearColor(powf(sky.x, 1.0f / 2.2f), powf(sky.y, 1.0f / 2.2f),
+                 powf(sky.z, 1.0f / 2.2f), 1.0f);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   draw_sky(r);
   glEnable(GL_DEPTH_TEST);
@@ -805,6 +723,8 @@ static void main_pass(renderer_t* r) {
   glUniform1f(glGetUniformLocation(program, "u_ambient"), env->ambient);
   set_vec3(program, "u_eye", r->eye);
   set_vec3(program, "u_sky_color", env->sky_color);
+  set_vec3(program, "u_zenith_color", env->zenith_color);
+  glUniform1f(glGetUniformLocation(program, "u_time"), env->cloud_time);
   set_vec3(program, "u_spot_position", env->spot_position);
   set_vec3(program, "u_spot_direction", env->spot_direction);
   glUniform1f(glGetUniformLocation(program, "u_spot_intensity"),
@@ -812,6 +732,7 @@ static void main_pass(renderer_t* r) {
   glUniform1f(glGetUniformLocation(program, "u_fog_start"), env->fog_start);
   glUniform1f(glGetUniformLocation(program, "u_fog_end"), env->fog_end);
   glUniform1i(glGetUniformLocation(program, "u_texture"), 0);
+  glUniform1i(glGetUniformLocation(program, "u_srgb_out"), r->post ? 0 : 1);
   glUniform1i(glGetUniformLocation(program, "u_shadow_map"), 1);
   glUniform1i(glGetUniformLocation(program, "u_has_shadows"),
               shadows_enabled(r) ? 1 : 0);
@@ -967,6 +888,7 @@ void renderer_end_frame(renderer_t* r) {
     shadow_pass(r);
   else
     r->light_view_projection = mat4_identity();
+  if (r->post) gl_post_bind_scene(r->post);
   main_pass(r);
   if (r->tested_count > 0) {
     glUseProgram(r->line_program);
@@ -995,6 +917,12 @@ void renderer_end_frame(renderer_t* r) {
     glDisable(GL_DEPTH_TEST);
     glDrawArrays(GL_LINES, 0, (GLsizei)r->line_count);
     r->stats.draw_calls++;
+  }
+  if (r->post) {
+    gl_post_params_t params = {0.82f, 0.35f, 0.85f, 1.4f, 0.25f, 1.15f};
+    mat4_t inverse = mat4_inverse(r->projection);
+    gl_post_finish(r->post, r->projection.m, inverse.m, r->sky_vao, &params);
+    glViewport(0, 0, r->width, r->height);
   }
   draw_screen_images(r);
   if (r->text_count > 0) {
