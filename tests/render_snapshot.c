@@ -105,6 +105,11 @@ int main(int argc, char* argv[]) {
   traffic_car_t* jerk_before =
       jerk_count ? calloc(jerk_count, sizeof(traffic_car_t)) : NULL;
   int jerk_events = 0;
+  /* SNAPSHOT_TRACE=file writes where every traffic car is, twenty times a
+   * second, for plotting. */
+  FILE* trace = getenv("SNAPSHOT_TRACE") && stage.traffic
+                    ? fopen(getenv("SNAPSHOT_TRACE"), "w")
+                    : NULL;
   unsigned soak_random = 12345;
   for (int i = 0; i < steps; i++) {
     if (soak && i % 60 == 0) {
@@ -118,6 +123,13 @@ int main(int argc, char* argv[]) {
       if ((r >> 3) % 97 == 1) driving_stage_next_vehicle(&stage);
     }
     driving_stage_step(&stage, input, 1.0f / 120.0f);
+    if (trace && i % 6 == 0) {
+      for (size_t k = 0; k < traffic_car_count(stage.traffic); k++) {
+        traffic_car_t now = traffic_car(stage.traffic, k);
+        fprintf(trace, "%zu %.2f %.2f %.3f %.2f\n", k, now.position.x,
+                now.position.z, now.yaw, now.speed);
+      }
+    }
     if (jerk) {
       for (size_t k = 0; k < jerk_count; k++) {
         traffic_car_t now = traffic_car(stage.traffic, k);

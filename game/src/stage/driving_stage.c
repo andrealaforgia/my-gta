@@ -206,6 +206,11 @@ static void say(driving_stage_t* stage, const char* text) {
 }
 
 static void back_to_spawn(driving_stage_t* stage) {
+  if (stage->on_foot) {
+    /* Back in the car, which is back at the start. */
+    stage->on_foot = false;
+    stage->camera.params = stage->car_camera_params;
+  }
   vehicle_reset(&stage->vehicle, stage->physics);
   chase_camera_reset(&stage->camera,
                      transform_at(stage->vehicle.spawn_position,
