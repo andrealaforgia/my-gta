@@ -806,6 +806,131 @@ static bool add_doors(layout_t* layout, const city_building_t* building,
   return true;
 }
 
+/* A box standing on an axis pair: from s0 to s1 along `d`, t0 to t1 along
+ * `o`, y0 to y1 up, measured from `origin`. Four sides and a top. */
+static bool add_oriented_box(city_part_t* part, local_point_t origin, vec2_t d,
+                             vec2_t o, double s0, double s1, double t0,
+                             double t1, float y0, float y1) {
+  local_point_t a = gen_offset(gen_offset(origin, d, s0), o, t0);
+  local_point_t b = gen_offset(gen_offset(origin, d, s1), o, t0);
+  local_point_t c = gen_offset(gen_offset(origin, d, s1), o, t1);
+  local_point_t e = gen_offset(gen_offset(origin, d, s0), o, t1);
+  local_point_t ring[4] = {e, c, b, a};
+  for (int i = 0; i < 4; i++) {
+    local_point_t p = ring[i], q = ring[(i + 1) % 4];
+    vec2_t dir = gen_v2_normalize(gen_v2_sub(q, p));
+    vec3_t normal = vec3((float)-dir.z, 0, (float)dir.x);
+    if (!gen_add_wall_quad(part, p, q, y0, y1, normal, 0, 1, 0, 1))
+      return false;
+  }
+  uint32_t base = (uint32_t)part->mesh.vertex_count;
+  vec3_t up = vec3(0, 1, 0);
+  return gen_add_vertex(&part->mesh, gen_at(a, y1), up, 0, 0) &&
+         gen_add_vertex(&part->mesh, gen_at(b, y1), up, 1, 0) &&
+         gen_add_vertex(&part->mesh, gen_at(c, y1), up, 1, 1) &&
+         gen_add_vertex(&part->mesh, gen_at(e, y1), up, 0, 1) &&
+         gen_add_face(&part->mesh, base, base + 1, base + 2, up) &&
+         gen_add_face(&part->mesh, base, base + 2, base + 3, up);
+}
+
+/* A balcony of wrought iron on a slab: posts and a top rail round the three
+ * open sides. `centre` is on the wall, `base` the height of the slab's
+ * underside. */
+static bool add_balcony(city_part_t* part, local_point_t centre, vec2_t d,
+                        vec2_t o, float base) {
+  const double half = 1.05, depth = 0.85;
+  const float slab = 0.1f, rail = 0.95f;
+  if (!add_oriented_box(part, centre, d, o, -half, half, 0.02, depth, base,
+                        base + slab))
+    return false;
+  float top = base + slab;
+  /* Top rail round the front and sides. */
+  if (!add_oriented_box(part, centre, d, o, -half, half, depth - 0.04, depth,
+                        top + rail - 0.04f, top + rail) ||
+      !add_oriented_box(part, centre, d, o, -half, -half + 0.04, 0.02, depth,
+                        top + rail - 0.04f, top + rail) ||
+      !add_oriented_box(part, centre, d, o, half - 0.04, half, 0.02, depth,
+                        top + rail - 0.04f, top + rail))
+    return false;
+  /* Posts along the front and both sides. */
+  for (int k = 0; k <= 5; k++) {
+    double s = -half + (2.0 * half - 0.03) * k / 5.0;
+    if (!add_oriented_box(part, centre, d, o, s, s + 0.03, depth - 0.03, depth,
+                          top, top + rail))
+      return false;
+  }
+  for (int side = 0; side < 2; side++) {
+    double s = side ? half - 0.03 : -half;
+    for (int k = 1; k <= 2; k++) {
+      double t = 0.02 + (depth - 0.02) * k / 3.0;
+      if (!add_oriented_box(part, centre, d, o, s, s + 0.03, t, t + 0.03, top,
+                            top + rail))
+        return false;
+    }
+  }
+  return true;
+}
+
+/* Balconies on the upper floors of the walls that face a street, in front
+ * of every other window, on buildings with a plain one-window facade: the
+ * texture's windows are centred in their cells, so the balconies are too. */
+static bool add_balconies(layout_t* layout, const city_building_t* building,
+                          city_chunk_t* chunk, int facade_style) {
+  unsigned hash = (unsigned)((uint64_t)building->source_id * 2246822519u >> 6);
+  if (building->height < 8.0f || hash % 100 >= 45 || facade_style < 0 ||
+      facade_style % 3 == 2)
+    return true;
+  const city_generator_options_t* o = layout->options;
+  const city_model_t* model = layout->model;
+  city_part_t* part = NULL;
+  size_t count = building->point_count;
+  float lift = 0;
+  if (layout->terrain && layout->terrain->cols > 0) {
+    local_point_t c = gen_centroid(building->points, count);
+    lift = (float)gen_terrain_at(layout, c.x, c.z);
+  }
+  for (size_t i = 0; i < count; i++) {
+    local_point_t a = building->points[i],
+                  b = building->points[(i + 1) % count];
+    double length = hypot(b.x - a.x, b.z - a.z);
+    if (length < 7.0) continue;
+    vec2_t direction = gen_v2_normalize(gen_v2_sub(b, a));
+    vec2_t out = gen_v2(-direction.z, direction.x);
+    local_point_t middle = {(a.x + b.x) * 0.5, (a.z + b.z) * 0.5};
+    local_point_t ahead = gen_offset(middle, out, 3.0);
+    double distance = 1e30;
+    for (size_t r = 0; r < model->road_count; r++) {
+      const city_road_t* road = &model->roads[r];
+      if (road->class == ROAD_CLASS_WATERWAY ||
+          road->class == ROAD_CLASS_MOTORWAY)
+        continue;
+      for (size_t k = 1; k < road->point_count; k++)
+        distance =
+            fmin(distance, gen_point_segment_distance(
+                               ahead, road->points[k - 1], road->points[k]));
+    }
+    if (distance > 12.0) continue;
+    int cells = (int)(length / o->window_width);
+    for (int floor = 1; floor <= 2; floor++) {
+      float base = (float)floor * o->storey_height + 0.55f;
+      if (base + 1.1f > building->height - 0.4f) break;
+      for (int n = 1; n < cells - 1; n += 2) {
+        if (!part) {
+          part = city_chunk_add_part(chunk, "balcony", PART_COLLIDER_NONE, 0, 0,
+                                     (uint64_t)building->source_id);
+          if (!part) return false;
+        }
+        local_point_t at = gen_offset(
+            a, direction, ((double)n + 0.5) * (double)o->window_width);
+        if (!add_balcony(part, at, direction, out, lift + base)) return false;
+      }
+    }
+  }
+  if (!part) return true;
+  gen_finish_part(chunk, part);
+  return true;
+}
+
 /* Shop signs: a board above the ground-floor shops on the walls that have
  * them, with a word on it (CINEMA, GARAGE, SHOP...) taken from an atlas of
  * sixteen. */
@@ -933,6 +1058,10 @@ static bool finish_landmark_building(layout_t* layout,
                                      city_chunk_t* chunk, city_part_t* walls,
                                      city_part_t* roof, landmark_t landmark,
                                      float skirt) {
+  int facade_style = -1;
+  if (strncmp(walls->material, "facade", 6) == 0 &&
+      isdigit((unsigned char)walls->material[6]))
+    facade_style = atoi(walls->material + 6);
   local_point_t centre = {0, 0};
   vec2_t axis = gen_v2(1, 0);
   float clock_height = 0;
@@ -944,6 +1073,9 @@ static bool finish_landmark_building(layout_t* layout,
   if (landmark == LANDMARK_NONE && !add_doors(layout, building, chunk, NULL))
     return false;
   if (landmark == LANDMARK_NONE && !add_signs(layout, building, chunk))
+    return false;
+  if (landmark == LANDMARK_NONE &&
+      !add_balconies(layout, building, chunk, facade_style))
     return false;
   if (landmark == LANDMARK_NONE && !add_cornices(layout, building, chunk))
     return false;

@@ -1493,6 +1493,7 @@ static void faces_point_up_or_outward_and_the_spawn_sits_on_a_road(void) {
           strcmp(part->material, "manhole") == 0 ||
           strcmp(part->material, "door") == 0 ||
           strcmp(part->material, "sign") == 0 ||
+          strcmp(part->material, "balcony") == 0 ||
           strcmp(part->material, "cornice") == 0 ||
           strcmp(part->material, "rail") == 0 ||
           strcmp(part->material, "chimney") == 0 ||
