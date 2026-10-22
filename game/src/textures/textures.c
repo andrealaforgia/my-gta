@@ -1179,7 +1179,7 @@ uint8_t* texture_cloth(unsigned seed) {
       bool warp = ((x / 8) + (y / 8)) % 2 == 0;
       float round_x = sinf((float)(cx % 8) / 8.0f * 3.14159f);
       float round_y = sinf((float)(cy % 8) / 8.0f * 3.14159f);
-      float thread = warp ? 0.88f + 0.12f * round_x : 0.88f + 0.12f * round_y;
+      float thread = warp ? 0.94f + 0.06f * round_x : 0.94f + 0.06f * round_y;
       float crease = fbm((float)x, (float)y, 5, 4, seed);
       float fuzz = noise((unsigned)x, (unsigned)y, seed + 3);
       float k = thread * (0.86f + 0.24f * crease) * (0.97f + 0.06f * fuzz);
