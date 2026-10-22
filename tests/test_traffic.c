@@ -393,7 +393,7 @@ static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
   /* At speed through them: down, thrown on, and flat soon after. */
   assert(pedestrians_hit(people, at, 0, half, vec3(0, 0, -12.0f)) == 1);
   assert(pedestrians_hit(people, at, 0, half, vec3(0, 0, -12.0f)) == 0);
-  for (int step = 0; step < 120; step++)
+  for (int step = 0; step < 120 * 2; step++)
     pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
   pedestrian_t down = pedestrians_get(people, 0);
   assert(down.fall > 0.99f && down.speed == 0);
@@ -403,6 +403,30 @@ static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
     pedestrians_step(people, vec3(0, 0, 0), 1.0f / 120.0f);
   pedestrian_t later = pedestrians_get(people, 0);
   assert(fabsf(later.position.z - resting.z) < 0.5f && later.fall > 0.99f);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void a_person_hit_fast_is_thrown_up_and_somersaults_before_landing(
+    void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 1, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  vec3_t at = pedestrians_get(people, 0).position;
+  assert(pedestrians_hit(people, at, 0, vec3(0.9f, 0.7f, 2.2f),
+                         vec3(0, 0, -14.0f)) == 1);
+  float highest = 0, most_turned = 0;
+  for (int step = 0; step < 120 * 3; step++) {
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+    pedestrian_t p = pedestrians_get(people, 0);
+    highest = fmaxf(highest, p.lift);
+    most_turned = fmaxf(most_turned, p.fall);
+  }
+  assert(highest > 1.5f && most_turned > 4.0f);
+  pedestrian_t landed = pedestrians_get(people, 0);
+  assert(landed.lift == 0 && fabsf(landed.fall - 1.0f) < 0.001f);
   pedestrians_destroy(people);
   physics_world_destroy(world);
 }
@@ -1302,6 +1326,7 @@ void run_traffic_tests(void) {
   RUN(cars_follow_the_roads_on_the_right_at_a_sensible_speed);
   RUN(cars_turn_at_junctions_onto_every_road_and_keep_apart);
   RUN(a_car_at_speed_knocks_a_person_down_and_they_lie_still);
+  RUN(a_person_hit_fast_is_thrown_up_and_somersaults_before_landing);
   RUN(a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it);
   RUN(people_near_trouble_run_and_then_calm_down);
   RUN(a_car_stops_short_of_the_player_in_its_way);

@@ -26,6 +26,9 @@ typedef struct {
   float panic;                /* seconds left of running from trouble */
   float down;             /* 0 on their feet, else seconds since a car hit */
   float slide_x, slide_z; /* metres a second, thrown by the car */
+  float lift, rise;       /* height off the ground, and its speed, in the air */
+  float flight;           /* seconds the throw lasts, 0 for a plain fall */
+  float turns;            /* quarter turns the body makes before it lies */
 } person_t;
 
 struct pedestrians {
@@ -254,17 +257,32 @@ void pedestrians_destroy(pedestrians_t* p) {
   free(p);
 }
 
+#define GRAVITY 9.8f
+
+/* Throws a hit body into the air: it turns over backwards `flips` whole times
+ * on the way and lands lying down. */
+static void launch(person_t* person, float rise, int flips) {
+  person->lift = 0.001f;
+  person->rise = rise;
+  person->flight = 2.0f * rise / GRAVITY;
+  person->turns = 1.0f + 4.0f * (float)flips;
+}
+
+/* How far over the body is, in quarter turns: 1 is lying flat. */
+static float body_fall(const person_t* person) {
+  if (person->down <= 0) return 0.0f;
+  if (person->flight <= 0) return fminf(1.0f, person->down * 4.0f);
+  if (person->down >= person->flight) return 1.0f;
+  return person->turns * person->down / person->flight;
+}
+
 size_t pedestrians_count(const pedestrians_t* p) { return p->count; }
 
 pedestrian_t pedestrians_get(const pedestrians_t* p, size_t index) {
   const person_t* person = &p->people[index];
-  pedestrian_t out = {person->position,
-                      person->yaw,
-                      person->speed,
-                      person->phase,
-                      person->outfit,
-                      person->route,
-                      person->down > 0 ? fminf(1.0f, person->down * 4.0f) : 0};
+  pedestrian_t out = {person->position,  person->yaw,    person->speed,
+                      person->phase,     person->outfit, person->route,
+                      body_fall(person), person->lift};
   return out;
 }
 
@@ -365,6 +383,7 @@ int pedestrians_hit(pedestrians_t* p, vec3_t centre, float yaw,
     person->slide_x = velocity.x / speed * throw_speed;
     person->slide_z = velocity.z / speed * throw_speed;
     person->yaw = atan2f(-velocity.x, -velocity.z);
+    launch(person, fminf(3.0f + 0.35f * speed, 6.5f), speed > 9.0f ? 2 : 1);
     hit++;
   }
   return hit;
@@ -405,6 +424,7 @@ bool pedestrians_shoot(pedestrians_t* p, vec3_t origin, vec3_t direction,
   best->slide_x = direction.x * 3.0f;
   best->slide_z = direction.z * 3.0f;
   best->yaw = atan2f(-direction.x, -direction.z);
+  launch(best, 2.2f, 0);
   *hit_distance = best_t;
   return true;
 }
@@ -428,7 +448,13 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
       person->down += dt;
       /* A body is not left for ever, even close by: after a minute it goes. */
       bool long_gone = person->down > 60.0f;
-      float friction = expf(-dt * 3.5f);
+      if (person->lift > 0) {
+        /* In the air: no friction, just the arc. */
+        person->rise -= GRAVITY * dt;
+        person->lift += person->rise * dt;
+        if (person->lift <= 0) person->lift = person->rise = 0;
+      }
+      float friction = person->lift > 0 ? 1.0f : expf(-dt * 3.5f);
       person->slide_x *= friction, person->slide_z *= friction;
       person->position.x += person->slide_x * dt;
       person->position.z += person->slide_z * dt;
@@ -436,6 +462,7 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
       if ((person->down > LYING_SECONDS && near_car > 60.0f * 60.0f) ||
           long_gone) {
         person->down = 0;
+        person->lift = person->rise = person->flight = 0;
         person->slide_x = person->slide_z = 0;
         recycle_person(p, person);
         pose(p, person);
@@ -573,13 +600,13 @@ void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
                             renderer_t* renderer, vec3_t position, float yaw,
                             float speed, float phase, int outfit) {
   pedestrian_draw_figure_fallen(meshes, renderer, position, yaw, speed, phase,
-                                outfit, 0.0f);
+                                outfit, 0.0f, 0.0f);
 }
 
 void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
                                    renderer_t* renderer, vec3_t position,
                                    float yaw, float speed, float phase,
-                                   int outfit, float fall) {
+                                   int outfit, float fall, float lift) {
   static const float shirts[8][3] = {{0.75f, 0.2f, 0.18f}, {0.2f, 0.35f, 0.65f},
                                      {0.85f, 0.85f, 0.8f}, {0.2f, 0.5f, 0.3f},
                                      {0.9f, 0.7f, 0.2f},   {0.35f, 0.3f, 0.35f},
@@ -623,12 +650,17 @@ void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
   skin_material.texture = meshes->skin;
   hair_material.texture = meshes->hair;
   mat4_t scaling = mat4_scaling(vec3(s, s, s));
-  /* Tipped backwards about the feet, and lifted by the thickness of a body. */
-  position.y += 0.14f * s * fall;
-  transform_t base = transform_at(
-      position,
-      quat_multiply(quat_from_yaw(yaw),
-                    quat_from_axis_angle(vec3(1, 0, 0), fall * 1.5708f)));
+  /* Tipped backwards, and lifted by the thickness of a body. On the ground it
+   * turns about the feet; thrown into the air, about the middle of the body. */
+  position.y += 0.14f * s * fminf(fall, 1.0f) + lift;
+  quat_t tip = quat_from_axis_angle(vec3(1, 0, 0), fall * 1.5708f);
+  quat_t turn = quat_multiply(quat_from_yaw(yaw), tip);
+  float pivot = 0.9f * s * fminf(1.0f, lift / 0.6f);
+  if (pivot > 0) {
+    vec3_t swung = quat_rotate(turn, vec3(0, pivot, 0));
+    position = vec3_add(position, vec3(-swung.x, pivot - swung.y, -swung.z));
+  }
+  transform_t base = transform_at(position, turn);
   mat4_t model = mat4_multiply(transform_to_matrix(base), scaling);
   renderer_draw_mesh(renderer, meshes->torso, shirt_material, model);
   renderer_draw_mesh(renderer, meshes->head, skin_material, model);
@@ -682,10 +714,9 @@ int pedestrians_draw(const pedestrians_t* p, const pedestrian_meshes_t* meshes,
     const person_t* person = &p->people[i];
     float dx = person->position.x - eye.x, dz = person->position.z - eye.z;
     if (dx * dx + dz * dz > range * range) continue;
-    float fall = person->down > 0 ? fminf(1.0f, person->down * 4.0f) : 0.0f;
-    pedestrian_draw_figure_fallen(meshes, renderer, person->position,
-                                  person->yaw, person->speed, person->phase,
-                                  person->outfit, fall);
+    pedestrian_draw_figure_fallen(
+        meshes, renderer, person->position, person->yaw, person->speed,
+        person->phase, person->outfit, body_fall(person), person->lift);
     drawn++;
   }
   return drawn;

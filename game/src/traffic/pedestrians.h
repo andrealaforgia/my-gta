@@ -26,7 +26,8 @@ typedef struct {
   float phase; /* walking cycle in radians */
   int outfit;
   int route;
-  float fall; /* 0 upright .. 1 flat on the ground */
+  float fall; /* 0 upright, 1 flat on the ground, more while somersaulting */
+  float lift; /* metres off the ground while thrown through the air */
 } pedestrian_t;
 
 typedef enum {
@@ -97,11 +98,12 @@ void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
 void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
                             renderer_t* renderer, vec3_t position, float yaw,
                             float speed, float phase, int outfit);
-/* The same, tipped over backwards by `fall` (0 upright .. 1 lying). */
+/* The same, tipped over backwards by `fall` quarter turns (1 is lying) and
+ * `lift` metres in the air. */
 void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
                                    renderer_t* renderer, vec3_t position,
                                    float yaw, float speed, float phase,
-                                   int outfit, float fall);
+                                   int outfit, float fall, float lift);
 int pedestrians_draw(const pedestrians_t* pedestrians,
                      const pedestrian_meshes_t* meshes, renderer_t* renderer,
                      vec3_t eye, float range);
