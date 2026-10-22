@@ -80,6 +80,14 @@ have a PBF.
   model. Pieces that would lie on a carriageway are left out so a mapped
   wall never blocks a street; gates and other barrier kinds are ignored.
   Pordenone has 19 such ways.
+- The sea: `natural=coastline` has the land on its left and the sea on its
+  right, but the sea itself is not mapped. The coastline ways are joined end
+  to end, split where their nodes fall outside the extract (a harbour mole
+  leaves and comes back), carried straight on to the extract's edge and
+  linked round the edge, clockwise, into rings of water, which are
+  triangulated and cut into 100 m pieces so that each lands in a chunk near
+  it. A low sea wall (`seawall` barrier, 0.9 m) runs along the coast to keep
+  cars out. Barletta has the harbour and a mole of about 1.3 km.
 - Interior corners of roads are replaced by arcs (quadratic, up to 8 m
   back from the corner) and two segments meeting end to end at a node
   nothing else uses, with the same class, width and direction rules, are
