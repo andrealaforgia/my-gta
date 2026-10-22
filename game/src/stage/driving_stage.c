@@ -227,7 +227,8 @@ static void step_the_law(driving_stage_t* stage, bool pole_down, float dt) {
   float felt = stage->vehicle.impact_impulse /
                fmaxf(stage->vehicle.params.mass / 1200.0f, 1.0f);
   wanted_event_t event = WANTED_NOTHING;
-  if (!stage->on_foot && (felt > CRIME_IMPACT || pole_down))
+  if (!stage->on_foot &&
+      (felt > CRIME_IMPACT || pole_down || stage->people_struck))
     event = wanted_crime(&stage->wanted);
   if (event == WANTED_STARTED) say(stage, "WANTED");
   traffic_set_pursuit(stage->traffic, wanted_pursuers(&stage->wanted));
@@ -279,6 +280,17 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   if (stage->people) {
     pedestrians_set_focus(stage->people, player_position(stage));
     pedestrians_step(stage->people, player_position(stage), dt);
+    stage->people_struck = 0;
+    if (!stage->on_foot) {
+      const rigid_body_t* car =
+          physics_body(stage->physics, stage->vehicle.body);
+      vec3_t nose = quat_rotate(car->rotation, vec3(0, 0, -1));
+      stage->people_struck = pedestrians_hit(
+          stage->people, car->position, atan2f(-nose.x, -nose.z),
+          stage->vehicle.params.chassis_half_extents, car->velocity);
+      if (stage->people_struck && stage->audio)
+        audio_device_trigger_impact(stage->audio, 0.25f);
+    }
   }
   if (stage->traffic) {
     /* People in the road, and the car the player has left standing: cars

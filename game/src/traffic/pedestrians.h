@@ -26,6 +26,7 @@ typedef struct {
   float phase; /* walking cycle in radians */
   int outfit;
   int route;
+  float fall; /* 0 upright .. 1 flat on the ground */
 } pedestrian_t;
 
 typedef enum {
@@ -63,6 +64,12 @@ void pedestrians_set_crossings(pedestrians_t* pedestrians, const float* xz,
  * `max`; returns how many. Cars give way to them. */
 size_t pedestrians_crossing(const pedestrians_t* pedestrians, vec3_t* out,
                             size_t max);
+/* A car at `centre` heading `yaw` (0 faces -z) with `half_extents` and moving
+ * at `velocity` runs into whoever stands in its footprint, if it is going
+ * faster than a walk: they are thrown ahead of it and lie on the ground.
+ * Returns how many were hit. */
+int pedestrians_hit(pedestrians_t* pedestrians, vec3_t centre, float yaw,
+                    vec3_t half_extents, vec3_t velocity);
 /* Stands someone on a route: side +1 is the right of its direction. */
 void pedestrians_place(pedestrians_t* pedestrians, size_t index, int route,
                        int side, int direction, float distance);
@@ -75,6 +82,11 @@ void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
 void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
                             renderer_t* renderer, vec3_t position, float yaw,
                             float speed, float phase, int outfit);
+/* The same, tipped over backwards by `fall` (0 upright .. 1 lying). */
+void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
+                                   renderer_t* renderer, vec3_t position,
+                                   float yaw, float speed, float phase,
+                                   int outfit, float fall);
 int pedestrians_draw(const pedestrians_t* pedestrians,
                      const pedestrian_meshes_t* meshes, renderer_t* renderer,
                      vec3_t eye, float range);

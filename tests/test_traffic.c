@@ -377,6 +377,35 @@ a_person_stops_when_the_car_is_close_and_the_legs_swing_as_they_walk(void) {
   physics_world_destroy(world);
 }
 
+static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 1, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  vec3_t at = pedestrians_get(people, 0).position;
+  vec3_t half = vec3(0.9f, 0.7f, 2.2f);
+  /* A crawl does nothing, and a car beside them misses. */
+  assert(pedestrians_hit(people, at, 0, half, vec3(0, 0, -1.0f)) == 0);
+  vec3_t beside = vec3(at.x + 4.0f, at.y, at.z);
+  assert(pedestrians_hit(people, beside, 0, half, vec3(0, 0, -12.0f)) == 0);
+  /* At speed through them: down, thrown on, and flat soon after. */
+  assert(pedestrians_hit(people, at, 0, half, vec3(0, 0, -12.0f)) == 1);
+  assert(pedestrians_hit(people, at, 0, half, vec3(0, 0, -12.0f)) == 0);
+  for (int step = 0; step < 120; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  pedestrian_t down = pedestrians_get(people, 0);
+  assert(down.fall > 0.99f && down.speed == 0);
+  assert(down.position.z < at.z - 1.0f);
+  vec3_t resting = down.position;
+  for (int step = 0; step < 120 * 4; step++)
+    pedestrians_step(people, vec3(0, 0, 0), 1.0f / 120.0f);
+  pedestrian_t later = pedestrians_get(people, 0);
+  assert(fabsf(later.position.z - resting.z) < 0.5f && later.fall > 0.99f);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
 static void people_come_in_sizes_and_paces_and_some_walk_in_pairs(void) {
   /* Adults, children, elders and joggers all occur; children are smaller,
    * elders slower than adults and joggers fastest. */
@@ -1188,6 +1217,7 @@ void run_traffic_tests(void) {
   RUN(parked_cars_stand_on_the_ground_and_are_solid);
   RUN(cars_follow_the_roads_on_the_right_at_a_sensible_speed);
   RUN(cars_turn_at_junctions_onto_every_road_and_keep_apart);
+  RUN(a_car_at_speed_knocks_a_person_down_and_they_lie_still);
   RUN(a_car_stops_short_of_the_player_in_its_way);
   RUN(at_a_dead_end_a_car_turns_round_and_comes_back);
   RUN(each_car_carries_a_solid_box_that_moves_with_it);
