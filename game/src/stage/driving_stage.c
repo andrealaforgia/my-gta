@@ -1203,6 +1203,9 @@ void driving_stage_render(driving_stage_t* stage) {
       /* Wet tarmac: smoother, a little shine, reflecting the sky. */
       entity->material.roughness = 0.95f - 0.72f * stage->rain;
       entity->material.metallic = 0.4f * stage->rain;
+    } else if (strncmp(entity->label, "sign ", 5) == 0) {
+      /* Shop signs are lit from within after dark. */
+      entity->material.emissive = 0.9f * night;
     } else if (strncmp(entity->label, "facade", 6) == 0 ||
                strncmp(entity->label, "shopfront", 9) == 0) {
       entity->material.window_glow = night;

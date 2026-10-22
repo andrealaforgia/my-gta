@@ -42,7 +42,7 @@ float pedestrian_scale(int outfit);
 
 typedef struct {
   mesh_handle_t torso, head, leg, arm, skirt, hair_short, hair_long, bag,
-      backpack, cap;
+      backpack, cap, face;
   texture_handle_t cloth, skin, hair; /* none until given */
 } pedestrian_meshes_t;
 

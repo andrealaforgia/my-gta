@@ -1179,10 +1179,10 @@ uint8_t* texture_cloth(unsigned seed) {
       bool warp = ((x / 8) + (y / 8)) % 2 == 0;
       float round_x = sinf((float)(cx % 8) / 8.0f * 3.14159f);
       float round_y = sinf((float)(cy % 8) / 8.0f * 3.14159f);
-      float thread = warp ? 0.72f + 0.28f * round_x : 0.72f + 0.28f * round_y;
+      float thread = warp ? 0.88f + 0.12f * round_x : 0.88f + 0.12f * round_y;
       float crease = fbm((float)x, (float)y, 5, 4, seed);
       float fuzz = noise((unsigned)x, (unsigned)y, seed + 3);
-      float k = thread * (0.82f + 0.3f * crease) * (0.94f + 0.12f * fuzz);
+      float k = thread * (0.86f + 0.24f * crease) * (0.97f + 0.06f * fuzz);
       put(pixels, x, y, 0.92f * k, 0.92f * k, 0.92f * k);
     }
   return pixels;
@@ -1197,7 +1197,7 @@ uint8_t* texture_skin(unsigned seed) {
       float broad = fbm((float)x, (float)y, 4, 4, seed);
       float flush = fbm((float)x, (float)y, 7, 3, seed + 5);
       float pores = noise((unsigned)x, (unsigned)y, seed + 9);
-      float k = 0.9f + 0.18f * (broad - 0.5f) + 0.06f * (pores - 0.5f);
+      float k = 0.92f + 0.12f * (broad - 0.5f) + 0.025f * (pores - 0.5f);
       put(pixels, x, y, k * (1.0f + 0.07f * flush), k * (1.0f - 0.03f * flush),
           k * (1.0f - 0.08f * flush));
     }

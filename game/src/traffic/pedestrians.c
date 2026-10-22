@@ -447,6 +447,8 @@ pedestrian_meshes_t pedestrian_meshes_create(renderer_t* renderer) {
               leg = mesh_data_create(), arm = mesh_data_create();
   mesh_data_add_box(&torso, vec3(0, 1.12f, 0), vec3(0.2f, 0.3f, 0.11f));
   mesh_data_add_box(&head, vec3(0, 1.64f, 0), vec3(0.1f, 0.12f, 0.1f));
+  mesh_data_add_box(&head, vec3(0, 1.47f, 0),
+                    vec3(0.045f, 0.07f, 0.045f)); /* neck */
   /* Legs and arms hang from a pivot at the origin so they swing about it. */
   mesh_data_add_box(&leg, vec3(0, -0.4f, 0), vec3(0.075f, 0.4f, 0.075f));
   mesh_data_add_box(&arm, vec3(0, -0.28f, 0), vec3(0.055f, 0.3f, 0.055f));
@@ -474,6 +476,17 @@ pedestrian_meshes_t pedestrian_meshes_create(renderer_t* renderer) {
   meshes.hair_long = renderer_upload_mesh(renderer, &hair_long);
   meshes.bag = renderer_upload_mesh(renderer, &bag);
   meshes.backpack = renderer_upload_mesh(renderer, &backpack);
+  /* Eyes, brows and a mouth on the front of the head (-z). */
+  mesh_data_t face = mesh_data_create();
+  for (int side = -1; side <= 1; side += 2) {
+    mesh_data_add_box(&face, vec3(side * 0.045f, 1.665f, -0.1f),
+                      vec3(0.015f, 0.014f, 0.004f));
+    mesh_data_add_box(&face, vec3(side * 0.045f, 1.7f, -0.1f),
+                      vec3(0.025f, 0.006f, 0.004f));
+  }
+  mesh_data_add_box(&face, vec3(0, 1.59f, -0.1f), vec3(0.03f, 0.007f, 0.004f));
+  meshes.face = renderer_upload_mesh(renderer, &face);
+  mesh_data_free(&face);
   meshes.cap = renderer_upload_mesh(renderer, &cap);
   mesh_data_free(&torso);
   mesh_data_free(&head);
@@ -507,6 +520,7 @@ void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
   renderer_release_mesh(renderer, meshes->bag);
   renderer_release_mesh(renderer, meshes->backpack);
   renderer_release_mesh(renderer, meshes->cap);
+  renderer_release_mesh(renderer, meshes->face);
 }
 
 void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
@@ -572,6 +586,8 @@ void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
   mat4_t model = mat4_multiply(transform_to_matrix(base), scaling);
   renderer_draw_mesh(renderer, meshes->torso, shirt_material, model);
   renderer_draw_mesh(renderer, meshes->head, skin_material, model);
+  renderer_draw_mesh(renderer, meshes->face,
+                     material_rough(vec3(0.05f, 0.04f, 0.04f), 0.6f), model);
   if (kind == PERSON_ELDER)
     renderer_draw_mesh(renderer, meshes->cap,
                        material_rough(vec3(0.3f, 0.28f, 0.25f), 0.9f), model);
