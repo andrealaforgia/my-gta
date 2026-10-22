@@ -7,6 +7,7 @@
 
 #include "fleet.h"
 #include "mission.h"
+#include "navigation.h"
 #include "parked_cars.h"
 #include "pedestrians.h"
 #include "skid_marks.h"
@@ -755,6 +756,49 @@ static void a_delivery_run_sets_a_far_destination_pays_and_gives_the_next(
   assert(mission_step(&empty, roads, 0, 0, 0, 2.0f) == MISSION_NOTHING);
 }
 
+static void the_satnav_finds_the_way_round_by_road_respecting_one_ways(void) {
+  /* A square ring of one-way roads, anticlockwise on the map: east along the
+   * top, south down the right, west along the bottom, north up the left. */
+  static float top[4] = {0, 0, 100, 0}, right[4] = {100, 0, 100, 100},
+               bottom[4] = {100, 100, 0, 100}, left_side[4] = {0, 100, 0, 0};
+  city_route_t ring[4] = {route(top, 1, 2, 1), route(right, 2, 3, 1),
+                          route(bottom, 3, 4, 1), route(left_side, 4, 1, 1)};
+  nav_t* nav = nav_create(ring, 4);
+  assert(nav);
+  float path[64 * 2], length = 0;
+  /* Ahead: along the top, then down the right. */
+  size_t n = nav_path(nav, 10, 1, 100, 60, path, 64, &length);
+  assert(n >= 3 && fabsf(length - 150.0f) < 3.0f);
+  assert(fabsf(path[0] - 10) < 2 && fabsf(path[2 * n - 2] - 100) < 2 &&
+         fabsf(path[2 * n - 1] - 60) < 2);
+  /* Behind on the same one-way road: all the way round. */
+  n = nav_path(nav, 50, 0, 10, 0, path, 64, &length);
+  assert(n >= 5 && fabsf(length - 360.0f) < 4.0f);
+  bool via_far_corner = false;
+  for (size_t i = 0; i < n; i++)
+    if (fabsf(path[2 * i] - 100) < 1 && fabsf(path[2 * i + 1] - 100) < 1)
+      via_far_corner = true;
+  assert(via_far_corner);
+  /* Two-way roads can be driven either way. */
+  static float two_way[4] = {0, 0, 100, 0};
+  city_route_t street[1] = {route(two_way, 5, 6, 0)};
+  nav_t* simple = nav_create(street, 1);
+  n = nav_path(simple, 80, 0, 20, 0, path, 64, &length);
+  assert(n >= 2 && fabsf(length - 60.0f) < 2.0f);
+  nav_destroy(simple);
+  /* Roads that do not join have no way between them. */
+  static float island[4] = {500, 500, 600, 500};
+  city_route_t two[2] = {route(top, 1, 2, 0), route(island, 7, 8, 0)};
+  nav_t* split = nav_create(two, 2);
+  assert(nav_path(split, 10, 0, 550, 500, path, 64, &length) == 0);
+  nav_destroy(split);
+  nav_destroy(nav);
+  /* No drivable road at all, no graph. */
+  city_route_t path_only = route(top, 1, 2, 0);
+  path_only.drivable = 0;
+  assert(nav_create(&path_only, 1) == NULL);
+}
+
 static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -907,6 +951,7 @@ void run_traffic_tests(void) {
   RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(a_driver_held_up_by_the_player_sounds_the_horn);
+  RUN(the_satnav_finds_the_way_round_by_road_respecting_one_ways);
   RUN(a_delivery_run_sets_a_far_destination_pays_and_gives_the_next);
   RUN(a_car_follows_the_curve_through_a_corner_without_jumping);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);

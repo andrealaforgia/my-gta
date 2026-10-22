@@ -50,7 +50,7 @@ static void time_text(char* out, size_t size, float seconds) {
 
 void mission_hud_draw(const mission_t* mission, renderer_t* renderer,
                       float screen_width, float screen_height, float x, float z,
-                      float fx, float fz) {
+                      float fx, float fz, float aim_x, float aim_z) {
   float scale = screen_width / 640.0f;
   if (scale < 2) scale = 2;
   texture_handle_t none = {0};
@@ -78,7 +78,7 @@ void mission_hud_draw(const mission_t* mission, renderer_t* renderer,
     shadowed(renderer, right - (float)strlen(line) * 6 * text_scale,
              top + 20 * text_scale, text_scale, colour, line);
     /* The arrow: up is the way the car points. */
-    float tx = mission->x - x, tz = mission->z - z;
+    float tx = aim_x - x, tz = aim_z - z;
     float length = hypotf(tx, tz);
     if (length > 1.0f) {
       float forward_dot = (tx * fx + tz * fz) / length;
@@ -164,4 +164,60 @@ void mission_map_mark(const mission_t* mission, renderer_t* renderer,
           vec3(0.1f, 0.1f, 0.1f));
   diamond(renderer, px, py, 7.0f * scale * pulse, 1.8f * scale,
           vec3(1.0f, 0.85f, 0.1f));
+}
+
+static void route_segment(renderer_t* renderer, float x0, float y0, float x1,
+                          float y1, float left, float top, float side,
+                          float width) {
+  /* Cut the segment to the window (Liang-Barsky). */
+  float dx = x1 - x0, dy = y1 - y0;
+  float p[4] = {-dx, dx, -dy, dy};
+  float q[4] = {x0 - left, left + side - x0, y0 - top, top + side - y0};
+  float t0 = 0, t1 = 1;
+  for (int i = 0; i < 4; i++) {
+    if (p[i] == 0) {
+      if (q[i] < 0) return;
+    } else {
+      float t = q[i] / p[i];
+      if (p[i] < 0) {
+        if (t > t1) return;
+        if (t > t0) t0 = t;
+      } else {
+        if (t < t0) return;
+        if (t < t1) t1 = t;
+      }
+    }
+  }
+  renderer_draw_screen_line(renderer, x0 + dx * t0, y0 + dy * t0, x0 + dx * t1,
+                            y0 + dy * t1, width, vec3(0.2f, 0.62f, 1.0f));
+}
+
+void mission_route_on_minimap(renderer_t* renderer, const city_map_t* map,
+                              const float* line, size_t count, float left,
+                              float top, float side, float u0, float v0,
+                              float u1, float v1, float scale) {
+  if (count < 2 || map->size == 0) return;
+  float px = 0, py = 0;
+  for (size_t i = 0; i < count; i++) {
+    float x = left + ((line[2 * i] - map->min_x) / map->extent - u0) /
+                         (u1 - u0) * side;
+    float y = top + ((line[2 * i + 1] - map->min_z) / map->extent - v0) /
+                        (v1 - v0) * side;
+    if (i > 0)
+      route_segment(renderer, px, py, x, y, left, top, side, 1.8f * scale);
+    px = x, py = y;
+  }
+}
+
+void mission_route_on_map(renderer_t* renderer, const city_map_t* map,
+                          const float* line, size_t count, float left,
+                          float top, float side, float scale) {
+  if (count < 2 || map->size == 0) return;
+  float k = side / map->extent;
+  for (size_t i = 1; i < count; i++)
+    route_segment(renderer, left + (line[2 * i - 2] - map->min_x) * k,
+                  top + (line[2 * i - 1] - map->min_z) * k,
+                  left + (line[2 * i] - map->min_x) * k,
+                  top + (line[2 * i + 1] - map->min_z) * k, left, top, side,
+                  2.2f * scale);
 }

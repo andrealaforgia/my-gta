@@ -89,6 +89,7 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
                         stage->scene.signal_count);
   if (options.scene == SCENE_CITY && stage->scene.route_count > 0) {
     mission_init(&stage->mission, 7);
+    stage->nav = nav_create(stage->scene.routes, stage->scene.route_count);
     stage->mission_markers = mission_markers_create(renderer);
     stage->missions = true;
   }
@@ -115,6 +116,7 @@ void driving_stage_destroy(driving_stage_t* stage) {
     renderer_release_mesh(stage->renderer, stage->skid_strip);
     if (stage->missions)
       mission_markers_destroy(&stage->mission_markers, stage->renderer);
+    nav_destroy(stage->nav);
     traffic_destroy(stage->traffic, stage->physics);
     if (stage->people)
       pedestrian_meshes_destroy(&stage->people_meshes, stage->renderer);
@@ -220,6 +222,17 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   poles_step(&stage->scene, &stage->world, dt);
   if (stage->missions) {
     vec3_t at = physics_body(stage->physics, stage->vehicle.body)->position;
+    /* The way to the destination, worked out again every second or two. */
+    stage->satnav_clock += dt;
+    if (!stage->mission.active) {
+      stage->satnav_count = 0;
+    } else if (stage->nav &&
+               (stage->satnav_clock > 1.5f || stage->satnav_count == 0)) {
+      stage->satnav_clock = 0;
+      stage->satnav_count =
+          nav_path(stage->nav, at.x, at.z, stage->mission.x, stage->mission.z,
+                   stage->satnav, 1024, NULL);
+    }
     if (mission_step(&stage->mission, stage->scene.routes,
                      stage->scene.route_count, at.x, at.z,
                      dt) == MISSION_STARTED) {
@@ -420,9 +433,12 @@ static void draw_map(driving_stage_t* stage) {
                             2 * scale, white);
   renderer_draw_text(r, left + 8 * scale, top + side - 26 * scale, scale, white,
                      "100 M");
-  if (stage->missions)
+  if (stage->missions) {
+    mission_route_on_map(r, map, stage->satnav, stage->satnav_count, left, top,
+                         side, scale);
     mission_map_mark(&stage->mission, r, map, left, top, side, scale,
                      stage->rain_clock);
+  }
 }
 
 /* The name of the street the car is on, at the top in the middle on a dark
@@ -487,9 +503,12 @@ static void draw_minimap(driving_stage_t* stage) {
                             1.2f * scale, red);
   renderer_draw_text(r, x + side * 0.5f - 2 * scale, y + 1 * scale,
                      scale * 0.9f, vec3(1, 0.9f, 0.4f), "N");
-  if (stage->missions)
+  if (stage->missions) {
+    mission_route_on_minimap(r, map, stage->satnav, stage->satnav_count, x, y,
+                             side, u0, v0, u1, v1, scale);
     mission_minimap_mark(&stage->mission, r, map, x, y, side, u0, v0, u1, v1,
                          scale, stage->rain_clock);
+  }
 }
 
 static void draw_hud(driving_stage_t* stage) {
@@ -753,10 +772,20 @@ void driving_stage_render(driving_stage_t* stage) {
           physics_body(stage->physics, stage->vehicle.body);
       vec3_t heading = quat_rotate(me->rotation, vec3(0, 0, -1));
       float length = hypotf(heading.x, heading.z);
+      /* The arrow follows the satnav: the first point of the way that is
+       * a little ahead, else straight at the destination. */
+      float aim_x = stage->mission.x, aim_z = stage->mission.z;
+      for (size_t i = 0; i < stage->satnav_count; i++) {
+        float ax = stage->satnav[2 * i], az = stage->satnav[2 * i + 1];
+        if (hypotf(ax - me->position.x, az - me->position.z) > 35.0f) {
+          aim_x = ax, aim_z = az;
+          break;
+        }
+      }
       mission_hud_draw(&stage->mission, r, (float)stage->window->drawable_width,
                        (float)stage->window->drawable_height, me->position.x,
                        me->position.z, length > 1e-4f ? heading.x / length : 0,
-                       length > 1e-4f ? heading.z / length : -1);
+                       length > 1e-4f ? heading.z / length : -1, aim_x, aim_z);
     }
     draw_minimap(stage);
     draw_street_name(stage);

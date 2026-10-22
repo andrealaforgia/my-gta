@@ -16,6 +16,7 @@
 #include "frame_clock.h"
 #include "mission.h"
 #include "mission_hud.h"
+#include "navigation.h"
 #include "parked_cars.h"
 #include "pedestrians.h"
 #include "physics_world.h"
@@ -79,7 +80,11 @@ typedef struct {
   mission_t mission;
   mission_markers_t mission_markers;
   float mission_ground; /* road height at the destination */
-  bool horn;            /* the horn is being held */
+  nav_t* nav;
+  float satnav[2 * 1024]; /* the way to the destination, x, z pairs */
+  size_t satnav_count;
+  float satnav_clock; /* seconds since the way was last worked out */
+  bool horn;          /* the horn is being held */
   int vehicle_index;
   int view_mode; /* 0 chase, 1 bonnet, 2 cockpit */
   bool map_open; /* M: the city map over a paused game */

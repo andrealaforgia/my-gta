@@ -51,7 +51,8 @@ int main(int argc, char* argv[]) {
       0.0f,
       getenv("SNAPSHOT_TRAFFIC") ? atoi(getenv("SNAPSHOT_TRAFFIC")) : 0,
       getenv("SNAPSHOT_PEOPLE") ? atoi(getenv("SNAPSHOT_PEOPLE")) : 0,
-      getenv("SNAPSHOT_RAIN") ? (float)atof(getenv("SNAPSHOT_RAIN")) : 0.0f};
+      getenv("SNAPSHOT_RAIN") ? (float)atof(getenv("SNAPSHOT_RAIN")) : 0.0f,
+      false};
   driving_stage_t stage;
   if (!driving_stage_init(&stage, &window, renderer, NULL, stage_options))
     return EXIT_FAILURE;

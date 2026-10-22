@@ -76,7 +76,8 @@ static void start_in(city_run_t* run, const char* directory) {
   run->renderer = renderer_create(1280, 720);
   stage_options_t options = {
       SCENE_CITY,        directory,        NULL, false, true, 10.0f, 0.0f,
-      test_traffic_cars, test_pedestrians, 0.0f};
+      test_traffic_cars, test_pedestrians, 0.0f,
+      false};
   assert(driving_stage_init(&run->stage, &run->window, run->renderer, NULL,
                             options));
 }
