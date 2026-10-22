@@ -43,6 +43,7 @@ float pedestrian_scale(int outfit);
 typedef struct {
   mesh_handle_t torso, head, leg, arm, skirt, hair_short, hair_long, bag,
       backpack, cap;
+  texture_handle_t cloth, skin, hair; /* none until given */
 } pedestrian_meshes_t;
 
 pedestrians_t* pedestrians_create(const city_route_t* routes,
@@ -75,6 +76,11 @@ void pedestrians_place(pedestrians_t* pedestrians, size_t index, int route,
                        int side, int direction, float distance);
 
 pedestrian_meshes_t pedestrian_meshes_create(renderer_t* renderer);
+/* Dresses the figures in textures: cloth for garments, skin, hair. */
+void pedestrian_meshes_set_textures(pedestrian_meshes_t* meshes,
+                                    texture_handle_t cloth,
+                                    texture_handle_t skin,
+                                    texture_handle_t hair);
 void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
                                renderer_t* renderer);
 /* One figure at a place (feet), facing yaw, as people walking are drawn: the

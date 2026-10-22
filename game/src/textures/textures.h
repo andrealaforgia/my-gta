@@ -34,7 +34,10 @@ typedef struct {
   texture_handle_t stone;   /* rubble walls and cornices */
   texture_handle_t planks;  /* fences */
   texture_handle_t metal;   /* lamp posts, poles, rails, furniture */
-  texture_handle_t signs;   /* shop signs: SIGN_WORDS words on boards */
+  texture_handle_t cloth;   /* garments: tinted by the colour of the cloth */
+  texture_handle_t skin;
+  texture_handle_t hair;
+  texture_handle_t signs; /* shop signs: SIGN_WORDS words on boards */
   texture_handle_t checker;
 } texture_set_t;
 
@@ -60,6 +63,9 @@ uint8_t* texture_planks(unsigned seed);
 uint8_t* texture_metal(unsigned seed);
 /* An atlas of shop signs, two boards across and eight down, each a word in
  * capital letters on a painted board: SIGN_WORDS of them, row by row. */
+uint8_t* texture_cloth(unsigned seed);
+uint8_t* texture_skin(unsigned seed);
+uint8_t* texture_hair(unsigned seed);
 #define SIGN_WORDS 16
 uint8_t* texture_signs(unsigned seed);
 const char* sign_word(int index);

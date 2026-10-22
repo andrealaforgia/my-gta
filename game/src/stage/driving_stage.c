@@ -84,6 +84,8 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   }
   if (stage->has_fleet) {
     stage->people_meshes = pedestrian_meshes_create(renderer);
+    pedestrian_meshes_set_textures(&stage->people_meshes, stage->textures.cloth,
+                                   stage->textures.skin, stage->textures.hair);
     stage->has_figures = true;
     for (int outfit = 0; outfit < 200; outfit++)
       if (pedestrian_kind(outfit) == PERSON_ADULT) {

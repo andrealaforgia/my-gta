@@ -442,6 +442,7 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
 
 pedestrian_meshes_t pedestrian_meshes_create(renderer_t* renderer) {
   pedestrian_meshes_t meshes;
+  memset(&meshes, 0, sizeof(meshes));
   mesh_data_t torso = mesh_data_create(), head = mesh_data_create(),
               leg = mesh_data_create(), arm = mesh_data_create();
   mesh_data_add_box(&torso, vec3(0, 1.12f, 0), vec3(0.2f, 0.3f, 0.11f));
@@ -485,6 +486,13 @@ pedestrian_meshes_t pedestrian_meshes_create(renderer_t* renderer) {
   mesh_data_free(&backpack);
   mesh_data_free(&cap);
   return meshes;
+}
+
+void pedestrian_meshes_set_textures(pedestrian_meshes_t* meshes,
+                                    texture_handle_t cloth,
+                                    texture_handle_t skin,
+                                    texture_handle_t hair) {
+  meshes->cloth = cloth, meshes->skin = skin, meshes->hair = hair;
 }
 
 void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
@@ -550,6 +558,10 @@ void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
       0.9f);
   material_t trouser_material =
       material_rough(vec3(trouser[0], trouser[1], trouser[2]), 0.9f);
+  shirt_material.texture = meshes->cloth;
+  trouser_material.texture = meshes->cloth;
+  skin_material.texture = meshes->skin;
+  hair_material.texture = meshes->hair;
   mat4_t scaling = mat4_scaling(vec3(s, s, s));
   /* Tipped backwards about the feet, and lifted by the thickness of a body. */
   position.y += 0.14f * s * fall;
