@@ -38,10 +38,13 @@ typedef struct {
   bool teleported;   /* put somewhere else: show it there at once */
   float player_wait; /* seconds held up by the player's car */
   bool honking;
-  float waited;  /* seconds spent standing still */
-  float ghost;   /* metres left to go through others, after a deadlock */
-  float dwell;   /* seconds stood at a bus stop */
-  int stop_done; /* 1 + the bus stop it has just served, 0 for none */
+  bool overtaking;   /* going round a car standing in the lane */
+  bool held;         /* kept standing, for scenes and tests */
+  float blocked_for; /* seconds stood behind a car that does not move */
+  float waited;      /* seconds spent standing still */
+  float ghost;       /* metres left to go through others, after a deadlock */
+  float dwell;       /* seconds stood at a bus stop */
+  int stop_done;     /* 1 + the bus stop it has just served, 0 for none */
   vec3_t position;
   float yaw;
   collider_handle_t collider;
@@ -481,6 +484,30 @@ static float curve_speed(const lane_t* lane, float s, int direction) {
   return cosine > 0.97f ? 99.0f : (cosine > 0.85f ? 6.0f : 3.5f);
 }
 
+/* Whether the other lane is clear for 70 m ahead of car `index`, for a car
+ * that wants to pull out into it by `shift` metres: no oncoming car in or
+ * near it, standing or moving. */
+static bool other_lane_is_clear(const traffic_t* t, size_t index, vec3_t player,
+                                float shift) {
+  const car_t* car = &t->cars[index];
+  float fx = -sinf(car->yaw), fz = -cosf(car->yaw);
+  for (size_t j = 0; j <= t->car_count; j++) {
+    if (j == index) continue;
+    vec3_t at = j == t->car_count ? player : t->cars[j].position;
+    float rx = at.x - car->position.x, rz = at.z - car->position.z;
+    float ahead = rx * fx + rz * fz;
+    float lateral = rx * -fz + rz * fx; /* positive: on our right */
+    if (ahead < -6.0f || ahead > 70.0f) continue;
+    if (lateral > -shift - 2.0f && lateral < -shift + 2.0f) {
+      if (j == t->car_count) return false;
+      float ofx = -sinf(t->cars[j].yaw), ofz = -cosf(t->cars[j].yaw);
+      if (ofx * fx + ofz * fz < 0.2f) return false; /* oncoming or crossing */
+      if (ahead > 0 && ahead < 14.0f) return false; /* one of ours just ahead */
+    }
+  }
+  return true;
+}
+
 /* Keeps as many police cars after the player as are wanted: sends one from
  * the road out of sight, once a second, or calls them all off. */
 static void send_pursuers(traffic_t* t, float dt) {
@@ -527,7 +554,7 @@ static void send_pursuers(traffic_t* t, float dt) {
 
 void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
                   vec3_t player_velocity, float dt) {
-  (void)player_velocity;
+  float player_pace = hypotf(player_velocity.x, player_velocity.z);
   t->ground_clock += dt;
   t->player = player;
   send_pursuers(t, dt);
@@ -582,6 +609,9 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
         goal = -fminf(2.3f, 2.0f * lane_offset(lane));
       }
     }
+    /* Going round a car that stands in the lane: out into the other one. */
+    float shift = 2.0f * lane_offset(lane) + 0.2f;
+    if (car->overtaking && goal == 0) goal = -shift;
     car->lateral_goal = goal;
     car->lateral += (car->lateral_goal - car->lateral) * fminf(1.0f, 2.5f * dt);
     /* Fast cars see further: it takes a long way to stop. */
@@ -590,6 +620,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     float limit = target;
     bool must_stop = false;
     bool held_by_player = false;
+    bool stopped_ahead = false;
     float gap_to_stop = 1e9f;
     for (size_t j = 0; j <= t->car_count; j++) {
       vec3_t other;
@@ -597,6 +628,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       float other_half_length = 2.2f, other_half_width = 0.9f;
       if (j == t->car_count) {
         other = player;
+        other_speed = player_pace;
       } else if (j == i || car->ghost > 0) {
         continue; /* a car stuck for good drives through the others */
       } else {
@@ -628,6 +660,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       }
       float gap = ahead - (own_half_length + other_half_length + 0.6f);
       if (j == t->car_count && gap < 4.0f) held_by_player = true;
+      if (gap < 10.0f && other_speed < 0.6f) stopped_ahead = true;
       if (gap < gap_to_stop) gap_to_stop = gap;
       /* Follow at the leader's pace when there is room. */
       if (gap > 4.0f)
@@ -635,6 +668,34 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       else
         must_stop = true;
       if (gap < 0.5f) must_stop = true;
+    }
+    /* Held up for a while by a car that stands in the lane (a bus at its stop,
+     * a breakdown, the player): when the road is two-way and the other lane
+     * is clear, go round it, and come back in when it is behind. */
+    if (stopped_ahead && car->speed < 0.5f && !car->responding)
+      car->blocked_for += dt;
+    else if (!car->overtaking)
+      car->blocked_for = 0;
+    if (!car->overtaking && car->blocked_for > 2.5f && !lane->route->oneway &&
+        lane->route->width >= 5.5f && to_end > 45.0f && car->s > 8.0f &&
+        !car->pursuing && other_lane_is_clear(t, i, player, shift))
+      car->overtaking = true;
+    if (car->overtaking) {
+      bool beside = false;
+      for (size_t j = 0; j <= t->car_count && !beside; j++) {
+        if (j == i) continue;
+        vec3_t at = j == t->car_count ? player : t->cars[j].position;
+        float pace = j == t->car_count ? player_pace : t->cars[j].speed;
+        float rx = at.x - car->position.x, rz = at.z - car->position.z;
+        float ahead = rx * fx + rz * fz;
+        float lateral = rx * -fz + rz * fx; /* positive: on our right */
+        beside = pace < 0.6f && ahead > -10.0f && ahead < 14.0f &&
+                 lateral > -1.0f && lateral < shift + 2.5f;
+      }
+      if (!beside || to_end < 12.0f) {
+        car->overtaking = false;
+        car->blocked_for = 0;
+      }
     }
     /* A bus halts at a stop on its side of the road for eight seconds, then
      * goes on and does not stop there again until it has left. */
@@ -727,7 +788,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       limit =
           fminf(limit, room > 0 ? sqrtf(2.0f * BRAKING * 0.6f * room) : 0.0f);
     }
-    if (must_stop) limit = 0;
+    if (must_stop || car->held) limit = 0;
     float before = car->speed;
     if (car->speed < limit) {
       car->speed =
@@ -874,4 +935,8 @@ bool traffic_take_car(traffic_t* t, vec3_t near, float radius, int* variant,
   }
   move_collider(t, t->physics, best);
   return true;
+}
+
+void traffic_car_hold(traffic_t* t, size_t index, bool held) {
+  t->cars[index].held = held;
 }

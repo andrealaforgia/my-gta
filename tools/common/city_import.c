@@ -1157,11 +1157,21 @@ static void sea_from_runs(city_model_t* model, coast_run_t* runs,
         if (d < best) best = d, next = q;
       }
       if (next == run_count) break;
-      for (int c = 0; c < 4; c++) {
-        double along = fmod(corners[c] - run->s_end + perimeter, perimeter);
-        if (along > 0.01 && along < best - 0.01)
-          ring[n++] = edge_corner(extent, c);
-      }
+      /* The corners passed on the way, in the order they are passed. */
+      int order[4] = {0, 1, 2, 3};
+      double along[4];
+      for (int c = 0; c < 4; c++)
+        along[c] = fmod(corners[c] - run->s_end + perimeter, perimeter);
+      for (int a = 0; a < 4; a++)
+        for (int b = a + 1; b < 4; b++)
+          if (along[order[b]] < along[order[a]]) {
+            int tmp = order[a];
+            order[a] = order[b];
+            order[b] = tmp;
+          }
+      for (int a = 0; a < 4; a++)
+        if (along[order[a]] > 0.01 && along[order[a]] < best - 0.01)
+          ring[n++] = edge_corner(extent, order[a]);
       if (next == first)
         closed = true;
       else

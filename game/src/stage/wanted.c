@@ -17,6 +17,7 @@ wanted_event_t wanted_crime(wanted_t* wanted) {
   if (wanted->stars == 0) {
     wanted->chase_time = 0;
     wanted->engaged = 0;
+    wanted->caught_for = 0;
   }
   wanted->stars++;
   return wanted->stars == 1 ? WANTED_STARTED : WANTED_NOTHING;
@@ -49,6 +50,7 @@ wanted_event_t wanted_step(wanted_t* wanted, float nearest_police,
   if (wanted->out_of_reach >= 12.0f || wanted->chase_time >= 90.0f) {
     wanted->stars = 0;
     wanted->out_of_reach = 0;
+    wanted->caught_for = 0;
     return WANTED_ESCAPED;
   }
   return WANTED_NOTHING;

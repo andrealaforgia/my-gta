@@ -614,6 +614,51 @@ static void the_sea_lies_on_the_right_of_a_coastline_and_is_walled(void) {
   }
 }
 
+static void the_sea_is_right_of_a_coast_whichever_way_it_runs(void) {
+  /* North to south the sea is to the west; south to north, to the east. The
+   * ring round the edge has to pick up its corners in order. */
+  for (int heading = 0; heading < 2; heading++) {
+    char xml[1200];
+    snprintf(xml, sizeof(xml),
+             "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" "
+             "maxlat=\"45.002\" maxlon=\"12.003\"/>"
+             "<node id=\"1\" lat=\"45.0030\" lon=\"12.0010\"/>"
+             "<node id=\"2\" lat=\"44.9980\" lon=\"12.0010\"/>"
+             "<node id=\"3\" lat=\"45.0005\" lon=\"12.0025\"/>"
+             "<node id=\"4\" lat=\"45.0010\" lon=\"12.0028\"/>"
+             "<way id=\"30\">%s<tag k=\"natural\" v=\"coastline\"/></way>"
+             "<way id=\"31\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+             "v=\"residential\"/></way></osm>",
+             heading == 0 ? "<nd ref=\"1\"/><nd ref=\"2\"/>"
+                          : "<nd ref=\"2\"/><nd ref=\"1\"/>");
+    osm_data_t osm;
+    assert(osm_parse(&osm, xml));
+    city_model_t model;
+    assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+    osm_free(&osm);
+    double coast_x = model.barriers[0].points[0].x;
+    double west = 0, east = 0;
+    for (size_t a = 0; a < model.area_count; a++) {
+      const city_area_t* area = &model.areas[a];
+      if (area->kind != AREA_WATER) continue;
+      double cx = 0, twice = 0;
+      for (size_t i = 0; i < area->point_count; i++) {
+        local_point_t p = area->points[i],
+                      q = area->points[(i + 1) % area->point_count];
+        cx += p.x / (double)area->point_count;
+        twice += p.x * q.z - q.x * p.z;
+      }
+      if (cx < coast_x)
+        west += fabs(twice) * 0.5;
+      else
+        east += fabs(twice) * 0.5;
+    }
+    double wet = heading == 0 ? west : east, dry = heading == 0 ? east : west;
+    assert(wet > 20000.0 && dry < 1.0);
+    city_model_free(&model);
+  }
+}
+
 static void a_coast_cut_into_ways_still_makes_one_sea(void) {
   /* The same eastward coast as one way, and as two that meet at a node. */
   const char* one_way =
@@ -696,6 +741,7 @@ void run_city_tests(void) {
   RUN(street_furniture_is_imported_and_survives_the_model);
   RUN(walls_fences_and_hedges_are_imported_and_survive_the_model);
   RUN(the_sea_lies_on_the_right_of_a_coastline_and_is_walled);
+  RUN(the_sea_is_right_of_a_coast_whichever_way_it_runs);
   RUN(a_coast_cut_into_ways_still_makes_one_sea);
   RUN(the_model_round_trips_through_its_text_format);
 }

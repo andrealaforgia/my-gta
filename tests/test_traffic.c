@@ -958,6 +958,55 @@ static void the_player_on_foot_walks_runs_turns_and_is_stopped_by_walls(void) {
   physics_world_destroy(world);
 }
 
+static void
+a_car_held_up_by_one_that_stands_goes_round_it_when_the_other_lane_is_clear(
+    void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  for (int oncoming = 0; oncoming < 2; oncoming++) {
+    /* A two-way road, 6 m wide: a van standing in the lane, a car behind it,
+     * and, the second time, another standing in the other lane ahead. */
+    static float long_road[4] = {-300, 0, 0, 0};
+    city_route_t routes[1] = {route(long_road, 1, 2, 0)};
+    traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 3, 11);
+    traffic_car_set_kind(traffic, 0, 0, false); /* hatchback behind */
+    traffic_car_set_kind(traffic, 1, 2, false); /* van standing */
+    traffic_car_set_kind(traffic, 2, 0, false); /* oncoming or out of the way */
+    traffic_car_place(traffic, 0, 0, 1, 40.0f);
+    traffic_car_place(traffic, 1, 0, 1, 70.0f);
+    traffic_car_place(traffic, 2, 0, -1, oncoming ? 200.0f : 290.0f);
+    traffic_car_hold(traffic, 1, true);
+    if (oncoming) traffic_car_hold(traffic, 2, true);
+    float widest = 0;
+    bool passed = false, passed_before_clear = false;
+    for (int step = 0; step < 120 * 25; step++) {
+      traffic_step(traffic, world, vec3(0, 0, 2000), vec3_zero(),
+                   1.0f / 120.0f);
+      traffic_car_t me = traffic_car(traffic, 0), van = traffic_car(traffic, 1);
+      if (me.position.x > van.position.x - 2.0f &&
+          me.position.x < van.position.x + 2.0f)
+        widest = fmaxf(widest, fabsf(me.position.z - van.position.z));
+      if (me.position.x > van.position.x + 4.0f) passed = true;
+      if (oncoming && step < 120 * 12 && passed) passed_before_clear = true;
+      assert(hypotf(me.position.x - van.position.x,
+                    me.position.z - van.position.z) > 1.5f); /* never inside */
+    }
+    if (!oncoming) {
+      assert(passed);        /* it went round the van */
+      assert(widest > 2.4f); /* out in the other lane to do it */
+    } else {
+      assert(!passed &&
+             !passed_before_clear); /* the other lane was not clear */
+    }
+    traffic_destroy(traffic, world);
+  }
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
 static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -1117,6 +1166,7 @@ void run_traffic_tests(void) {
   RUN(cars_pull_over_for_an_emergency_vehicle_that_passes_them);
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(a_driver_held_up_by_the_player_sounds_the_horn);
+  RUN(a_car_held_up_by_one_that_stands_goes_round_it_when_the_other_lane_is_clear);
   RUN(the_satnav_finds_the_way_round_by_road_respecting_one_ways);
   RUN(the_player_on_foot_walks_runs_turns_and_is_stopped_by_walls);
   RUN(police_after_the_player_take_the_way_that_leads_to_them);

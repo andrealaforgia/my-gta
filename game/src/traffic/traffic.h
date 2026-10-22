@@ -94,6 +94,8 @@ int traffic_draw(const traffic_t* traffic, const fleet_t* fleet,
                  renderer_t* renderer, vec3_t eye, float range,
                  float lights_on);
 
+/* Holds car `index` standing, or lets it go: for scenes and tests. */
+void traffic_car_hold(traffic_t* traffic, size_t index, bool held);
 /* The road graph pursuers use to find their way to the player; borrowed,
  * optional (without it they choose junctions at random). */
 void traffic_set_nav(traffic_t* traffic, nav_t* nav);

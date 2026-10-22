@@ -777,10 +777,16 @@ bool driving_stage_set_vehicle(driving_stage_t* stage, int index,
   if (!vehicle_params_load(&params, fleet_vehicle_file(index))) return false;
   vec3_t spawn = stage->vehicle.spawn_position;
   quat_t spawn_rotation = stage->vehicle.spawn_rotation;
+  vehicle_params_t previous = stage->vehicle.params;
   vehicle_destroy(&stage->vehicle, stage->physics);
   if (!vehicle_create(&stage->vehicle, stage->physics, &params, position,
-                      rotation))
+                      rotation)) {
+    /* The old one goes back, so there is always a car to drive. */
+    vehicle_create(&stage->vehicle, stage->physics, &previous, position,
+                   rotation);
+    vehicle_set_spawn(&stage->vehicle, spawn, spawn_rotation);
     return false;
+  }
   vehicle_set_spawn(&stage->vehicle, spawn, spawn_rotation);
   car_visual_destroy(&stage->car_visual, stage->renderer);
   stage->car_visual = car_visual_create(stage->renderer, &params);
