@@ -683,6 +683,91 @@ static void draw_minimap(driving_stage_t* stage) {
   }
 }
 
+/* The keys, along the bottom: shown for the first seconds, while paused, and
+ * with the debug overlay. */
+static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
+  renderer_t* r = stage->renderer;
+  float bottom = (float)stage->window->drawable_height - 12 * scale;
+  renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
+                     stage->has_menu
+                         ? "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
+                           "PAUSE  F1 DEBUG  M MAP  N MUTE  BKSP MENU  ESC QUIT"
+                         : "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
+                           "PAUSE  F1 DEBUG  M MAP  N MUTE  F11 FULLSCREEN  "
+                           "ESC QUIT");
+}
+
+/* Centred text. */
+static void gauge_text(renderer_t* r, float cx, float y, float scale,
+                       vec3_t colour, const char* text) {
+  float width = (float)strlen(text) * 6.0f * scale;
+  renderer_draw_text(r, cx - width * 0.5f + scale * 0.4f, y + scale * 0.4f,
+                     scale, vec3(0, 0, 0), text);
+  renderer_draw_text(r, cx - width * 0.5f, y, scale, colour, text);
+}
+
+/* The dial in the corner: a ring of segments that light up with the engine's
+ * revs, green to red, the speed in the middle with the gear below it, and a
+ * strip for damage. */
+static void draw_gauge(driving_stage_t* stage) {
+  renderer_t* r = stage->renderer;
+  const vehicle_t* car = &stage->vehicle;
+  float width = (float)stage->window->drawable_width;
+  float height = (float)stage->window->drawable_height;
+  float scale = width / 640.0f;
+  if (scale < 2) scale = 2;
+  float radius = 40.0f * scale;
+  float cx = width - radius - 10.0f * scale;
+  float cy = height - radius - 18.0f * scale;
+  /* The face: a disc drawn as fat strokes from the middle. */
+  vec3_t face = vec3(0.04f, 0.045f, 0.06f);
+  for (int k = 0; k < 40; k++) {
+    float a = 6.2831853f * (float)k / 40.0f;
+    renderer_draw_screen_line(r, cx, cy, cx + cosf(a) * radius * 0.95f,
+                              cy + sinf(a) * radius * 0.95f, radius * 0.2f,
+                              face);
+  }
+  float fraction = fminf(vehicle_rpm(car) / car->params.engine_max_rpm, 1.0f);
+  const int segments = 32;
+  for (int i = 0; i < segments; i++) {
+    float t = (float)i / (float)(segments - 1);
+    /* From the lower left over the top to the lower right. */
+    float a = (0.75f + 1.5f * t) * 3.1415927f;
+    bool lit = t <= fraction;
+    vec3_t colour = t < 0.6f    ? vec3(0.3f, 0.9f, 0.4f)
+                    : t < 0.82f ? vec3(1.0f, 0.8f, 0.2f)
+                                : vec3(1.0f, 0.25f, 0.2f);
+    if (!lit) colour = vec3_scale(colour, 0.18f);
+    float inner = radius * 0.8f, outer = radius * 0.94f;
+    renderer_draw_screen_line(r, cx + cosf(a) * inner, cy + sinf(a) * inner,
+                              cx + cosf(a) * outer, cy + sinf(a) * outer,
+                              radius * 0.075f, colour);
+  }
+  char line[32];
+  snprintf(line, sizeof(line), "%.0f", fabsf(vehicle_speed_kmh(car)));
+  gauge_text(r, cx, cy - radius * 0.34f, scale * 2.4f, vec3(1, 1, 1), line);
+  gauge_text(r, cx, cy + radius * 0.14f, scale * 0.8f, vec3(0.7f, 0.75f, 0.85f),
+             "KM/H");
+  int gear = vehicle_gear(car);
+  if (gear == VEHICLE_GEAR_REVERSE)
+    snprintf(line, sizeof(line), "R");
+  else
+    snprintf(line, sizeof(line), "%d", gear);
+  gauge_text(r, cx, cy + radius * 0.36f, scale * 1.5f, vec3(1.0f, 0.85f, 0.4f),
+             line);
+  if (car->handbrake)
+    gauge_text(r, cx - radius * 0.62f, cy + radius * 0.42f, scale * 1.2f,
+               vec3(1.0f, 0.3f, 0.25f), "P");
+  if (car->damage > 0.02f) {
+    float bar = radius * 1.7f, y = cy + radius + 4.0f * scale;
+    renderer_draw_screen_line(r, cx - bar * 0.5f, y, cx + bar * 0.5f, y,
+                              3.0f * scale, vec3(0.12f, 0.12f, 0.14f));
+    renderer_draw_screen_line(
+        r, cx - bar * 0.5f, y, cx - bar * 0.5f + bar * car->damage, y,
+        3.0f * scale, vec3(1.0f, 0.35f + 0.4f * (1.0f - car->damage), 0.25f));
+  }
+}
+
 static void draw_hud(driving_stage_t* stage) {
   renderer_t* r = stage->renderer;
   const vehicle_t* car = &stage->vehicle;
@@ -690,6 +775,17 @@ static void draw_hud(driving_stage_t* stage) {
   float scale = (float)stage->window->drawable_width / 640.0f;
   if (scale < 2) scale = 2;
   float x = 16 * scale / 2, y = 16 * scale / 2;
+  draw_gauge(stage);
+  if (!stage->show_debug) {
+    if (stage->paused)
+      renderer_draw_text(r,
+                         (float)stage->window->drawable_width / 2 - 30 * scale,
+                         (float)stage->window->drawable_height / 2, scale * 3,
+                         vec3(1, 1, 0.3f), "PAUSED");
+    if (stage->paused || stage->simulated_seconds < 15.0f)
+      draw_controls_hint(stage, x, scale);
+    return;
+  }
   snprintf(line, sizeof(line), "%3.0f KM/H", fabsf(vehicle_speed_kmh(car)));
   renderer_draw_text(r, x, y, scale * 2.5f, vec3(1, 1, 1), line);
   y += 26 * scale;
@@ -757,14 +853,7 @@ static void draw_hud(driving_stage_t* stage) {
       y += 10 * scale;
     }
   }
-  float bottom = (float)stage->window->drawable_height - 12 * scale;
-  renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
-                     stage->has_menu
-                         ? "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
-                           "PAUSE  F1 DEBUG  M MAP  N MUTE  BKSP MENU  ESC QUIT"
-                         : "ARROWS/WASD DRIVE  SPACE HANDBRAKE  R RESET  P "
-                           "PAUSE  F1 DEBUG  M MAP  N MUTE  F11 FULLSCREEN  "
-                           "ESC QUIT");
+  draw_controls_hint(stage, x, scale);
 }
 
 void driving_stage_set_rain(driving_stage_t* stage, float rain) {
