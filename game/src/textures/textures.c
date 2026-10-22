@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "font5x7.h"
+
 /* Everything here is painted per pixel from noise: periodic gradient noise
  * for broad and fine variation, cellular noise for stones, tiles and grains,
  * and hand-placed features (joints, cracks, frames) with the shading a
@@ -1165,6 +1167,86 @@ static uint8_t* make_fresco(unsigned seed) {
 }
 static uint8_t* make_brick(unsigned seed) { return texture_facade_brick(seed); }
 
+static const char* const sign_words[SIGN_WORDS] = {
+    "CINEMA",   "GARAGE", "SHOP",    "BAR",    "CAFE",      "PIZZERIA",
+    "FARMACIA", "HOTEL",  "BANK",    "BOOKS",  "TRATTORIA", "GELATERIA",
+    "BAKERY",   "MARKET", "TOBACCO", "FLOWERS"};
+
+const char* sign_word(int index) {
+  return sign_words[((index % SIGN_WORDS) + SIGN_WORDS) % SIGN_WORDS];
+}
+
+/* Boards and letters: dark green with cream, red with white, navy with
+ * yellow, black with gold, cream with dark red, slate with white. */
+uint8_t* texture_signs(unsigned seed) {
+  static const float boards[][3] = {
+      {0.07f, 0.24f, 0.14f}, {0.55f, 0.07f, 0.07f}, {0.07f, 0.12f, 0.32f},
+      {0.05f, 0.05f, 0.06f}, {0.86f, 0.80f, 0.64f}, {0.22f, 0.25f, 0.30f}};
+  static const float letters[][3] = {
+      {0.92f, 0.88f, 0.70f}, {0.96f, 0.95f, 0.90f}, {0.95f, 0.80f, 0.22f},
+      {0.85f, 0.68f, 0.25f}, {0.45f, 0.07f, 0.07f}, {0.95f, 0.95f, 0.92f}};
+  uint8_t* pixels = allocate();
+  if (!pixels) return NULL;
+  const int cell_w = S / 2, cell_h = S / 8;
+  for (int word = 0; word < SIGN_WORDS; word++) {
+    int ox = (word % 2) * cell_w, oy = (word / 2) * cell_h;
+    int scheme = (int)((seed + (unsigned)word * 5u) % 6u);
+    const float* board = boards[scheme];
+    const float* ink = letters[scheme];
+    const char* text = sign_words[word];
+    int length = (int)strlen(text);
+    int scale = length <= 7 ? 5 : 4;
+    int pitch = 6 * scale;
+    int text_w = length * pitch - scale;
+    int tx = ox + (cell_w - text_w) / 2;
+    int ty = oy + (cell_h - 7 * scale) / 2;
+    for (int y = 0; y < cell_h; y++)
+      for (int x = 0; x < cell_w; x++) {
+        float grain = 0.93f + 0.14f * noise((unsigned)(ox + x),
+                                            (unsigned)(oy + y), seed + 3);
+        float wear = fbm((float)(ox + x), (float)(oy + y), 24, 3, seed + 7);
+        float k = grain * (0.9f + 0.2f * wear);
+        float r = board[0] * k, g = board[1] * k, b = board[2] * k;
+        /* A raised rim round the board: light on top, dark under. */
+        int edge = x < y ? x : y;
+        int far_x = cell_w - 1 - x, far_y = cell_h - 1 - y;
+        int rim = edge < far_x ? edge : far_x;
+        if (far_y < rim) rim = far_y;
+        if (rim < 3) {
+          float light = (y < 3 || x < 3) ? 1.5f : 0.55f;
+          r *= light, g *= light, b *= light;
+          r = mix(r, ink[0], 0.35f), g = mix(g, ink[1], 0.35f),
+          b = mix(b, ink[2], 0.35f);
+        }
+        /* Lettering, with a dark shadow one pixel down and right. */
+        int lx = x + ox - tx, ly = y + oy - ty;
+        bool lit = false, shadow = false;
+        for (int pass = 0; pass < 2; pass++) {
+          int qx = lx - pass * 2, qy = ly - pass * 2;
+          if (qx < 0 || qy < 0) continue;
+          int row = qy / scale;
+          int letter = qx / pitch, inside = qx % pitch;
+          if (letter < length && inside < 5 * scale && row < 7 &&
+              font5x7_pixel(text[letter], row, inside / scale)) {
+            if (pass == 0)
+              lit = true;
+            else
+              shadow = true;
+          }
+        }
+        if (lit) {
+          float paint = 0.9f + 0.1f * noise((unsigned)(ox + x),
+                                            (unsigned)(oy + y), seed + 9);
+          r = ink[0] * paint, g = ink[1] * paint, b = ink[2] * paint;
+        } else if (shadow) {
+          r *= 0.35f, g *= 0.35f, b *= 0.35f;
+        }
+        put(pixels, ox + x, oy + y, r, g, b);
+      }
+  }
+  return pixels;
+}
+
 texture_set_t texture_set_upload(renderer_t* renderer) {
   texture_set_t set;
   int slot = 0;
@@ -1193,6 +1275,7 @@ texture_set_t texture_set_upload(renderer_t* renderer) {
   set.stone = upload_slot(renderer, slot++, texture_stone, 73);
   set.planks = upload_slot(renderer, slot++, texture_planks, 74);
   set.metal = upload_slot(renderer, slot++, texture_metal, 75);
+  set.signs = upload_slot(renderer, slot++, texture_signs, 81);
   set.checker = upload_slot(renderer, slot++, make_checker, 0);
   return set;
 }

@@ -586,6 +586,7 @@ bool gen_apply_terrain(layout_t* layout) {
                   strncmp(part->material, "roof", 4) == 0 ||
                   /* Placed with their building, which found its own ground. */
                   strcmp(part->material, "door") == 0 ||
+                  strcmp(part->material, "sign") == 0 ||
                   strcmp(part->material, "chimney") == 0 ||
                   strcmp(part->material, "shopfront") == 0 ||
                   strcmp(part->material, "cornice") == 0;

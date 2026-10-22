@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "test_groups.h"
 #include "test_support.h"
@@ -105,7 +106,36 @@ static void facades_have_glass_that_the_renderer_can_mirror_and_light(void) {
   free(brick);
 }
 
+static void shop_signs_hold_readable_words_on_painted_boards(void) {
+  uint8_t* signs = texture_signs(81);
+  assert(signs);
+  assert(strcmp(sign_word(0), "CINEMA") == 0 &&
+         strcmp(sign_word(1), "GARAGE") == 0 &&
+         strcmp(sign_word(2), "SHOP") == 0);
+  /* Every board has lettering that stands out from it: the brightest and
+   * darkest pixels of each differ by a good deal, and most of the board is
+   * plain paint. */
+  for (int word = 0; word < SIGN_WORDS; word++) {
+    int ox = (word % 2) * (TEXTURE_SIZE / 2),
+        oy = (word / 2) * (TEXTURE_SIZE / 8);
+    float lowest = 1, highest = 0;
+    int lettering = 0, pixels = 0;
+    float board = luminance_at(signs, ox + 10, oy + 10);
+    for (int y = 4; y < TEXTURE_SIZE / 8 - 4; y++)
+      for (int x = 4; x < TEXTURE_SIZE / 2 - 4; x++) {
+        float l = luminance_at(signs, ox + x, oy + y);
+        lowest = fminf(lowest, l), highest = fmaxf(highest, l);
+        if (fabsf(l - board) > 0.25f) lettering++;
+        pixels++;
+      }
+    assert(highest - lowest > 0.4f);
+    assert(lettering > pixels / 25 && lettering < pixels / 2);
+  }
+  free(signs);
+}
+
 void run_textures_tests(void) {
+  RUN(shop_signs_hold_readable_words_on_painted_boards);
   RUN(roads_show_wheel_tracks_and_lane_markings);
   RUN(surface_textures_tile_without_a_seam);
   RUN(facades_have_glass_that_the_renderer_can_mirror_and_light);

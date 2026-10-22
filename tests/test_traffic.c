@@ -88,7 +88,8 @@ static void the_road_carries_buses_lorries_and_the_emergency_services(void) {
     tandems += fleet.visuals[i].extra_wheel_count > 0;
   assert(tandems >= 3);
   /* Emergency vehicles keep their own livery whatever paint is picked. */
-  assert(fleet.visuals[FLEET_POLICE_VARIANT].own_paint && !fleet.visuals[0].own_paint);
+  assert(fleet.visuals[FLEET_POLICE_VARIANT].own_paint &&
+         !fleet.visuals[0].own_paint);
   fleet_destroy(&fleet, renderer);
   renderer_destroy(renderer);
 }
@@ -1077,7 +1078,7 @@ static void a_bus_halts_at_a_bus_stop_for_a_while_and_goes_on(void) {
   city_route_t routes[1] = {route(west, 1, 2, 1)}; /* east along z = 0 */
   traffic_t* traffic = traffic_create(routes, 1, world, &fleet, 1, 5);
   traffic_car_set_kind(traffic, 0, FLEET_BUS_VARIANT, false);
-  float stop[2] = {-60.0f, 3.2f};             /* on the right-hand kerb */
+  float stop[2] = {-60.0f, 3.2f}; /* on the right-hand kerb */
   traffic_set_bus_stops(traffic, stop, 1);
   traffic_car_place(traffic, 0, 0, 1, 15.0f);
   float stood = 0, last_x = -1e9f;

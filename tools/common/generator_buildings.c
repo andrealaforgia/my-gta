@@ -806,6 +806,53 @@ static bool add_doors(layout_t* layout, const city_building_t* building,
   return true;
 }
 
+/* Shop signs: a board above the ground-floor shops on the walls that have
+ * them, with a word on it (CINEMA, GARAGE, SHOP...) taken from an atlas of
+ * sixteen. */
+static bool add_signs(layout_t* layout, const city_building_t* building,
+                      city_chunk_t* chunk) {
+  city_part_t* part = NULL;
+  size_t count = building->point_count;
+  float lift = 0;
+  if (layout->terrain && layout->terrain->cols > 0) {
+    local_point_t c = gen_centroid(building->points, count);
+    lift = (float)gen_terrain_at(layout, c.x, c.z);
+  }
+  unsigned hash = (unsigned)((uint64_t)building->source_id * 2654435761u >> 5);
+  for (size_t i = 0; i < count; i++) {
+    if (!edge_faces_shops(layout->model, building, i)) continue;
+    local_point_t a = building->points[i],
+                  b = building->points[(i + 1) % count];
+    double length = hypot(b.x - a.x, b.z - a.z);
+    vec2_t direction = gen_v2_normalize(gen_v2_sub(b, a));
+    vec2_t out = gen_v2(-direction.z, direction.x);
+    /* The board is four times as wide as it is tall, like its picture. */
+    double width = fmin(length * 0.6, 3.2);
+    double centre = length * 0.5;
+    int word = (int)((hash + (unsigned)i * 7u) % 16u);
+    int column = word % 2, row = word / 2;
+    if (!part) {
+      part = city_chunk_add_part(chunk, "sign", PART_COLLIDER_NONE, 0, 0,
+                                 (uint64_t)building->source_id);
+      if (!part) return false;
+    }
+    local_point_t p =
+        gen_offset(gen_offset(a, direction, centre - width * 0.5), out, 0.07);
+    local_point_t q =
+        gen_offset(gen_offset(a, direction, centre + width * 0.5), out, 0.07);
+    vec3_t normal = vec3((float)out.x, 0, (float)out.z);
+    float u0 = column * 0.5f, u1 = u0 + 0.5f;
+    float v_top = row / 8.0f, v_bottom = v_top + 0.125f;
+    float height = (float)width / 4.0f;
+    if (!gen_add_wall_quad(part, p, q, lift + 3.15f - height, lift + 3.15f,
+                           normal, u0, u1, v_bottom, v_top))
+      return false;
+  }
+  if (!part) return true;
+  gen_finish_part(chunk, part);
+  return true;
+}
+
 /* A stone cornice along the top of the walls that face a street: a band
  * that stands 0.4 m out and drops 0.45 m below the eaves, with an underside
  * and a top. Pitched roofs get it on the long sides only, flat and hipped
@@ -895,6 +942,8 @@ static bool finish_landmark_building(layout_t* layout,
     return false;
   finish_building(layout, building, chunk, walls, roof);
   if (landmark == LANDMARK_NONE && !add_doors(layout, building, chunk, NULL))
+    return false;
+  if (landmark == LANDMARK_NONE && !add_signs(layout, building, chunk))
     return false;
   if (landmark == LANDMARK_NONE && !add_cornices(layout, building, chunk))
     return false;
