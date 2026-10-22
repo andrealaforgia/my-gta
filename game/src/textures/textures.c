@@ -528,7 +528,7 @@ static void wall_colour(wall_kind_t kind, const float* base, int x, int y,
       return;
     }
     float bevel = 0.8f + 0.2f * smoothstep(3.0f, 7.0f, edge);
-    float r0 = mix(0.46f, 0.36f, v), g0 = mix(0.19f, 0.15f, v),
+    float r0 = mix(0.40f, 0.32f, v), g0 = mix(0.19f, 0.16f, v),
           b0 = mix(0.12f, 0.1f, v);
     if ((id >> 8) % 9 == 0) {
       r0 = 0.5f;
@@ -644,7 +644,7 @@ static void paint_window(uint8_t* pixels, int x, int y, float fx, float fy,
 static uint8_t* facade_with(wall_kind_t kind, unsigned seed, int window_rows,
                             int window_columns) {
   static const float palette[][3] = {
-      {0.78f, 0.62f, 0.38f}, /* ochre */
+      {0.72f, 0.60f, 0.42f}, /* ochre */
       {0.70f, 0.38f, 0.27f}, /* terracotta */
       {0.82f, 0.77f, 0.65f}, /* cream */
       {0.76f, 0.54f, 0.48f}, /* faded pink */
@@ -652,10 +652,10 @@ static uint8_t* facade_with(wall_kind_t kind, unsigned seed, int window_rows,
       {0.58f, 0.50f, 0.40f}, /* old stone */
       {0.86f, 0.84f, 0.79f}, /* whitewash */
       {0.52f, 0.58f, 0.64f}, /* grey-blue */
-      {0.62f, 0.30f, 0.22f}, /* brick red */
+      {0.55f, 0.32f, 0.26f}, /* brick red */
       {0.80f, 0.68f, 0.45f}, /* sand */
       {0.55f, 0.53f, 0.50f}, /* concrete */
-      {0.76f, 0.60f, 0.36f}, /* straw yellow */
+      {0.70f, 0.60f, 0.42f}, /* straw yellow */
   };
   static const float fresco_tints[][3] = {
       {0.68f, 0.34f, 0.24f}, {0.78f, 0.56f, 0.32f}, {0.60f, 0.42f, 0.32f}};

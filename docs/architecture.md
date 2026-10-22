@@ -125,6 +125,21 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
   (450 m) and a car is only ever put on the road beyond it and clear of
   other cars.
 
+## Textures
+
+`game/src/textures/textures.c` paints every surface at 512 px from periodic
+gradient noise (broad and fine variation), cellular noise (stones, tiles,
+leaves, gravel) and placed features, with the shading a photograph shows:
+asphalt with aggregate, tar-filled cracks, patches and worn paint; slabs and
+stone flags with bevelled edges and dirt in the joints; coppi with per-tile
+firing, moss in the channels and soot; stucco, painted fresco and brick
+facades with sills that drip, louvred shutters, string courses and glass
+(alpha 0, which the shader mirrors by day and lights by night); bark,
+foliage, rubble masonry, weathered boards and painted metal. Colours are
+authored as in a photograph and uploaded as sRGB with anisotropic filtering
+(`renderer_upload_surface_texture`), which also keeps dark surfaces from
+banding. Each texture is painted once per run and kept for the next stage.
+
 ## Physics queries
 
 Static colliders (65 000 in a big city) are kept in a hash grid of 24 m
