@@ -86,6 +86,11 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   if (stage->traffic)
     traffic_set_signals(stage->traffic, stage->scene.signals,
                         stage->scene.signal_count);
+  if (options.scene == SCENE_CITY && stage->scene.route_count > 0) {
+    mission_init(&stage->mission, 7);
+    stage->mission_markers = mission_markers_create(renderer);
+    stage->missions = true;
+  }
   skid_marks_reset(&stage->skid_marks);
   stage->skid_strip = skid_mark_mesh_create(renderer);
   stage->rain = options.rain;
@@ -107,6 +112,8 @@ void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
     renderer_release_mesh(stage->renderer, stage->skid_strip);
+    if (stage->missions)
+      mission_markers_destroy(&stage->mission_markers, stage->renderer);
     traffic_destroy(stage->traffic, stage->physics);
     if (stage->people)
       pedestrian_meshes_destroy(&stage->people_meshes, stage->renderer);
@@ -210,6 +217,20 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
              after.z + (velocity_before.z - after.z) * 0.6f);
   }
   poles_step(&stage->scene, &stage->world, dt);
+  if (stage->missions) {
+    vec3_t at = physics_body(stage->physics, stage->vehicle.body)->position;
+    if (mission_step(&stage->mission, stage->scene.routes,
+                     stage->scene.route_count, at.x, at.z,
+                     dt) == MISSION_STARTED) {
+      ray_t down = {vec3(stage->mission.x, 300.0f, stage->mission.z),
+                    vec3(0, -1, 0)};
+      ray_cast_result_t hit;
+      stage->mission_ground = physics_ray_cast(stage->physics, down, 600.0f,
+                                               COLLISION_LAYER_GROUND, &hit)
+                                  ? hit.hit.point.y
+                                  : 0.0f;
+    }
+  }
   /* The name of the street under the car, looked up four times a second. */
   stage->street_clock += dt;
   if (stage->street_clock >= 0.25f && stage->scene.route_count > 0) {
@@ -398,6 +419,9 @@ static void draw_map(driving_stage_t* stage) {
                             2 * scale, white);
   renderer_draw_text(r, left + 8 * scale, top + side - 26 * scale, scale, white,
                      "100 M");
+  if (stage->missions)
+    mission_map_mark(&stage->mission, r, map, left, top, side, scale,
+                     stage->rain_clock);
 }
 
 /* The name of the street the car is on, at the top in the middle on a dark
@@ -462,6 +486,9 @@ static void draw_minimap(driving_stage_t* stage) {
                             1.2f * scale, red);
   renderer_draw_text(r, x + side * 0.5f - 2 * scale, y + 1 * scale,
                      scale * 0.9f, vec3(1, 0.9f, 0.4f), "N");
+  if (stage->missions)
+    mission_minimap_mark(&stage->mission, r, map, x, y, side, u0, v0, u1, v1,
+                         scale, stage->rain_clock);
 }
 
 static void draw_hud(driving_stage_t* stage) {
@@ -708,11 +735,24 @@ void driving_stage_render(driving_stage_t* stage) {
     if (stage->traffic)
       traffic_draw(stage->traffic, &stage->fleet, r, eye, 220.0f, night);
   }
+  if (stage->missions)
+    mission_marker_draw(&stage->mission, &stage->mission_markers, r,
+                        stage->mission_ground, stage->rain_clock);
   if (stage->show_debug) draw_debug(stage, chassis);
   if (stage->map_open) {
     draw_map(stage);
   } else {
     draw_hud(stage);
+    if (stage->missions) {
+      const rigid_body_t* me =
+          physics_body(stage->physics, stage->vehicle.body);
+      vec3_t heading = quat_rotate(me->rotation, vec3(0, 0, -1));
+      float length = hypotf(heading.x, heading.z);
+      mission_hud_draw(&stage->mission, r, (float)stage->window->drawable_width,
+                       (float)stage->window->drawable_height, me->position.x,
+                       me->position.z, length > 1e-4f ? heading.x / length : 0,
+                       length > 1e-4f ? heading.z / length : -1);
+    }
     draw_minimap(stage);
     draw_street_name(stage);
   }

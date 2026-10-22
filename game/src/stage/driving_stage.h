@@ -14,6 +14,8 @@
 #include "chase_camera.h"
 #include "fleet.h"
 #include "frame_clock.h"
+#include "mission.h"
+#include "mission_hud.h"
 #include "parked_cars.h"
 #include "pedestrians.h"
 #include "physics_world.h"
@@ -72,7 +74,11 @@ typedef struct {
   pedestrians_t* people;
   vec3_t walkers[64]; /* who is crossing a street now, for the traffic */
   pedestrian_meshes_t people_meshes;
-  bool horn; /* the horn is being held */
+  bool missions; /* delivery runs, in a city */
+  mission_t mission;
+  mission_markers_t mission_markers;
+  float mission_ground; /* road height at the destination */
+  bool horn;            /* the horn is being held */
   int vehicle_index;
   int view_mode; /* 0 chase, 1 bonnet, 2 cockpit */
   bool map_open; /* M: the city map over a paused game */
