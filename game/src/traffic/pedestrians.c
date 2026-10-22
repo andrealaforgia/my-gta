@@ -361,8 +361,9 @@ int pedestrians_hit(pedestrians_t* p, vec3_t centre, float yaw,
     person->down = 0.001f;
     person->cross = 0;
     /* Thrown ahead of the car, a little faster than it goes. */
-    person->slide_x = velocity.x * 0.9f;
-    person->slide_z = velocity.z * 0.9f;
+    float throw_speed = fminf(speed * 0.9f, 7.0f);
+    person->slide_x = velocity.x / speed * throw_speed;
+    person->slide_z = velocity.z / speed * throw_speed;
     person->yaw = atan2f(-velocity.x, -velocity.z);
     hit++;
   }
@@ -425,12 +426,15 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
     if (person->down > 0) {
       /* Thrown by the car, skidding to a stop, then lying there a while. */
       person->down += dt;
+      /* A body is not left for ever, even close by: after a minute it goes. */
+      bool long_gone = person->down > 60.0f;
       float friction = expf(-dt * 3.5f);
       person->slide_x *= friction, person->slide_z *= friction;
       person->position.x += person->slide_x * dt;
       person->position.z += person->slide_z * dt;
       person->speed = 0;
-      if (person->down > LYING_SECONDS && near_car > 60.0f * 60.0f) {
+      if ((person->down > LYING_SECONDS && near_car > 60.0f * 60.0f) ||
+          long_gone) {
         person->down = 0;
         person->slide_x = person->slide_z = 0;
         recycle_person(p, person);

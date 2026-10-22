@@ -99,7 +99,10 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
   float dt = 1.0f / (float)mixer->sample_rate;
   float smoothing = 1.0f - expf(-dt * 12.0f);
   float gain = distance_gain(s->listener_distance) * s->master_volume;
-  radio_tune(&mixer->radio, s->radio_station);
+  /* A negative station is tuned in but out of earshot. */
+  bool radio_audible = s->radio_station > 0;
+  radio_tune(&mixer->radio,
+             s->radio_station < 0 ? -s->radio_station : s->radio_station);
   for (int i = 0; i < frames; i++) {
     mixer->rpm_smoothed = smooth(mixer->rpm_smoothed, s->rpm, smoothing);
     mixer->throttle_smoothed =
@@ -322,7 +325,8 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     out[i] =
         soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bird +
                    cricket + bell + rain + horn + other_horn + siren +
-                   radio_next(&mixer->radio) * 0.5f + shot * 0.8f) *
+                   radio_next(&mixer->radio) * (radio_audible ? 0.5f : 0.0f) +
+                   shot * 0.8f) *
                   gain);
   }
 }

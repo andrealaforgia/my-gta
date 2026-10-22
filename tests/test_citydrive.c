@@ -552,6 +552,37 @@ static void on_foot_the_pistol_fires_leaves_a_trail_and_cools_down(void) {
   stop(&run);
 }
 
+static void a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged(void) {
+  test_traffic_cars = 20;
+  test_pedestrians = 10;
+  city_run_t run;
+  start(&run);
+  driving_input_t stand = {0, 0, 0, false};
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(&run.stage);
+  drive(&run, stand, 0.5f);
+  /* Back in, then reset half way through the climb: F still works after. */
+  run.stage.walker.position =
+      vec3(car(&run)->position.x + 1.8f, car(&run)->position.y,
+           car(&run)->position.z);
+  driving_stage_interact(&run.stage);
+  assert(run.stage.entering > 0);
+  driving_stage_reset(&run.stage);
+  assert(!run.stage.on_foot && run.stage.entering == 0);
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(&run.stage);
+  assert(run.stage.on_foot);
+  /* A reset in the middle of a blast leaves no second one behind. */
+  run.stage.on_foot = false;
+  run.stage.vehicle.damage = 1.0f;
+  run.stage.mission.cash = 1000;
+  run.stage.blast = 0.5f;
+  driving_stage_reset(&run.stage);
+  drive(&run, stand, 4.0f);
+  assert(run.stage.blast == 0 && run.stage.mission.cash == 1000);
+  stop(&run);
+}
+
 static void walls_are_grubbier_at_the_foot_but_roads_are_not(void) {
   city_run_t run;
   start(&run);
@@ -829,6 +860,7 @@ void run_citydrive_tests(void) {
   RUN(a_gentle_bump_leaves_a_lamp_post_standing);
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
+  RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
   RUN(the_map_and_the_pause_silence_the_engine);
   RUN(the_player_can_get_out_walk_get_back_in_and_steal_a_car);
   RUN(the_menu_lists_the_cooked_cities_by_name_and_wraps_round);

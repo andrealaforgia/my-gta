@@ -171,7 +171,9 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
   state.engine_running = !stage->on_foot;
   state.horn = stage->horn && !stage->on_foot;
   state.rain = stage->rain;
-  state.radio_station = stage->on_foot ? 0 : stage->radio_station;
+  /* On foot it plays on, out of earshot (negative). */
+  state.radio_station =
+      stage->on_foot ? -stage->radio_station : stage->radio_station;
   state.city = 1.0f * (1.0f - 0.7f * stage->rain);
   state.night = daylight_lamp_glow(stage->hour);
   if (stage->traffic) {
@@ -210,6 +212,12 @@ static void say(driving_stage_t* stage, const char* text) {
 }
 
 static void back_to_spawn(driving_stage_t* stage) {
+  /* Whatever was going on stops: climbing in, the fire, the shooting. */
+  stage->entering = 0;
+  stage->burning = 0;
+  stage->blast = 0;
+  stage->shot_cooldown = 0;
+  stage->shot_flash = 0;
   if (stage->on_foot) {
     /* Back in the car, which is back at the start. */
     stage->on_foot = false;
@@ -233,12 +241,10 @@ static void step_the_fire(driving_stage_t* stage, float dt) {
       snprintf(text, sizeof(text), "WASTED  -$%d", fine);
       say(stage, text);
       back_to_spawn(stage);
-      stage->blast = 0;
-      stage->burning = 0;
     }
     return;
   }
-  if (!stage->on_foot && stage->vehicle.damage >= 0.97f) {
+  if (stage->vehicle.damage >= 0.97f) {
     stage->burning += dt;
     if (stage->burning > 7.0f) {
       stage->blast = 0.001f;
@@ -250,6 +256,8 @@ static void step_the_fire(driving_stage_t* stage, float dt) {
     stage->burning = 0;
   }
 }
+
+void driving_stage_reset(driving_stage_t* stage) { back_to_spawn(stage); }
 
 /* The law's side of the drive: crashes are crimes, police cars come, and the
  * chase ends in being caught or getting away. */

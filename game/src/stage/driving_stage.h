@@ -134,6 +134,8 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage);
 void driving_stage_next_vehicle(driving_stage_t* stage);
 /* F: out of the car if it is nearly stopped, or, on foot, into the car left
  * behind or the nearest other car (standing or driving), which is stolen. */
+/* Back to the start, mended, with everything under way stopped (R). */
+void driving_stage_reset(driving_stage_t* stage);
 void driving_stage_interact(driving_stage_t* stage);
 /* Fires the pistol, when on foot: the first thing in the way is hit. A
  * person who goes down makes it a crime. Returns true if a shot was fired. */

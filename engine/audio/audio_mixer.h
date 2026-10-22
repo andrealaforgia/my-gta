@@ -27,7 +27,7 @@ typedef struct {
   bool horn;               /* the horn is held down */
   float siren;             /* 0..1: an emergency siren, louder as it nears */
   float other_horn;        /* 0..1: another driver's horn, louder as it nears */
-  int radio_station;       /* 0 off, 1..RADIO_STATIONS: the car radio */
+  int radio_station;       /* 0 off, 1..RADIO_STATIONS; <0 out of earshot */
 } audio_state_t;
 
 typedef struct {
