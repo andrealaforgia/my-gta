@@ -1215,7 +1215,7 @@ uint8_t* texture_hair(unsigned seed) {
           noise((unsigned)(x / 2), 0, seed) * 0.5f +
           noise((unsigned)(x / 5), (unsigned)(y / 90), seed + 3) * 0.5f;
       float sheen = expf(-powf(((float)y / S - 0.4f) * 5.0f, 2.0f));
-      float k = 0.55f + 0.6f * strand + 0.35f * sheen;
+      float k = 0.8f + 0.3f * strand + 0.2f * sheen;
       put(pixels, x, y, k, k, k);
     }
   return pixels;

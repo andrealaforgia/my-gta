@@ -125,6 +125,12 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
   (450 m) and a car is only ever put on the road beyond it and clear of
   other cars.
 
+## Street life (2026-10-22)
+
+The car radio (`engine/audio/radio.c`) is three synthesised stations mixed in `audio_mixer`; E tunes, and it is off on foot. A car at speed that meets a pedestrian knocks them down (`pedestrians_hit`): they slide, lie flat for 25 s, and it counts as a crime. A car at full damage burns for seven seconds and explodes (`step_the_fire`); the player is put back at the start, fined a tenth. The walker climbs into a car in two phases, a walk to the driver's door and a sink into the seat (`step_entry`), and a stolen car keeps its paint (`car_visual_set_paint`, `*_take_car` return it). Shift or Space runs on foot. The fleet has seven cars (hatchback, saloon, van, city car, coupe, SUV, taxi) before the emergency services, buses and lorries; use `FLEET_*_VARIANT` constants rather than numbers.
+
+The generator adds shop signs (`sign` part: a board with a word from a 16-word atlas painted by `texture_signs`) over ground-floor shops, and balconies (`balcony` part, iron on a slab) in front of every other window on plain facades. Both are placed with their building, so the terrain pass skips them (`gen_apply_terrain`). People are dressed with cloth, skin and hair textures through `pedestrian_meshes_set_textures`.
+
 ## Textures
 
 `game/src/textures/textures.c` paints every surface at 512 px from periodic
