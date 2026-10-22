@@ -16,6 +16,10 @@
 int city_menu_run(window_t* window, renderer_t* renderer,
                   const city_entry_t* cities, size_t count, int selected);
 
+/* Draws the menu once with the cursor on `row` (for tests and snapshots). */
+void city_menu_draw(renderer_t* renderer, window_t* window,
+                    const city_entry_t* cities, size_t count, size_t row);
+
 /* How the entries are laid out, for tests: the title of row `row`, where row
  * 0 is the test track. */
 const char* city_menu_row_title(const city_entry_t* cities, size_t count,

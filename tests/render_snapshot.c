@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "city_menu.h"
 #include "driving_stage.h"
 #include "log.h"
 #include "renderer.h"
@@ -41,6 +42,18 @@ int main(int argc, char* argv[]) {
   renderer_t* renderer =
       renderer_create(window.drawable_width, window.drawable_height);
   if (!renderer) return EXIT_FAILURE;
+  if (getenv("SNAPSHOT_MENU")) {
+    /* The start menu, with the second row chosen. */
+    city_entry_t cities[CITY_LIST_MAX];
+    size_t count = city_list("assets_cooked/cities", cities, CITY_LIST_MAX);
+    city_menu_draw(renderer, &window, cities, count, count > 1 ? 2 : 1);
+    int w = window.drawable_width, h = window.drawable_height;
+    uint8_t* menu_pixels = malloc((size_t)w * h * 4);
+    renderer_read_pixels(renderer, menu_pixels, (size_t)w * h * 4);
+    int saved = save_bmp(path, w, h, menu_pixels);
+    free(menu_pixels);
+    return saved ? EXIT_SUCCESS : EXIT_FAILURE;
+  }
   stage_options_t stage_options = {
       city ? SCENE_CITY : SCENE_TEST_TRACK,
       city,

@@ -669,6 +669,8 @@ static void the_menu_lists_the_cooked_cities_by_name_and_wraps_round(void) {
   make_city_folder(root, "barletta", true);
   make_city_folder(root, "santa_maria", true);
   make_city_folder(root, "half_cooked", false); /* no manifest: not a city */
+  make_city_folder(root, "district",
+                   true); /* the tests' fixture, not a place */
   city_entry_t cities[CITY_LIST_MAX];
   size_t count = city_list(root, cities, CITY_LIST_MAX);
   assert(count == 3);

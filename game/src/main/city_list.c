@@ -30,6 +30,8 @@ size_t city_list(const char* directory, city_entry_t* out, size_t max) {
   while (count < max && (item = readdir(dir)) != NULL) {
     if (item->d_name[0] == '.' || strlen(item->d_name) >= sizeof(out->name))
       continue;
+    /* The small hand-written district the tests cook is not a place to go. */
+    if (strcmp(item->d_name, "district") == 0) continue;
     char manifest[320];
     snprintf(manifest, sizeof(manifest), "%s/%s/manifest.txt", directory,
              item->d_name);
