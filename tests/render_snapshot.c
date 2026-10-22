@@ -99,6 +99,12 @@ int main(int argc, char* argv[]) {
   /* SNAPSHOT_SOAK drives about at random, getting out and in, stealing cars
    * and breaking in changes of vehicle, and checks that nothing goes wrong. */
   bool soak = getenv("SNAPSHOT_SOAK") != NULL;
+  /* SNAPSHOT_JERK reports traffic cars that jump or spin between steps. */
+  bool jerk = getenv("SNAPSHOT_JERK") != NULL && stage.traffic;
+  size_t jerk_count = jerk ? traffic_car_count(stage.traffic) : 0;
+  traffic_car_t* jerk_before =
+      jerk_count ? calloc(jerk_count, sizeof(traffic_car_t)) : NULL;
+  int jerk_events = 0;
   unsigned soak_random = 12345;
   for (int i = 0; i < steps; i++) {
     if (soak && i % 60 == 0) {
@@ -112,6 +118,26 @@ int main(int argc, char* argv[]) {
       if ((r >> 3) % 97 == 1) driving_stage_next_vehicle(&stage);
     }
     driving_stage_step(&stage, input, 1.0f / 120.0f);
+    if (jerk) {
+      for (size_t k = 0; k < jerk_count; k++) {
+        traffic_car_t now = traffic_car(stage.traffic, k);
+        if (i > 0) {
+          float moved = hypotf(now.position.x - jerk_before[k].position.x,
+                               now.position.z - jerk_before[k].position.z);
+          float turned = now.yaw - jerk_before[k].yaw;
+          turned -= 6.2831853f * floorf(turned / 6.2831853f + 0.5f);
+          if ((moved > 1.0f || fabsf(turned) > 0.06f) && jerk_events < 25) {
+            printf(
+                "jerk at %.1f s: car %zu variant %d route %d moved %.2f m "
+                "turned %.3f rad speed %.1f\n",
+                (float)i / 120.0f, k, now.variant, now.route, moved, turned,
+                now.speed);
+          }
+          if (moved > 1.0f || fabsf(turned) > 0.06f) jerk_events++;
+        }
+        jerk_before[k] = now;
+      }
+    }
     if (soak) {
       vec3_t at =
           stage.on_foot

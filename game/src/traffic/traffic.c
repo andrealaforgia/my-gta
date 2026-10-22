@@ -35,6 +35,7 @@ typedef struct {
   float raw_x, raw_z, raw_yaw;
   float error_x, error_z, error_yaw;
   bool changed_lane;
+  bool teleported;   /* put somewhere else: show it there at once */
   float player_wait; /* seconds held up by the player's car */
   bool honking;
   float waited;  /* seconds spent standing still */
@@ -116,6 +117,10 @@ static void pose(const traffic_t* t, car_t* car, bool snap, float dt) {
       car->error_x += car->raw_x - target_x;
       car->error_z += car->raw_z - target_z;
     }
+    /* A jump of more than a junction's width is a move, not a turn. */
+    if (car->teleported || hypotf(car->error_x, car->error_z) > 8.0f) {
+      car->error_x = car->error_z = car->error_yaw = 0;
+    }
     /* It fades over about six metres of travel, and a little with time so
      * that a stopped car still settles. */
     float keep = expf(-(car->speed * dt / 6.0f + 0.5f * dt));
@@ -124,6 +129,7 @@ static void pose(const traffic_t* t, car_t* car, bool snap, float dt) {
     car->error_yaw *= keep;
   }
   car->changed_lane = false;
+  car->teleported = false;
   car->raw_x = target_x;
   car->raw_z = target_z;
   car->raw_yaw = target_yaw;
@@ -431,10 +437,30 @@ static void choose_next(traffic_t* t, car_t* car) {
   if (car->planned_route < 0) {
     /* A dead end: turn round if the road allows it, else go back to the
      * start of the one-way. */
-    if (!here->route->oneway) car->direction = -car->direction;
-    car->s = 0;
-    car->changed_lane = true;
-    if (!here->route->oneway) car->speed *= 0.3f;
+    if (!here->route->oneway) {
+      car->direction = -car->direction;
+      car->s = 0;
+      car->changed_lane = true;
+      car->speed *= 0.3f;
+      return;
+    }
+    /* No way on and no way back. Out of sight it turns up elsewhere; in
+     * sight it turns round at the end and goes back the wrong way, as a
+     * driver at a dead end would, rather than vanish. */
+    float away =
+        hypotf(car->position.x - t->focus.x, car->position.z - t->focus.z);
+    if (t->has_focus && away > TRAFFIC_VISIBLE_RANGE) {
+      recycle(t, car);
+      car->teleported = true;
+    } else if (!t->has_focus) {
+      car->s = 0;
+      car->teleported = true;
+    } else {
+      car->direction = -car->direction;
+      car->s = 0;
+      car->changed_lane = true;
+      car->speed *= 0.3f;
+    }
     return;
   }
   car->route = car->planned_route;
