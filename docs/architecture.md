@@ -187,3 +187,11 @@ street and 3.8 ms looking across the open ground at the edge, at 1920x1080
 with vsync off. Parked cars, people, skid marks and rain drops are culled
 by distance on the CPU; the sky, clouds and stars are one full-screen
 triangle.
+
+Re-measured on 2026-10-22 on the 5 km Pordenone package (1296 chunks, 5.3
+million triangles, 47 000 colliders, streamed): 120 cars and 250 people, about
+4 000 draws and 8 to 9 ms per frame at the spawn in the town; 1.1 GB resident.
+CPU for the simulation (physics, traffic, people, streaming) is about 30 ms
+per simulated second, since the collider grid (see Physics queries); a
+minute of the soak run (random driving, walking, stealing cars) costs under
+a second. Barletta (700 chunks, 1.3 million triangles) draws in 5 to 9 ms.
