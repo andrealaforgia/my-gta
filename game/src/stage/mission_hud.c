@@ -66,9 +66,11 @@ void mission_hud_draw(const mission_t* mission, renderer_t* renderer,
   if (mission->active) {
     float d = mission_distance_to(mission, x, z);
     if (d >= 1000.0f)
-      snprintf(line, sizeof(line), "DELIVER %.1f KM", d / 1000.0f);
+      snprintf(line, sizeof(line), "%s %.1f KM", mission_verb(mission->kind),
+               d / 1000.0f);
     else
-      snprintf(line, sizeof(line), "DELIVER %d M", (int)d);
+      snprintf(line, sizeof(line), "%s %d M", mission_verb(mission->kind),
+               (int)d);
     shadowed(renderer, right - (float)strlen(line) * 6 * text_scale,
              top + 10 * text_scale, text_scale, white, line);
     char clock[16];
@@ -110,7 +112,8 @@ void mission_hud_draw(const mission_t* mission, renderer_t* renderer,
   }
   if (mission->result_time > 0) {
     if (mission->last_reward > 0)
-      snprintf(line, sizeof(line), "DELIVERED  +$%d", mission->last_reward);
+      snprintf(line, sizeof(line), "%s  +$%d", mission_done_text(mission->kind),
+               mission->last_reward);
     else
       snprintf(line, sizeof(line), "TOO LATE");
     float big = scale * 2.2f;

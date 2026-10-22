@@ -375,6 +375,12 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
           nav_path(stage->nav, at.x, at.z, stage->mission.x, stage->mission.z,
                    stage->satnav, 1024, NULL);
     }
+    if (!stage->mission.active)
+      stage->mission.kind =
+          stage->car_visual.style == BODY_TAXI
+              ? MISSION_FARE
+              : (stage->car_visual.style == BODY_AMBULANCE ? MISSION_PATIENT
+                                                           : MISSION_DELIVERY);
     mission_event_t started =
         mission_step(&stage->mission, stage->scene.routes,
                      stage->scene.route_count, at.x, at.z, dt);

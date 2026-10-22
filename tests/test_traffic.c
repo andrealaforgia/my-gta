@@ -807,6 +807,30 @@ static void a_driver_held_up_by_the_player_sounds_the_horn(void) {
   renderer_destroy(renderer);
 }
 
+static void taxi_fares_and_patients_pay_more_and_ambulances_get_less_time(
+    void) {
+  static float long_road[8] = {0, 0, 300, 0, 600, 0, 900, 0};
+  city_route_t roads[1] = {route(long_road, 1, 2, 0)};
+  roads[0].point_count = 4;
+  int cash[3];
+  float limit[3];
+  for (int kind = 0; kind < 3; kind++) {
+    mission_t mission;
+    mission_init(&mission, 5);
+    mission.kind = (mission_kind_t)kind;
+    assert(mission_step(&mission, roads, 1, 0, 0, 2.0f) == MISSION_STARTED);
+    limit[kind] = mission.time_limit / (20.0f + mission.distance / 6.0f);
+    assert(mission_step(&mission, roads, 1, mission.x - 3.0f, mission.z,
+                        0.0f) == MISSION_DELIVERED);
+    cash[kind] = mission.cash;
+  }
+  assert(cash[MISSION_FARE] > cash[MISSION_DELIVERY] &&
+         cash[MISSION_PATIENT] > cash[MISSION_FARE]);
+  assert(limit[MISSION_PATIENT] < 0.9f * limit[MISSION_DELIVERY]);
+  assert(strcmp(mission_verb(MISSION_FARE), "FARE TO") == 0 &&
+         strcmp(mission_done_text(MISSION_PATIENT), "PATIENT SAVED") == 0);
+}
+
 static void a_delivery_run_sets_a_far_destination_pays_and_gives_the_next(
     void) {
   static float long_road[8] = {0, 0, 300, 0, 600, 0, 900, 0};
@@ -1259,6 +1283,7 @@ void run_traffic_tests(void) {
   RUN(a_sizeable_traffic_has_police_cars_in_it);
   RUN(the_law_comes_after_crashes_and_the_chase_ends_in_a_bust_or_a_getaway);
   RUN(a_delivery_run_sets_a_far_destination_pays_and_gives_the_next);
+  RUN(taxi_fares_and_patients_pay_more_and_ambulances_get_less_time);
   RUN(a_car_follows_the_curve_through_a_corner_without_jumping);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);

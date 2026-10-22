@@ -17,6 +17,22 @@ int mission_reward(float distance, float time_left) {
   return 100 + (int)(distance * 0.2f) + (int)(fmaxf(time_left, 0.0f) * 3.0f);
 }
 
+const char* mission_verb(mission_kind_t kind) {
+  return kind == MISSION_FARE      ? "FARE TO"
+         : kind == MISSION_PATIENT ? "PATIENT TO"
+                                   : "DELIVER";
+}
+
+const char* mission_done_text(mission_kind_t kind) {
+  return kind == MISSION_FARE      ? "FARE PAID"
+         : kind == MISSION_PATIENT ? "PATIENT SAVED"
+                                   : "DELIVERED";
+}
+
+float mission_pay_rate(mission_kind_t kind) {
+  return kind == MISSION_FARE ? 1.4f : (kind == MISSION_PATIENT ? 1.8f : 1.0f);
+}
+
 float mission_distance_to(const mission_t* mission, float px, float pz) {
   return hypotf(mission->x - px, mission->z - pz);
 }
@@ -52,14 +68,17 @@ mission_event_t mission_step(mission_t* m, const city_route_t* routes,
       return MISSION_NOTHING;
     }
     m->active = true;
-    m->time_limit = 20.0f + m->distance / 6.0f;
+    /* Patients cannot wait: a fifth less time. */
+    m->time_limit = (20.0f + m->distance / 6.0f) *
+                    (m->kind == MISSION_PATIENT ? 0.8f : 1.0f);
     m->time_left = m->time_limit;
     return MISSION_STARTED;
   }
   m->time_left -= dt;
   if (mission_distance_to(m, px, pz) < MISSION_ARRIVAL_RADIUS) {
     m->active = false;
-    m->last_reward = mission_reward(m->distance, m->time_left);
+    m->last_reward = (int)((float)mission_reward(m->distance, m->time_left) *
+                           mission_pay_rate(m->kind));
     m->cash += m->last_reward;
     m->delivered++;
     m->pause = 3.0f;
