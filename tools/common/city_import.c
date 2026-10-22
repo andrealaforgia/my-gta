@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "log.h"
+#include "triangulate.h"
 
 city_import_options_t city_import_default_options(void) {
   city_import_options_t o;
@@ -989,6 +990,242 @@ static void import_barriers(city_model_t* model, const osm_data_t* osm) {
   }
 }
 
+/* ---- the sea ---- */
+
+static void add_area(city_model_t* model, int64_t source_id, area_kind_t kind,
+                     const ring_t* ring);
+
+typedef struct {
+  double low_x, low_z, high_x, high_z;
+} extent_t;
+
+/* Where a ray from p along (dx, dz) leaves the extent. */
+static local_point_t leave_extent(const extent_t* e, local_point_t p, double dx,
+                                  double dz) {
+  double t = 1e9;
+  if (dx > 1e-9) t = fmin(t, (e->high_x - p.x) / dx);
+  if (dx < -1e-9) t = fmin(t, (e->low_x - p.x) / dx);
+  if (dz > 1e-9) t = fmin(t, (e->high_z - p.z) / dz);
+  if (dz < -1e-9) t = fmin(t, (e->low_z - p.z) / dz);
+  if (t < 0 || t > 1e8) t = 0;
+  local_point_t out = {p.x + dx * t, p.z + dz * t};
+  return out;
+}
+
+/* Position round the extent's edge, from its low corner, going along the
+ * low z edge first. */
+static double edge_position(const extent_t* e, local_point_t p) {
+  double w = e->high_x - e->low_x, h = e->high_z - e->low_z;
+  double d[4] = {fabs(p.z - e->low_z), fabs(p.x - e->high_x),
+                 fabs(p.z - e->high_z), fabs(p.x - e->low_x)};
+  int edge = 0;
+  for (int i = 1; i < 4; i++)
+    if (d[i] < d[edge]) edge = i;
+  switch (edge) {
+    case 0:
+      return p.x - e->low_x;
+    case 1:
+      return w + (p.z - e->low_z);
+    case 2:
+      return w + h + (e->high_x - p.x);
+    default:
+      return 2 * w + h + (e->high_z - p.z);
+  }
+}
+
+static local_point_t edge_corner(const extent_t* e, int corner) {
+  static const int cx[4] = {0, 1, 1, 0}, cz[4] = {0, 0, 1, 1};
+  local_point_t p = {cx[corner] ? e->high_x : e->low_x,
+                     cz[corner] ? e->high_z : e->low_z};
+  return p;
+}
+
+/* Cuts a convex polygon to a rectangle (Sutherland-Hodgman); returns the
+ * point count of the result, which may be under three. */
+static size_t clip_to_rectangle(const local_point_t* in, size_t count,
+                                const extent_t* box, local_point_t* out) {
+  local_point_t a[16], b[16];
+  size_t n = count > 8 ? 8 : count;
+  memcpy(a, in, n * sizeof(local_point_t));
+  for (int side = 0; side < 4 && n > 0; side++) {
+    size_t m = 0;
+    for (size_t i = 0; i < n; i++) {
+      local_point_t p = a[i], q = a[(i + 1) % n];
+      double pv, qv;
+      switch (side) {
+        case 0:
+          pv = p.x - box->low_x, qv = q.x - box->low_x;
+          break;
+        case 1:
+          pv = box->high_x - p.x, qv = box->high_x - q.x;
+          break;
+        case 2:
+          pv = p.z - box->low_z, qv = q.z - box->low_z;
+          break;
+        default:
+          pv = box->high_z - p.z, qv = box->high_z - q.z;
+          break;
+      }
+      if (pv >= 0 && m < 15) b[m++] = p;
+      if ((pv >= 0) != (qv >= 0) && m < 15) {
+        double t = pv / (pv - qv);
+        local_point_t x = {p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t};
+        b[m++] = x;
+      }
+    }
+    memcpy(a, b, m * sizeof(local_point_t));
+    n = m;
+  }
+  memcpy(out, a, n * sizeof(local_point_t));
+  return n;
+}
+
+/* The sea of one coastline, which has the land on its left and the sea on
+ * its right: the coast closed round the extract's edge on the sea side, cut
+ * into 100 m pieces so that each belongs to a chunk near it. */
+static void lay_sea(city_model_t* model, int64_t source_id,
+                    const local_point_t* coast, size_t count,
+                    const extent_t* extent) {
+  local_point_t* ring = malloc((count + 12) * sizeof(local_point_t));
+  local_point_t* other = malloc((count + 12) * sizeof(local_point_t));
+  if (!ring || !other) {
+    free(ring);
+    free(other);
+    return;
+  }
+  size_t n = 0;
+  for (size_t i = 0; i < count; i++) {
+    ring[n].x = fmin(fmax(coast[i].x, extent->low_x), extent->high_x);
+    ring[n].z = fmin(fmax(coast[i].z, extent->low_z), extent->high_z);
+    if (n == 0 ||
+        hypot(ring[n].x - ring[n - 1].x, ring[n].z - ring[n - 1].z) > 0.1)
+      n++;
+  }
+  if (n < 2) {
+    free(ring);
+    free(other);
+    return;
+  }
+  /* Carry both ends straight on to the edge of the extract. */
+  local_point_t start = leave_extent(extent, ring[0], ring[0].x - ring[1].x,
+                                     ring[0].z - ring[1].z);
+  local_point_t end =
+      leave_extent(extent, ring[n - 1], ring[n - 1].x - ring[n - 2].x,
+                   ring[n - 1].z - ring[n - 2].z);
+  double perimeter = 2 * (extent->high_x - extent->low_x) +
+                     2 * (extent->high_z - extent->low_z);
+  double s_start = edge_position(extent, start),
+         s_end = edge_position(extent, end);
+  local_point_t* best = NULL;
+  size_t best_count = 0;
+  double corners[4];
+  for (int c = 0; c < 4; c++)
+    corners[c] = edge_position(extent, edge_corner(extent, c));
+  for (int direction = 0; direction < 2 && !best; direction++) {
+    /* Round the edge from the end of the coast back to its start, one way
+     * or the other: the corners met on the way, nearest first. */
+    double to_start = direction == 0
+                          ? fmod(s_start - s_end + perimeter, perimeter)
+                          : fmod(s_end - s_start + perimeter, perimeter);
+    double along[4];
+    int order[4] = {0, 1, 2, 3};
+    for (int c = 0; c < 4; c++)
+      along[c] = direction == 0
+                     ? fmod(corners[c] - s_end + perimeter, perimeter)
+                     : fmod(s_end - corners[c] + perimeter, perimeter);
+    for (int i = 0; i < 4; i++)
+      for (int j = i + 1; j < 4; j++)
+        if (along[order[j]] < along[order[i]]) {
+          int tmp = order[i];
+          order[i] = order[j];
+          order[j] = tmp;
+        }
+    size_t m = 0;
+    for (size_t i = 0; i < n; i++) other[m++] = ring[i];
+    other[m++] = end;
+    for (int i = 0; i < 4; i++)
+      if (along[order[i]] > 0.01 && along[order[i]] < to_start - 0.01)
+        other[m++] = edge_corner(extent, order[i]);
+    other[m++] = start;
+    /* The sea is on the right of the coast, so its ring runs clockwise. */
+    if (signed_area(other, m) < 0) {
+      best = malloc(m * sizeof(local_point_t));
+      if (best) {
+        memcpy(best, other, m * sizeof(local_point_t));
+        best_count = m;
+      }
+    }
+  }
+  free(ring);
+  free(other);
+  if (!best) return;
+  /* Anticlockwise for the triangulator. */
+  for (size_t i = 0; i < best_count / 2; i++) {
+    local_point_t tmp = best[i];
+    best[i] = best[best_count - 1 - i];
+    best[best_count - 1 - i] = tmp;
+  }
+  uint32_t* indices = malloc(3 * (best_count - 2) * sizeof(uint32_t));
+  if (indices) {
+    bool clean;
+    size_t triangles = triangulate_polygon(best, best_count, indices, &clean);
+    const double cell = 100.0;
+    for (size_t t = 0; t < triangles; t++) {
+      local_point_t tri[3] = {best[indices[3 * t]], best[indices[3 * t + 1]],
+                              best[indices[3 * t + 2]]};
+      double min_x = fmin(tri[0].x, fmin(tri[1].x, tri[2].x));
+      double max_x = fmax(tri[0].x, fmax(tri[1].x, tri[2].x));
+      double min_z = fmin(tri[0].z, fmin(tri[1].z, tri[2].z));
+      double max_z = fmax(tri[0].z, fmax(tri[1].z, tri[2].z));
+      for (double gx = floor(min_x / cell); gx * cell <= max_x; gx += 1.0)
+        for (double gz = floor(min_z / cell); gz * cell <= max_z; gz += 1.0) {
+          extent_t box = {gx * cell, gz * cell, (gx + 1) * cell,
+                          (gz + 1) * cell};
+          local_point_t piece[16];
+          size_t pn = clip_to_rectangle(tri, 3, &box, piece);
+          if (pn < 3) continue;
+          ring_t r = {piece, NULL, pn};
+          add_area(model, source_id, AREA_WATER, &r);
+        }
+    }
+    free(indices);
+  }
+  free(best);
+}
+
+static void import_coast(city_model_t* model, const osm_data_t* osm) {
+  local_point_t corner_a = projection_project(
+      &model->projection, model->bounds.min_lat, model->bounds.min_lon);
+  local_point_t corner_b = projection_project(
+      &model->projection, model->bounds.max_lat, model->bounds.max_lon);
+  extent_t extent = {fmin(corner_a.x, corner_b.x), fmin(corner_a.z, corner_b.z),
+                     fmax(corner_a.x, corner_b.x),
+                     fmax(corner_a.z, corner_b.z)};
+  for (size_t i = 0; i < osm->way_count; i++) {
+    const osm_way_t* way = &osm->ways[i];
+    const char* natural = osm_tag(way->tags, way->tag_count, "natural");
+    if (!natural || strcmp(natural, "coastline") != 0) continue;
+    cleaned_way_t cleaned = {0};
+    if (!clean_way(osm, &model->projection, way, &cleaned) ||
+        cleaned.point_count < 2) {
+      free(cleaned.points);
+      free(cleaned.node_ids);
+      continue;
+    }
+    lay_sea(model, way->id, cleaned.points, cleaned.point_count, &extent);
+    city_barrier_t* wall = city_model_add_barrier(model);
+    if (wall) {
+      wall->source_id = way->id;
+      wall->kind = BARRIER_SEAWALL;
+      wall->points = cleaned.points;
+      wall->point_count = cleaned.point_count;
+    } else {
+      free(cleaned.points);
+    }
+    free(cleaned.node_ids);
+  }
+}
+
 /* ---- areas ---- */
 
 static bool classify_area(const osm_tag_t* tags, size_t tag_count,
@@ -1140,6 +1377,7 @@ bool city_import(city_model_t* model, const osm_data_t* osm,
   import_roads(model, osm, &options);
   import_buildings_and_areas(model, osm, &options);
   import_barriers(model, osm);
+  import_coast(model, osm);
   for (size_t n = 0; n < osm->node_count; n++) {
     if (osm->nodes[n].furniture != OSM_FURNITURE_NONE) {
       city_furniture_t* grown = realloc(

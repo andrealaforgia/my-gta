@@ -551,6 +551,69 @@ static void walls_fences_and_hedges_are_imported_and_survive_the_model(void) {
   city_model_free(&model);
 }
 
+static double water_area_on_side(const city_model_t* model, double coast_z,
+                                 bool south) {
+  double total = 0;
+  for (size_t a = 0; a < model->area_count; a++) {
+    const city_area_t* area = &model->areas[a];
+    if (area->kind != AREA_WATER) continue;
+    double cz = 0, twice = 0;
+    for (size_t i = 0; i < area->point_count; i++) {
+      local_point_t p = area->points[i],
+                    q = area->points[(i + 1) % area->point_count];
+      cz += p.z / (double)area->point_count;
+      twice += p.x * q.z - q.x * p.z;
+    }
+    bool is_south = cz > coast_z;
+    if (is_south == south) total += fabs(twice) * 0.5;
+  }
+  return total;
+}
+
+static void the_sea_lies_on_the_right_of_a_coastline_and_is_walled(void) {
+  /* Heading east the sea is to the south; heading west, to the north. */
+  const char* east_to_west[2] = {"<nd ref=\"1\"/><nd ref=\"2\"/>",
+                                 "<nd ref=\"2\"/><nd ref=\"1\"/>"};
+  for (int heading = 0; heading < 2; heading++) {
+    char xml[1200];
+    snprintf(xml, sizeof(xml),
+             "<osm><bounds minlat=\"44.999\" minlon=\"11.999\" "
+             "maxlat=\"45.002\" maxlon=\"12.003\"/>"
+             "<node id=\"1\" lat=\"45.0005\" lon=\"11.9995\"/>"
+             "<node id=\"2\" lat=\"45.0005\" lon=\"12.0025\"/>"
+             "<node id=\"3\" lat=\"45.0016\" lon=\"12.0000\"/>"
+             "<node id=\"4\" lat=\"45.0016\" lon=\"12.0020\"/>"
+             "<way id=\"30\">%s<tag k=\"natural\" v=\"coastline\"/></way>"
+             "<way id=\"31\"><nd ref=\"3\"/><nd ref=\"4\"/><tag k=\"highway\" "
+             "v=\"residential\"/></way></osm>",
+             east_to_west[heading]);
+    osm_data_t osm;
+    assert(osm_parse(&osm, xml));
+    city_model_t model;
+    assert(city_import(&model, &osm, city_import_default_options(), "inline"));
+    osm_free(&osm);
+    assert(model.barrier_count == 1 &&
+           model.barriers[0].kind == BARRIER_SEAWALL);
+    double coast_z = model.barriers[0].points[0].z;
+    double south = water_area_on_side(&model, coast_z, true);
+    double north = water_area_on_side(&model, coast_z, false);
+    /* The extract is about 300 m by 330 m, the coast cutting it in two. */
+    double wet = heading == 0 ? south : north,
+           dry = heading == 0 ? north : south;
+    assert(wet > 20000.0 && dry < 1.0);
+    /* It survives the model's text file. */
+    const char* directory = "/tmp/gta-like-test-sea-model";
+    assert(city_model_write(&model, directory));
+    city_model_t loaded;
+    assert(city_model_read(&loaded, directory));
+    assert(loaded.barrier_count == 1 &&
+           loaded.barriers[0].kind == BARRIER_SEAWALL);
+    assert(loaded.area_count == model.area_count);
+    city_model_free(&loaded);
+    city_model_free(&model);
+  }
+}
+
 static void the_model_round_trips_through_its_text_format(void) {
   city_model_t model = import_fixture();
   const char* directory = "/tmp/gta-like-test-intermediate";
@@ -594,5 +657,6 @@ void run_city_tests(void) {
   RUN(building_names_are_kept_and_written);
   RUN(street_furniture_is_imported_and_survives_the_model);
   RUN(walls_fences_and_hedges_are_imported_and_survive_the_model);
+  RUN(the_sea_lies_on_the_right_of_a_coastline_and_is_walled);
   RUN(the_model_round_trips_through_its_text_format);
 }

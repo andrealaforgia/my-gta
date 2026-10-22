@@ -44,6 +44,7 @@ typedef enum {
   BARRIER_WALL,  /* walls and retaining walls: stone */
   BARRIER_FENCE, /* fences: timber */
   BARRIER_HEDGE, /* hedges: green */
+  BARRIER_SEAWALL, /* the edge of the sea, a low stone wall */
   BARRIER_KIND_COUNT
 } barrier_kind_t;
 

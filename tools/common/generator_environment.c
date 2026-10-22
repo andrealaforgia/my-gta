@@ -399,9 +399,10 @@ static bool add_barrier_piece(city_part_t* part, local_point_t p,
 }
 
 bool generate_barriers(layout_t* layout, const city_model_t* model) {
-  static const char* materials[BARRIER_KIND_COUNT] = {"wall", "fence", "hedge"};
-  static const float heights[BARRIER_KIND_COUNT] = {1.9f, 1.25f, 1.3f};
-  static const double thicknesses[BARRIER_KIND_COUNT] = {0.3, 0.07, 0.7};
+  static const char* materials[BARRIER_KIND_COUNT] = {"wall", "fence", "hedge",
+                                                      "wall"};
+  static const float heights[BARRIER_KIND_COUNT] = {1.9f, 1.25f, 1.3f, 0.9f};
+  static const double thicknesses[BARRIER_KIND_COUNT] = {0.3, 0.07, 0.7, 0.5};
   const double piece_length = 2.0;
   for (size_t b = 0; b < model->barrier_count; b++) {
     const city_barrier_t* barrier = &model->barriers[b];
@@ -482,7 +483,7 @@ bool generate_area(layout_t* layout, const city_area_t* area,
   switch (area->kind) {
     case AREA_WATER:
       material = "water";
-      y = 0.02f;
+      y = 0.04f; /* clear of the ground, which a far camera cannot split */
       break;
     case AREA_PARKING:
       material = "parking";

@@ -14,7 +14,7 @@ static const char* area_names[AREA_KIND_COUNT] = {"water", "park", "parking",
                                                   "square"};
 
 static const char* barrier_names[BARRIER_KIND_COUNT] = {"wall", "fence",
-                                                        "hedge"};
+                                                        "hedge", "seawall"};
 
 const char* barrier_kind_name(barrier_kind_t kind) {
   return kind < BARRIER_KIND_COUNT ? barrier_names[kind] : "wall";
