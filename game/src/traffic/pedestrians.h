@@ -71,6 +71,15 @@ size_t pedestrians_crossing(const pedestrians_t* pedestrians, vec3_t* out,
  * Returns how many were hit. */
 int pedestrians_hit(pedestrians_t* pedestrians, vec3_t centre, float yaw,
                     vec3_t half_extents, vec3_t velocity);
+/* Something frightening happens at a place: everyone standing within
+ * `radius` metres runs, at two and a half times their pace, for a few
+ * seconds. */
+void pedestrians_alarm(pedestrians_t* pedestrians, vec3_t at, float radius);
+/* A bullet from `origin` along `direction` (unit) over `range` metres hits
+ * the nearest person standing in its way, who goes down as if run over.
+ * Returns true, with the distance in `hit_distance`, if it hit anyone. */
+bool pedestrians_shoot(pedestrians_t* pedestrians, vec3_t origin,
+                       vec3_t direction, float range, float* hit_distance);
 /* Stands someone on a route: side +1 is the right of its direction. */
 void pedestrians_place(pedestrians_t* pedestrians, size_t index, int route,
                        int side, int direction, float distance);

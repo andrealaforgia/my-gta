@@ -407,6 +407,64 @@ static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
   physics_world_destroy(world);
 }
 
+static void a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it(
+    void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 1, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  vec3_t at = pedestrians_get(people, 0).position;
+  float distance = 0;
+  /* Beside, behind and short of them: nothing. */
+  assert(!pedestrians_shoot(people, vec3(at.x + 5, at.y + 1.3f, at.z - 10),
+                            vec3(0, 0, 1), 40.0f, &distance));
+  assert(!pedestrians_shoot(people, vec3(at.x, at.y + 1.3f, at.z + 10),
+                            vec3(0, 0, 1), 40.0f, &distance));
+  assert(!pedestrians_shoot(people, vec3(at.x, at.y + 1.3f, at.z - 10),
+                            vec3(0, 0, -1), 40.0f, &distance));
+  assert(!pedestrians_shoot(people, vec3(at.x, at.y + 1.3f, at.z - 10),
+                            vec3(0, 0, 1), 5.0f, &distance));
+  /* Dead on: down, at about the range. */
+  assert(pedestrians_shoot(people, vec3(at.x, at.y + 1.3f, at.z - 10),
+                           vec3(0, 0, 1), 40.0f, &distance));
+  assert(fabsf(distance - 10.0f) < 0.6f);
+  for (int step = 0; step < 120; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).fall > 0.99f);
+  /* Nobody is hit twice. */
+  assert(!pedestrians_shoot(people, vec3(at.x, at.y + 1.3f, at.z - 10),
+                            vec3(0, 0, 1), 40.0f, &distance));
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
+static void people_near_trouble_run_and_then_calm_down(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 1, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  for (int step = 0; step < 120 * 3; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  pedestrian_t calm = pedestrians_get(people, 0);
+  /* Far from it: no change. Near it: much quicker. */
+  pedestrians_alarm(people, vec3(calm.position.x + 100, 0, calm.position.z),
+                    20.0f);
+  for (int step = 0; step < 120 * 2; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).speed < calm.speed * 1.3f);
+  pedestrians_alarm(people, pedestrians_get(people, 0).position, 20.0f);
+  for (int step = 0; step < 120 * 2; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).speed > calm.speed * 2.0f);
+  /* After a few seconds they walk again. */
+  for (int step = 0; step < 120 * 10; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).speed < calm.speed * 1.3f);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
 static void people_come_in_sizes_and_paces_and_some_walk_in_pairs(void) {
   /* Adults, children, elders and joggers all occur; children are smaller,
    * elders slower than adults and joggers fastest. */
@@ -1219,6 +1277,8 @@ void run_traffic_tests(void) {
   RUN(cars_follow_the_roads_on_the_right_at_a_sensible_speed);
   RUN(cars_turn_at_junctions_onto_every_road_and_keep_apart);
   RUN(a_car_at_speed_knocks_a_person_down_and_they_lie_still);
+  RUN(a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it);
+  RUN(people_near_trouble_run_and_then_calm_down);
   RUN(a_car_stops_short_of_the_player_in_its_way);
   RUN(at_a_dead_end_a_car_turns_round_and_comes_back);
   RUN(each_car_carries_a_solid_box_that_moves_with_it);

@@ -306,6 +306,8 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                      wheel->grounded && wheel->skidding);
   }
   stage->signal_clock += dt;
+  stage->shot_cooldown = fmaxf(0.0f, stage->shot_cooldown - dt);
+  stage->shot_flash = fmaxf(0.0f, stage->shot_flash - dt);
   if (stage->traffic) {
     traffic_set_signal_time(stage->traffic, stage->signal_clock);
     vec3_t where = player_position(stage);
@@ -324,6 +326,8 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
       stage->people_struck = pedestrians_hit(
           stage->people, car->position, atan2f(-nose.x, -nose.z),
           stage->vehicle.params.chassis_half_extents, car->velocity);
+      if (stage->people_struck)
+        pedestrians_alarm(stage->people, car->position, 25.0f);
       if (stage->people_struck && stage->audio)
         audio_device_trigger_impact(stage->audio, 0.25f);
     }
@@ -686,7 +690,7 @@ static void draw_law(driving_stage_t* stage) {
             hypotf(stage->parked.cars[i].position.x - stage->walker.position.x,
                    stage->parked.cars[i].position.z -
                        stage->walker.position.z) < 4.2f;
-      if (near_car) hint = "F  TAKE THE CAR";
+      hint = near_car ? "F  TAKE THE CAR" : "G  SHOOT";
     }
   }
   if (hint) {
@@ -766,10 +770,10 @@ static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
   renderer_draw_text(
       r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
       stage->has_menu
-          ? "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  E RADIO  T "
-            "RAIN  M MAP  N MUTE  BKSP MENU  ESC QUIT"
-          : "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  E RADIO  T "
-            "RAIN  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
+          ? "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  G SHOOT  E "
+            "RADIO  T RAIN  M MAP  N MUTE  BKSP MENU  ESC QUIT"
+          : "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  G SHOOT  E "
+            "RADIO  T RAIN  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
 }
 
 /* Centred text. */
@@ -1104,6 +1108,37 @@ void driving_stage_interact(driving_stage_t* stage) {
     say(stage, "WANTED");
 }
 
+bool driving_stage_fire(driving_stage_t* stage) {
+  if (stage->paused || stage->map_open || !stage->on_foot ||
+      stage->entering > 0 || stage->shot_cooldown > 0)
+    return false;
+  stage->shot_cooldown = 0.35f;
+  const walker_t* w = &stage->walker;
+  vec3_t forward = walker_forward(w);
+  vec3_t origin = vec3_add(w->position, vec3(0, 1.3f, 0));
+  origin = vec3_add(origin, vec3_scale(forward, 0.45f));
+  float range = 60.0f;
+  ray_t ray = {origin, forward};
+  ray_cast_result_t hit;
+  if (physics_ray_cast(stage->physics, ray, range, COLLISION_LAYER_ALL, &hit))
+    range = hit.hit.distance;
+  float person_at = 0;
+  bool downed = stage->people && pedestrians_shoot(stage->people, origin,
+                                                   forward, range, &person_at);
+  if (downed) range = person_at;
+  if (stage->people) pedestrians_alarm(stage->people, w->position, 30.0f);
+  stage->shot_from = origin;
+  stage->shot_to = vec3_add(origin, vec3_scale(forward, range));
+  stage->shot_flash = 0.09f;
+  if (stage->audio) audio_device_trigger_shot(stage->audio);
+  /* Hitting someone is a crime, and so is the first shot fired. */
+  if (stage->missions && stage->traffic &&
+      (downed || stage->wanted.stars == 0) &&
+      wanted_crime(&stage->wanted) == WANTED_STARTED)
+    say(stage, "WANTED");
+  return true;
+}
+
 static bool is_a_road_surface(const char* label) {
   static const char* names[] = {"road", "junction", "pavement", "paving",
                                 "parking"};
@@ -1261,6 +1296,16 @@ void driving_stage_render(driving_stage_t* stage) {
                            stage->walker.yaw, stage->walker.speed,
                            stage->walker.phase, stage->walker_outfit);
   }
+  if (stage->shot_flash > 0) {
+    /* The bullet's trail, and a flash at the muzzle. */
+    renderer_draw_line(r, stage->shot_from, stage->shot_to,
+                       vec3(1.0f, 0.85f, 0.45f));
+    material_t flash = material_rough(vec3(1.0f, 0.8f, 0.3f), 1.0f);
+    flash.emissive = 4.0f;
+    renderer_draw_mesh(r, stage->car_visual.smoke_puff, flash,
+                       mat4_multiply(mat4_translation(stage->shot_from),
+                                     mat4_scaling(vec3(0.12f, 0.12f, 0.12f))));
+  }
   if (stage->missions)
     mission_marker_draw(&stage->mission, &stage->mission_markers, r,
                         stage->mission_ground, stage->rain_clock);
@@ -1308,6 +1353,7 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
     stage->quit = true;
   }
   if (events.interact) driving_stage_interact(stage);
+  if (events.fire) driving_stage_fire(stage);
   if (events.toggle_pause) stage->paused = !stage->paused;
   if (events.toggle_map) stage->map_open = !stage->map_open;
   if (events.toggle_debug) stage->show_debug = !stage->show_debug;

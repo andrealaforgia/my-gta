@@ -99,6 +99,13 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < 120 * 3; i++)
       driving_stage_step(&stage, brake, 1.0f / 120.0f);
     driving_stage_interact(&stage);
+    /* SNAPSHOT_SHOOT fires the pistol, so the shot shows the tracer. */
+    if (getenv("SNAPSHOT_SHOOT")) {
+      driving_input_t stand = {0.0f, 0.0f, 0.0f, false};
+      for (int i = 0; i < 60; i++)
+        driving_stage_step(&stage, stand, 1.0f / 120.0f);
+      driving_stage_fire(&stage);
+    }
     /* SNAPSHOT_ENTER then gets back in, so the shot is mid-climb. */
     if (getenv("SNAPSHOT_ENTER")) {
       driving_input_t stand = {0.0f, 0.0f, 0.0f, false};

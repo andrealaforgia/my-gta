@@ -65,8 +65,11 @@ typedef struct {
   float burning; /* seconds the car has been on fire */
   float blast;   /* seconds since it blew up; 0 while it has not */
   vec3_t blast_at;
-  float entering;     /* seconds into getting into a car; 0 when not */
-  vec3_t entry_start; /* where the walker set off from */
+  float entering;      /* seconds into getting into a car; 0 when not */
+  vec3_t entry_start;  /* where the walker set off from */
+  float shot_cooldown; /* seconds until the pistol can fire again */
+  float shot_flash;    /* seconds the last shot's tracer is shown */
+  vec3_t shot_from, shot_to;
   int people_struck;  /* people the car ran into this step */
   int radio_station;  /* 0 off .. RADIO_STATIONS */
   float radio_banner; /* seconds left to show the station's name */
@@ -132,6 +135,9 @@ void driving_stage_next_vehicle(driving_stage_t* stage);
 /* F: out of the car if it is nearly stopped, or, on foot, into the car left
  * behind or the nearest other car (standing or driving), which is stolen. */
 void driving_stage_interact(driving_stage_t* stage);
+/* Fires the pistol, when on foot: the first thing in the way is hit. A
+ * person who goes down makes it a crime. Returns true if a shot was fired. */
+bool driving_stage_fire(driving_stage_t* stage);
 /* Makes the player's vehicle fleet variant `index`, at a place and facing. */
 bool driving_stage_set_vehicle(driving_stage_t* stage, int index,
                                vec3_t position, quat_t rotation);

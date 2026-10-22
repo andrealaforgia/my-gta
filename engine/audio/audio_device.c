@@ -57,6 +57,13 @@ void audio_device_trigger_impact(audio_device_t* audio, float strength) {
   SDL_UnlockAudioDevice(audio->device);
 }
 
+void audio_device_trigger_shot(audio_device_t* audio) {
+  if (!audio->device) return;
+  SDL_LockAudioDevice(audio->device);
+  audio_mixer_trigger_shot(&audio->mixer);
+  SDL_UnlockAudioDevice(audio->device);
+}
+
 void audio_device_trigger_bell(audio_device_t* audio, int strikes) {
   if (!audio->device) return;
   SDL_LockAudioDevice(audio->device);

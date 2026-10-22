@@ -529,6 +529,29 @@ static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
   stop(&run);
 }
 
+static void on_foot_the_pistol_fires_leaves_a_trail_and_cools_down(void) {
+  test_traffic_cars = 20;
+  test_pedestrians = 10;
+  city_run_t run;
+  start(&run);
+  driving_input_t stand = {0, 0, 0, false};
+  /* In the car there is no shooting. */
+  assert(!driving_stage_fire(&run.stage));
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(&run.stage);
+  assert(run.stage.on_foot);
+  assert(driving_stage_fire(&run.stage));
+  assert(run.stage.shot_flash > 0);
+  assert(vec3_distance(run.stage.shot_from, run.stage.shot_to) > 0.5f);
+  /* A second shot has to wait. */
+  assert(!driving_stage_fire(&run.stage));
+  drive(&run, stand, 0.5f);
+  assert(driving_stage_fire(&run.stage));
+  /* The first shot is a crime. */
+  assert(run.stage.wanted.stars >= 1);
+  stop(&run);
+}
+
 static void walls_are_grubbier_at_the_foot_but_roads_are_not(void) {
   city_run_t run;
   start(&run);
@@ -805,6 +828,7 @@ void run_citydrive_tests(void) {
   RUN(a_car_that_hits_a_lamp_post_hard_knocks_it_down);
   RUN(a_gentle_bump_leaves_a_lamp_post_standing);
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
+  RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(the_map_and_the_pause_silence_the_engine);
   RUN(the_player_can_get_out_walk_get_back_in_and_steal_a_car);
   RUN(the_menu_lists_the_cooked_cities_by_name_and_wraps_round);

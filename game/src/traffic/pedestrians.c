@@ -23,6 +23,7 @@ typedef struct {
   float cooldown; /* seconds before they will cross again */
   int decided;    /* the crossing they last made up their mind about */
   float heading_x, heading_z; /* of the route where they stand */
+  float panic;                /* seconds left of running from trouble */
   float down;             /* 0 on their feet, else seconds since a car hit */
   float slide_x, slide_z; /* metres a second, thrown by the car */
 } person_t;
@@ -368,6 +369,45 @@ int pedestrians_hit(pedestrians_t* p, vec3_t centre, float yaw,
   return hit;
 }
 
+void pedestrians_alarm(pedestrians_t* p, vec3_t at, float radius) {
+  for (size_t i = 0; i < p->count; i++) {
+    person_t* person = &p->people[i];
+    float dx = person->position.x - at.x, dz = person->position.z - at.z;
+    if (person->down <= 0 && dx * dx + dz * dz < radius * radius)
+      person->panic = 7.0f;
+  }
+}
+
+bool pedestrians_shoot(pedestrians_t* p, vec3_t origin, vec3_t direction,
+                       float range, float* hit_distance) {
+  person_t* best = NULL;
+  float best_t = range;
+  for (size_t i = 0; i < p->count; i++) {
+    person_t* person = &p->people[i];
+    if (person->down > 0) continue;
+    float s = pedestrian_scale(person->outfit);
+    /* The body is a capsule from the feet to the head; test its centre. */
+    vec3_t centre = vec3(person->position.x, person->position.y + 0.9f * s,
+                         person->position.z);
+    vec3_t to = vec3_sub(centre, origin);
+    float t = vec3_dot(to, direction);
+    if (t <= 0 || t >= best_t) continue;
+    vec3_t closest = vec3_add(origin, vec3_scale(direction, t));
+    float dx = closest.x - centre.x, dz = closest.z - centre.z;
+    float dy = fabsf(closest.y - centre.y);
+    if (dx * dx + dz * dz > 0.3f * 0.3f || dy > 0.85f * s) continue;
+    best = person, best_t = t;
+  }
+  if (!best) return false;
+  best->down = 0.001f;
+  best->cross = 0;
+  best->slide_x = direction.x * 3.0f;
+  best->slide_z = direction.z * 3.0f;
+  best->yaw = atan2f(-direction.x, -direction.z);
+  *hit_distance = best_t;
+  return true;
+}
+
 void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
   for (size_t i = 0; i < p->count; i++) {
     person_t* person = &p->people[i];
@@ -399,7 +439,9 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
       continue;
     }
     /* Hold still while a car is within a few metres. */
+    if (person->panic > 0) person->panic -= dt;
     float target = near_car < 4.0f * 4.0f ? 0.0f : person->cruise;
+    if (person->panic > 0) target = person->cruise * 2.6f;
     float rate = target < person->speed ? 6.0f : 1.5f;
     if (person->speed < target)
       person->speed = fminf(target, person->speed + rate * dt);

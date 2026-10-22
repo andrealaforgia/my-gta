@@ -108,6 +108,9 @@ static void handle_key(window_events_t* events, SDL_Scancode key) {
     case SDL_SCANCODE_BACKSPACE:
       events->back_to_menu = true;
       break;
+    case SDL_SCANCODE_G:
+      events->fire = true;
+      break;
     case SDL_SCANCODE_E:
       events->next_station = true;
       break;
@@ -124,6 +127,9 @@ static void handle_key(window_events_t* events, SDL_Scancode key) {
 
 static void handle_button(window_events_t* events, Uint8 button) {
   switch (button) {
+    case SDL_CONTROLLER_BUTTON_X:
+      events->fire = true;
+      break;
     case SDL_CONTROLLER_BUTTON_Y:
       events->reset_vehicle = true;
       break;
@@ -148,6 +154,9 @@ window_events_t window_poll(window_t* window) {
         break;
       case SDL_KEYDOWN:
         if (!event.key.repeat) handle_key(&events, event.key.keysym.scancode);
+        break;
+      case SDL_MOUSEBUTTONDOWN:
+        if (event.button.button == SDL_BUTTON_LEFT) events.fire = true;
         break;
       case SDL_CONTROLLERBUTTONDOWN:
         handle_button(&events, event.cbutton.button);

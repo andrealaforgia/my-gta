@@ -407,7 +407,22 @@ static void the_radio_plays_three_distinct_stations_softly_and_goes_off(void) {
   free(out);
 }
 
+static void a_pistol_shot_is_a_short_loud_crack_that_dies_away(void) {
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  float* out = malloc(sizeof(float) * RATE);
+  render(&mixer, state, out, RATE);
+  float quiet = peak(out, RATE);
+  audio_mixer_trigger_shot(&mixer);
+  render(&mixer, state, out, RATE);
+  assert(peak(out, RATE / 10) > quiet + 0.1f);
+  /* Gone within half a second. */
+  assert(peak(out + RATE / 2, RATE / 2) < quiet + 0.01f);
+  free(out);
+}
+
 void run_audio_tests(void) {
+  RUN(a_pistol_shot_is_a_short_loud_crack_that_dies_away);
   RUN(the_radio_plays_three_distinct_stations_softly_and_goes_off);
   RUN(a_siren_alternates_two_tones_and_swells_as_it_nears);
   RUN(the_horn_is_a_two_note_chord_that_starts_and_stops_quickly);

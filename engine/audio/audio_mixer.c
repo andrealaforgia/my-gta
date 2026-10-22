@@ -63,6 +63,11 @@ void audio_mixer_trigger_impact(audio_mixer_t* mixer, float strength) {
   }
 }
 
+void audio_mixer_trigger_shot(audio_mixer_t* mixer) {
+  mixer->shot = 1.0f;
+  mixer->shot_phase = 0;
+}
+
 void audio_mixer_trigger_bell(audio_mixer_t* mixer, int strikes) {
   if (strikes <= 0 || mixer->bell_strikes_left > 0 || mixer->bell_age < 8.0f)
     return;
@@ -302,9 +307,22 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       }
       bell *= 0.16f;
     }
-    out[i] = soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town +
-                        bird + cricket + bell + rain + horn + other_horn +
-                        siren + radio_next(&mixer->radio) * 0.5f) *
-                       gain);
+    float shot = 0;
+    if (mixer->shot > 1e-4f) {
+      /* A crack of noise, rounded a little, over a thump that falls in
+       * pitch. */
+      mixer->shot_lowpass = smooth(mixer->shot_lowpass, noise(mixer), 0.45f);
+      mixer->shot_phase += (60.0f + 90.0f * mixer->shot) * dt;
+      mixer->shot_phase -= floorf(mixer->shot_phase);
+      shot = (mixer->shot_lowpass * 1.6f +
+              sinf(2.0f * (float)M_PI * mixer->shot_phase) * 0.8f) *
+             mixer->shot * mixer->shot;
+      mixer->shot *= expf(-dt * 22.0f);
+    }
+    out[i] =
+        soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bird +
+                   cricket + bell + rain + horn + other_horn + siren +
+                   radio_next(&mixer->radio) * 0.5f + shot * 0.8f) *
+                  gain);
   }
 }
