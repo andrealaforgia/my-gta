@@ -267,17 +267,19 @@ static void recycle(traffic_t* t, car_t* car) {
       continue;
     float s = 6.0f +
               (float)(next_random(t) % 1000) / 1000.0f * (lane->length - 12.0f);
+    int direction = lane->route->oneway || (next_random(t) & 1) ? 1 : -1;
     float x, z, dx, dz, ground;
-    sample(lane, s, 1, &x, &z, &dx, &dz, &ground);
+    sample(lane, s, direction, &x, &z, &dx, &dz, &ground);
     float d = hypotf(x - t->focus.x, z - t->focus.z);
-    if (d < 260.0f || d > 650.0f) continue;
+    if (d < TRAFFIC_VISIBLE_RANGE + 30.0f || d > TRAFFIC_VISIBLE_RANGE + 400.0f)
+      continue;
     bool crowded = false;
     for (size_t j = 0; j < t->car_count && !crowded; j++)
       crowded = &t->cars[j] != car && hypotf(t->cars[j].position.x - x,
                                              t->cars[j].position.z - z) < 14.0f;
     if (crowded) continue;
     car->route = (int)r;
-    car->direction = lane->route->oneway || (next_random(t) & 1) ? 1 : -1;
+    car->direction = direction;
     car->s = s;
     car->speed = 0;
     car->planned_route = -1;
@@ -464,7 +466,7 @@ static void send_pursuers(traffic_t* t, float dt) {
       continue;
     float d =
         hypotf(car->position.x - t->player.x, car->position.z - t->player.z);
-    if (d < 260.0f && t->has_focus) {
+    if (d < TRAFFIC_VISIBLE_RANGE + 20.0f && t->has_focus) {
       /* In sight: another road, out of it. */
       recycle(t, car);
       pose(t, car, true, 0);
@@ -487,7 +489,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     if (t->has_focus) {
       float fx0 = car->position.x - t->focus.x,
             fz0 = car->position.z - t->focus.z;
-      if (fx0 * fx0 + fz0 * fz0 > 900.0f * 900.0f) {
+      if (fx0 * fx0 + fz0 * fz0 > 1200.0f * 1200.0f) {
         recycle(t, car);
         pose(t, car, true, 0);
       }

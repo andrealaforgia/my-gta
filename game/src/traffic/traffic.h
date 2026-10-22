@@ -16,6 +16,10 @@
 #include "navigation.h"
 #include "physics_world.h"
 
+/* Cars are drawn within this many metres of the eye; a car is only ever
+ * put on the road beyond it, so none appears out of thin air. */
+#define TRAFFIC_VISIBLE_RANGE 450.0f
+
 typedef struct traffic traffic_t;
 
 typedef struct {
@@ -53,7 +57,8 @@ void traffic_car_place(traffic_t* traffic, size_t index, int route,
 void traffic_set_signals(traffic_t* traffic, const city_signal_t* signals,
                          size_t count);
 /* The place traffic should be thick around, usually the player: a car more
- * than 900 m from it is moved to a road 150 to 650 m from it, so a big city
+ * than 1200 m from it is moved to a road just beyond sight (see
+ * TRAFFIC_VISIBLE_RANGE) from it, so a big city
  * has cars where someone can see them. */
 void traffic_set_focus(traffic_t* traffic, vec3_t focus);
 /* Bus stops (x, z pairs, borrowed): a bus halts at each it passes for a

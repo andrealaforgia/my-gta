@@ -984,11 +984,12 @@ static void cars_and_people_left_far_behind_turn_up_near_the_player(void) {
   physics_world_t* world = ground_world();
   fleet_t fleet;
   assert(fleet_create(&fleet, renderer));
-  /* Roads 300 to 400 m and 5 000 m from the focus at the origin. */
-  static float near_road[4] = {300, 0, 400, 0};
+  /* A road from 300 to 700 m and one 5 000 m from the focus at the origin. */
+  static float near_road[8] = {300, 0, 400, 0, 600, 0, 700, 0};
   static float far_road[4] = {5000, 0, 5100, 0};
   city_route_t routes[2] = {route(near_road, 1, 2, 0),
                             route(far_road, 3, 4, 0)};
+  routes[0].point_count = 4;
   traffic_t* traffic = traffic_create(routes, 2, world, &fleet, 5, 5);
   for (size_t i = 0; i < traffic_car_count(traffic); i++)
     traffic_car_place(traffic, i, 1, 1, 20.0f); /* all on the far road */
@@ -998,16 +999,22 @@ static void cars_and_people_left_far_behind_turn_up_near_the_player(void) {
   for (size_t i = 0; i < traffic_car_count(traffic); i++) {
     traffic_car_t car = traffic_car(traffic, i);
     assert(car.route == 0); /* on the road near the player */
-    assert(hypotf(car.position.x, car.position.z) > 250.0f &&
-           hypotf(car.position.x, car.position.z) < 650.0f);
+    /* Beyond where cars are drawn, so none appears in sight. */
+    assert(hypotf(car.position.x, car.position.z) > TRAFFIC_VISIBLE_RANGE &&
+           hypotf(car.position.x, car.position.z) < 900.0f);
   }
-  pedestrians_t* people = pedestrians_create(routes, 2, world, 12, 7);
+  /* People are drawn nearer than cars, so they turn up nearer: a street from
+   * 300 to 400 m is within their band. */
+  static float people_street[4] = {300, 0, 400, 0};
+  city_route_t streets[2] = {route(people_street, 1, 2, 0),
+                             route(far_road, 3, 4, 0)};
+  pedestrians_t* people = pedestrians_create(streets, 2, world, 12, 7);
   pedestrians_set_focus(people, vec3(0, 2, 0));
   for (int step = 0; step < 10; step++)
     pedestrians_step(people, vec3(0, 2, 0), 1.0f / 120.0f);
   for (size_t i = 0; i < pedestrians_count(people); i++) {
     pedestrian_t person = pedestrians_get(people, i);
-    assert(hypotf(person.position.x, person.position.z) < 450.0f);
+    assert(hypotf(person.position.x, person.position.z) < 460.0f);
   }
   pedestrians_destroy(people);
   traffic_destroy(traffic, world);

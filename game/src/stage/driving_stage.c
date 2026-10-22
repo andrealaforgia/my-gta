@@ -833,11 +833,12 @@ void driving_stage_render(driving_stage_t* stage) {
                   stage->camera.position, 90.0f);
   if (stage->has_fleet) {
     vec3_t eye = stage->camera.position;
-    parked_cars_draw(&stage->parked, &stage->fleet, r, eye, 170.0f, night);
+    parked_cars_draw(&stage->parked, &stage->fleet, r, eye, 300.0f, night);
     if (stage->people)
       pedestrians_draw(stage->people, &stage->people_meshes, r, eye, 110.0f);
     if (stage->traffic)
-      traffic_draw(stage->traffic, &stage->fleet, r, eye, 220.0f, night);
+      traffic_draw(stage->traffic, &stage->fleet, r, eye, TRAFFIC_VISIBLE_RANGE,
+                   night);
   }
   if (stage->missions)
     mission_marker_draw(&stage->mission, &stage->mission_markers, r,
