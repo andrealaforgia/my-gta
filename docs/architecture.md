@@ -158,11 +158,29 @@ CPU for each simulated second with 70 cars and 180 people.
 list twice: first into a 2048 x 2048 depth map from an orthographic light
 box of `shadow_radius` metres around the camera target (front faces
 culled, box centre snapped to texels so shadows do not shimmer), then the
-main pass with one directional light, hemisphere ambient, a 3 x 3 PCF
-shadow lookup, metallic/roughness shading and distance fog, followed by
-debug lines and text. `GTA_DEBUG_SHADOWS=1` in the environment draws the
-shadow factor instead of colour; `render_snapshot` can dump the shadow
-map with `SNAPSHOT_SHADOW_MAP=<file.bmp>`.
+main pass into a 4x multisampled floating-point target
+(`engine/renderer/gl/gl_post.c`), which is resolved and finished:
+screen-space ambient occlusion from the depth buffer (twelve samples in the
+hemisphere above each surface, half size, blurred without crossing edges),
+bloom from three blurred sizes of whatever is brighter than the screen can
+show (the sun, lamps, headlights, lit windows), an ACES tone curve, a little
+colour grading and a vignette, then gamma. The HUD is drawn afterwards,
+straight to the window. `GTA_NO_POST=1` skips all of this and draws as
+before, which is also the fallback if the framebuffers cannot be made.
+
+The surface shader (`engine/renderer/gl/shaders/mesh.frag`, embedded as C
+strings into `mesh_fragment.inc` by `scripts/embed_shader.py` at build time)
+shades with the sun and a hemisphere of sky above and ground bounce below,
+nine rotated shadow samples, variation in the surface itself in
+three grains (fading with distance), relief taken from the texture's own
+brightness, reflection of the sky on paint, glass and water (with sun glints
+and moving waves), window panes that mirror the sky by day and glow by
+night, and fog that brightens towards the sun. Draw uniforms are looked up
+once per pass, which mattered: 8 000 draws cost 5 ms less. Costs at 1080p on
+the reference machine: 9 to 11 ms a frame in town, about 0.3 ms of it for
+the post-processing chain. `GTA_DEBUG_SHADOWS=1` draws the shadow factor
+instead of colour; `render_snapshot` can dump the shadow map with
+`SNAPSHOT_SHADOW_MAP=<file.bmp>`.
 
 ## Conventions
 

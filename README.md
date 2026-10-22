@@ -104,7 +104,8 @@ docs/     architecture, decisions, pipeline, physics, testing
 ## Status
 
 What works: the engine (fixed 120 Hz physics with render interpolation,
-forward renderer with shadows, fog, a sky with sun, moon and stars, emissive
+multisampled HDR renderer with soft shadows, ambient occlusion, bloom and a
+filmic tone curve, reflective glass, paint and water, fog, a sky with sun, moon and stars, emissive
 lamps and windows, a headlight cone, synthesised audio), a car that
 accelerates, brakes, steers, reverses, skids and leaves marks, collides and
 leans like a real one, four cars to drive, three views, the offline pipeline from OpenStreetMap
