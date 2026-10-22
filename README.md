@@ -112,7 +112,7 @@ windows and street lamps, parked and moving cars that follow the roads and
 give way (buses, lorries, police cars, ambulances and fire engines with sirens among them), people walking the pavements and crossing at zebras, lamp posts, signals and signs that fall when hit, shop fronts, porticoes with arches and
 painted facades along the Corso, a brick town hall with a clock tower,
 campanili, parks, water and trees, benches, bus stops, traffic lights at busy junctions that cars
-obey, a minimap in the corner and the name of the street you are on, delivery runs (a pillar of light on a distant road, an arrow, a clock and cash to earn), the sea along a coast, drivers who sound their horns when you hold them up, rain with wet roads, and the church bell on the hour.
+obey, a minimap in the corner and the name of the street you are on, delivery runs (a pillar of light on a distant road, a satnav line by road on the minimap and map, an arrow, a clock and cash to earn), police who chase you after a hard crash (stars, busted if they catch you standing, a getaway if you lose them), the sea along a coast, drivers who sound their horns when you hold them up, rain with wet roads, and the church bell on the hour.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
 glTF import, bridges for cars. See the end of
