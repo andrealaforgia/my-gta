@@ -52,7 +52,7 @@ CITY_VALIDATE = city-validate
 SNAPSHOT = render_snapshot
 SOUND = render_sound
 
-.PHONY: all tools install dev_install clean lint format test sanitize snapshot sound city fixture-city run run-city play
+.PHONY: all tools install dev_install clean lint format test sanitize snapshot sound city new-city fixture-city run run-city play
 
 all: $(TARGET) tools
 
@@ -124,6 +124,16 @@ city: tools
 	./$(CITY_IMPORT) --input $(EXTRACT) --output data/intermediate/$(CITY) $(if $(ELEVATION),--elevation $(ELEVATION)) $(foreach f,$(DTM),--dtm $(f)) $(foreach f,$(DSM),--dsm $(f))
 	./$(CITY_GENERATE) --input data/intermediate/$(CITY) --config $(CITY_CONFIG) --output assets_cooked/cities/$(CITY)
 	./$(CITY_VALIDATE) assets_cooked/cities/$(CITY)
+
+# Downloads an extract and cooks a city from it in one go:
+#   make new-city CITY=lecce BBOX="18.160 40.345 18.200 40.370"
+# (min longitude, min latitude, max longitude, max latitude). The city then
+# shows in the start menu. Respect the OpenStreetMap servers: a few
+# kilometres square at most, once.
+new-city: tools
+	@test "$(origin CITY)" = "command line" -a -n "$(BBOX)" || { echo 'usage: make new-city CITY=name BBOX="minlon minlat maxlon maxlat"'; exit 2; }
+	python3 scripts/fetch_osm.py $(BBOX) data/$(CITY).osm
+	$(MAKE) city EXTRACT=data/$(CITY).osm CITY=$(CITY)
 
 fixture-city: tools
 	$(MAKE) city EXTRACT=tests/fixtures/district.osm CITY=district

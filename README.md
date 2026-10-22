@@ -52,6 +52,8 @@ make run-city CITY=pordenone
 
 Barletta is fetched the same way (`python3 scripts/fetch_osm.py 16.262 41.306
 16.306 41.336 data/barletta.osm`, then `make city EXTRACT=data/barletta.osm`).
+Any other place works the same way: `make new-city CITY=lecce BBOX="18.160 40.345 18.200 40.370"`
+downloads the extract and cooks it (a few kilometres square is plenty).
 Run `./gta-like` or `make play` with no scene and a menu lists the test track
 and every cooked city under `assets_cooked/cities`; `--city=barletta` goes
 straight to one.
