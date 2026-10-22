@@ -14,10 +14,10 @@ needs a window or a GPU.
 | core | fixed-step frame clock and catch-up cap, configuration parsing and defaults, keyboard mapping, dead zones, steering filter |
 | citymap | the pause-screen map: roads and roofs painted north up, points off the map |
 | daylight | the sun's arc, sky, stars, lamp glow, no jumps over a day, the bell strikes |
-| traffic | fleet, parked cars, lanes, junction right of way, stopping, people on pavements, skid marks |
+| traffic | fleet, parked cars, lanes, junction right of way, stopping, people on pavements, skid marks, cars following corners without jumps, drivers who honk, delivery runs, the satnav (one-ways, islands), police pursuit, the law (stars, bust, getaway), the player on foot |
 | textures | road wear and markings |
 | mesh | box and cylinder builders, winding, appending, subdividing, the 5x7 font |
-| physics | a dropped box lands and rests, contact impulses, a wall stops a slide, friction, ray casts with layers and friction, torque from point forces, interpolation state |
+| physics | the collider grid (what is near, moves, removals, slot reuse), a dropped box lands and rests, contact impulses, a wall stops a slide, friction, ray casts with layers and friction, torque from point forces, interpolation state |
 | vehicle | parameter loading, settling, 0 to 50 km/h, braking distance, turning direction, reverse, wet grip, reset, wheel transforms, handbrake skid |
 | camera | settles behind and above, follows at speed, a wall pulls it in, reversing |
 | audio | audible at idle, pitch follows revs, throttle raises level, tonality at the firing period, silence when off, skid and impact voices, distance attenuation |
@@ -33,6 +33,14 @@ launch, full throttle through the gears with wind rising, an impact,
 lift-off) to `engine.wav` with no audio device, so the engine can be
 judged by ear. The audio tests bound the engine's tonality at the firing
 period, so the note stays a note and not a hiss.
+
+Long checks run through the snapshot tool: with `SNAPSHOT_TRAFFIC=N`,
+`SNAPSHOT_STUCK=1` reports cars that stood still for 40 s or more,
+`SNAPSHOT_JERK=1` cars that jump or spin between steps,
+`SNAPSHOT_CRIME=1` starts a police chase and reports it,
+`SNAPSHOT_SOAK=1` drives about at random getting out, stealing cars and
+changing vehicle and fails on a NaN, and `SNAPSHOT_TRACE=file` writes every
+car's path for plotting. Run `SNAPSHOT_STUCK=1` after any change to traffic.
 
 GPU checks are separate: `make snapshot` renders the track through a
 hidden window and fails if the frame is blank; `./render_snapshot out.bmp
