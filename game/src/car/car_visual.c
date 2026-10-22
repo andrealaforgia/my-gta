@@ -218,6 +218,11 @@ car_visual_t car_visual_create(renderer_t* renderer,
   body_build_init(&build);
   if (style == BODY_POLICE) {
     vehicle_body_add_police(&build, h, floor, roof, -L * 0.08f, L * 0.42f);
+  } else if (style == BODY_TAXI) {
+    vehicle_body_add_taxi(&build, h, floor, roof, -L * 0.08f, L * 0.42f);
+    /* The roof sign joins the car's own trim and lamps. */
+    mesh_data_append(&trim_mesh, &build.trim);
+    mesh_data_append(&lights_mesh, &build.lights);
   } else if (style != BODY_CAR && vehicle_body_build(style, h, &build)) {
     mesh_data_free(&body_mesh);
     mesh_data_free(&cabin_mesh);
@@ -296,7 +301,7 @@ car_visual_t car_visual_create(renderer_t* renderer,
   /* Amber lamps at the four corners, flashed by a vehicle that turns. */
   {
     mesh_data_t left = mesh_data_create(), right = mesh_data_create();
-    bool boxy = style != BODY_CAR && style != BODY_POLICE;
+    bool boxy = style != BODY_CAR && style != BODY_POLICE && style != BODY_TAXI;
     float y = boxy ? -h.y * 0.667f + 0.55f : -h.y * 0.55f + 0.5f * h.y;
     for (int end = -1; end <= 1; end += 2)
       for (int side = -1; side <= 1; side += 2) {
@@ -327,7 +332,7 @@ car_visual_t car_visual_create(renderer_t* renderer,
                p->wheelbase * 0.5f + build.extra_axle_z * (float)(axle + 1));
   body_build_free(&build);
   visual.wheel = upload(renderer, &wheel);
-  visual.paint = material_plain(vec3(0.56f, 0.07f, 0.06f));
+  visual.paint = material_plain(vec3(0.5f, 0.05f, 0.05f));
   if (visual.own_paint) visual.paint.base_color = visual.own_colour;
   visual.paint.metallic = 0.35f;
   visual.paint.roughness = 0.3f;

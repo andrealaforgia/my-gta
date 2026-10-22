@@ -8,8 +8,8 @@
 #endif
 
 static const char* style_names[BODY_STYLE_COUNT] = {
-    "car",    "police",  "ambulance", "fire_engine", "bus",  "box_truck",
-    "tanker", "flatbed", "refuse",    "pickup",      "mixer"};
+    "car",    "police",  "ambulance", "fire_engine", "bus",   "box_truck",
+    "tanker", "flatbed", "refuse",    "pickup",      "mixer", "taxi"};
 
 body_style_t body_style_from_name(const char* name) {
   for (int i = 0; i < BODY_STYLE_COUNT; i++)
@@ -442,4 +442,27 @@ bool vehicle_body_add_police(body_build_t* out, vec3_t half, float floor,
              roof + 0.13f, mid + 0.12f) &&
          box(&out->beacon_b, 0, roof + 0.04f, mid - 0.12f, w * 0.5f,
              roof + 0.13f, mid + 0.12f);
+}
+
+bool vehicle_body_add_taxi(body_build_t* out, vec3_t half, float floor,
+                           float roof, float roof_front, float roof_back) {
+  float w = half.x, L = half.z, hy = half.y;
+  out->own_paint = true;
+  out->paint = vec3(0.93f, 0.68f, 0.04f);
+  out->accent_colour = vec3(0.05f, 0.05f, 0.05f);
+  float mid = (roof_front + roof_back) * 0.5f;
+  /* A black chequer band along each flank, in dashes. */
+  for (int side = -1; side <= 1; side += 2)
+    for (int k = 0; k < 9; k++) {
+      float z0 = -L * 0.5f + k * L * 0.19f;
+      if (k % 2 == 0 &&
+          !box(&out->accent, side * (w + 0.01f) - 0.01f, floor + 0.4f * hy, z0,
+               side * (w + 0.01f) + 0.01f, floor + 0.55f * hy, z0 + L * 0.19f))
+        return false;
+    }
+  /* The roof sign: a lit box, white, with a dark base. */
+  return box(&out->trim, -w * 0.3f, roof, mid - 0.1f, w * 0.3f, roof + 0.04f,
+             mid + 0.1f) &&
+         box(&out->lights, -w * 0.3f, roof + 0.04f, mid - 0.1f, w * 0.3f,
+             roof + 0.16f, mid + 0.1f);
 }

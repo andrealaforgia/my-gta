@@ -1,13 +1,15 @@
 #include "fleet.h"
 
 static const char* files[FLEET_VARIANTS] = {
-    "assets/vehicles/hatchback.cfg",   "assets/vehicles/sedan.cfg",
-    "assets/vehicles/van.cfg",         "assets/vehicles/mini.cfg",
-    "assets/vehicles/police.cfg",      "assets/vehicles/ambulance.cfg",
-    "assets/vehicles/fire_engine.cfg", "assets/vehicles/bus.cfg",
-    "assets/vehicles/box_truck.cfg",   "assets/vehicles/tanker.cfg",
-    "assets/vehicles/flatbed.cfg",     "assets/vehicles/refuse.cfg",
-    "assets/vehicles/pickup.cfg",      "assets/vehicles/mixer.cfg"};
+    "assets/vehicles/hatchback.cfg", "assets/vehicles/sedan.cfg",
+    "assets/vehicles/van.cfg",       "assets/vehicles/mini.cfg",
+    "assets/vehicles/coupe.cfg",     "assets/vehicles/suv.cfg",
+    "assets/vehicles/taxi.cfg",      "assets/vehicles/police.cfg",
+    "assets/vehicles/ambulance.cfg", "assets/vehicles/fire_engine.cfg",
+    "assets/vehicles/bus.cfg",       "assets/vehicles/box_truck.cfg",
+    "assets/vehicles/tanker.cfg",    "assets/vehicles/flatbed.cfg",
+    "assets/vehicles/refuse.cfg",    "assets/vehicles/pickup.cfg",
+    "assets/vehicles/mixer.cfg"};
 
 const char* fleet_vehicle_file(int variant) {
   return files[((variant % FLEET_VARIANTS) + FLEET_VARIANTS) % FLEET_VARIANTS];
@@ -29,8 +31,9 @@ void fleet_destroy(fleet_t* fleet, renderer_t* renderer) {
 
 int fleet_variant_for(int pick) {
   /* Hatchbacks and saloons dominate, then city cars, and the odd van. */
-  static const int table[10] = {0, 0, 0, 1, 1, 1, 3, 3, 0, 2};
-  return table[((pick % 10) + 10) % 10];
+  static const int table[20] = {0, 0, 0, 0, 1, 1, 1, 1, 3, 3,
+                                3, 4, 4, 5, 5, 2, 2, 6, 0, 1};
+  return table[((pick % 20) + 20) % 20];
 }
 
 vec3_t fleet_paint(int pick) {
@@ -54,9 +57,9 @@ vec3_t fleet_paint(int pick) {
 int fleet_traffic_variant_for(int pick) {
   /* Per hundred: 70 cars, then police 3, ambulance 2, fire engine 1, bus 6,
    * box lorry 5, tanker 2, flatbed 3, refuse 2, pickup 4, mixer 2. */
-  static const int tail[30] = {4,  4,  4,  5,  5,  6,  7,  7,  7,  7,
-                               7,  7,  8,  8,  8,  8,  8,  9,  9,  10,
-                               10, 10, 11, 11, 12, 12, 12, 12, 13, 13};
+  static const int tail[30] = {7,  7,  7,  8,  8,  9,  10, 10, 10, 10,
+                               10, 10, 11, 11, 11, 11, 11, 12, 12, 13,
+                               13, 13, 14, 14, 15, 15, 15, 15, 16, 16};
   int n = ((pick % 100) + 100) % 100;
   if (n < 70) return fleet_variant_for(n * 7 + pick / 100);
   return tail[n - 70];

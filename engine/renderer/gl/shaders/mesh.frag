@@ -146,7 +146,7 @@ void main() {
   if (u_metallic > 0.3 && u_roughness < 0.5) {
     vec3 r = reflect(-v, n);
     float fresnel = 0.04 + 0.96 * pow(1.0 - n_dot_v, 5.0);
-    float strength = water ? 0.25 + 0.75 * fresnel : clamp(fresnel * 0.8 + u_metallic * 0.08 * (1.0 - u_roughness), 0.0, 0.5);
+    float strength = water ? 0.25 + 0.75 * fresnel : clamp(fresnel * 0.5 + u_metallic * 0.05 * (1.0 - u_roughness), 0.0, 0.35);
     color = mix(color, sky_reflection(r) * (water ? 1.0 : 0.85), strength);
     if (water) color += u_light_color * pow(max(dot(r, l), 0.0), 700.0) * 14.0 * shadow;
   }

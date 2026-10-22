@@ -1,9 +1,9 @@
 /**
  * @file fleet.h
- * @brief The vehicles that are not the player's: four cars, then police,
- * ambulance, fire engine, bus and six kinds of lorry, each built from its
- * own tuning file, and a palette of paints. Parked cars use only the
- * first four; moving traffic uses them all.
+ * @brief The vehicles that are not the player's: seven cars (one a taxi), then
+ * police, ambulance, fire engine, bus and six kinds of lorry, each built from
+ * its own tuning file, and a palette of paints. Parked cars use only the first
+ * seven; moving traffic uses them all.
  */
 #ifndef GAME_SRC_TRAFFIC_FLEET_H_
 #define GAME_SRC_TRAFFIC_FLEET_H_
@@ -12,10 +12,13 @@
 
 #include "car_visual.h"
 
-#define FLEET_CAR_VARIANTS 4 /* hatchback, saloon, van, city car */
-#define FLEET_VARIANTS 14
+#define FLEET_CAR_VARIANTS \
+  7 /* hatchback, saloon, van, city car, coupe, SUV, taxi */
+#define FLEET_VARIANTS 17
 #define FLEET_PAINTS 10
-#define FLEET_POLICE_VARIANT 4
+#define FLEET_POLICE_VARIANT 7
+#define FLEET_AMBULANCE_VARIANT 8
+#define FLEET_BUS_VARIANT 10
 
 typedef struct {
   car_visual_t visuals[FLEET_VARIANTS];

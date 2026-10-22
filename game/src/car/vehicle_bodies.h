@@ -25,6 +25,7 @@ typedef enum {
   BODY_REFUSE,
   BODY_PICKUP,
   BODY_MIXER,
+  BODY_TAXI,
   BODY_STYLE_COUNT
 } body_style_t;
 
@@ -47,6 +48,10 @@ typedef struct {
 /* Builds the whole body of a non-car style (everything but BODY_CAR and
  * BODY_POLICE) from the chassis half extents. */
 bool vehicle_body_build(body_style_t style, vec3_t half, body_build_t* out);
+
+/* A taxi: yellow with a chequered stripe and a sign on the roof. */
+bool vehicle_body_add_taxi(body_build_t* out, vec3_t half, float floor,
+                           float roof, float roof_front, float roof_back);
 
 /* Adds police livery and a light bar to a car body whose cabin roof is at
  * `roof` and spans z in [roof_front, roof_back]. */
