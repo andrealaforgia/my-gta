@@ -76,8 +76,7 @@ static void start_in(city_run_t* run, const char* directory) {
   run->renderer = renderer_create(1280, 720);
   stage_options_t options = {
       SCENE_CITY,        directory,        NULL, false, true, 10.0f, 0.0f,
-      test_traffic_cars, test_pedestrians, 0.0f,
-      false};
+      test_traffic_cars, test_pedestrians, 0.0f, false};
   assert(driving_stage_init(&run->stage, &run->window, run->renderer, NULL,
                             options));
 }
@@ -393,11 +392,12 @@ static void a_busy_city_runs_for_a_minute_without_trouble(void) {
   driving_input_t throttle = {0.6f, 0, 0.1f, false};
   for (int second = 0; second < 60; second++) {
     drive(&run, throttle, 1.0f);
-    /* Whatever the car runs into, nothing goes wrong. */
+    /* Whatever the car runs into, nothing goes wrong (and police after a
+     * crash are quick, so the limit leaves room for them). */
     for (size_t i = 0; i < traffic_car_count(run.stage.traffic); i++) {
       traffic_car_t c = traffic_car(run.stage.traffic, i);
       assert(isfinite(c.position.x) && isfinite(c.position.z) &&
-             c.speed < 14.0f);
+             c.speed < 30.0f);
     }
     if (second % 15 == 14) {
       driving_input_t reverse = {0, 1, -0.3f, false};

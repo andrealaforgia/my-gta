@@ -15,6 +15,7 @@
 #define FLEET_CAR_VARIANTS 4 /* hatchback, saloon, van, city car */
 #define FLEET_VARIANTS 14
 #define FLEET_PAINTS 10
+#define FLEET_POLICE_VARIANT 4
 
 typedef struct {
   car_visual_t visuals[FLEET_VARIANTS];

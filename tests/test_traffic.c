@@ -2,6 +2,7 @@
  * follows the roads, turns at junctions, keeps its distance and stops. */
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -14,6 +15,7 @@
 #include "test_groups.h"
 #include "test_support.h"
 #include "traffic.h"
+#include "wanted.h"
 
 static physics_world_t* ground_world(void) {
   physics_world_t* world = physics_world_create();
@@ -799,6 +801,118 @@ static void the_satnav_finds_the_way_round_by_road_respecting_one_ways(void) {
   assert(nav_create(&path_only, 1) == NULL);
 }
 
+static void police_after_the_player_take_the_way_that_leads_to_them(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[3] = {route(west, 1, 2, 0), route(east, 2, 3, 0),
+                            route(south, 2, 4, 0)};
+  nav_t* nav = nav_create(routes, 3);
+  traffic_t* traffic = traffic_create(routes, 3, world, &fleet, 1, 3);
+  traffic_set_nav(traffic, nav);
+  traffic_car_set_kind(traffic, 0, FLEET_POLICE_VARIANT, false);
+  traffic_car_place(traffic, 0, 0, 1, 30.0f); /* east, towards the junction */
+  vec3_t player = vec3(0.0f, 0.5f, 85.0f);    /* far down the south road */
+  assert(traffic_pursuer_count(traffic) == 0);
+  assert(traffic_nearest_pursuer(traffic, player) > 1e8f);
+  traffic_set_pursuit(traffic, 1);
+  float fastest = 0;
+  for (int step = 0; step < 120 * 25; step++) {
+    traffic_step(traffic, world, player, vec3_zero(), 1.0f / 120.0f);
+    fastest = fmaxf(fastest, traffic_car(traffic, 0).speed);
+  }
+  traffic_car_t car = traffic_car(traffic, 0);
+  assert(traffic_pursuer_count(traffic) == 1);
+  assert(car.route == 2); /* it took the south road */
+  assert(hypotf(car.position.x - player.x, car.position.z - player.z) < 12.0f);
+  assert(car.speed < 1.0f); /* and stopped behind the player */
+  assert(fastest > 12.0f);  /* quicker than the 7.5 m/s of ordinary traffic */
+  assert(traffic_car_responding(traffic, 0)); /* siren sounding */
+  assert(traffic_nearest_pursuer(traffic, player) < 12.0f);
+  /* Called off, it goes back to ordinary driving. */
+  traffic_set_pursuit(traffic, 0);
+  traffic_step(traffic, world, player, vec3_zero(), 1.0f / 120.0f);
+  assert(traffic_pursuer_count(traffic) == 0);
+  assert(!traffic_car_responding(traffic, 0));
+  traffic_destroy(traffic, world);
+  nav_destroy(nav);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
+static void a_sizeable_traffic_has_police_cars_in_it(void) {
+  renderer_t* renderer = renderer_create(64, 64);
+  physics_world_t* world = ground_world();
+  fleet_t fleet;
+  assert(fleet_create(&fleet, renderer));
+  city_route_t routes[3] = {route(west, 1, 2, 0), route(east, 2, 3, 0),
+                            route(south, 2, 4, 0)};
+  traffic_t* traffic = traffic_create(routes, 3, world, &fleet, 20, 9);
+  int police = 0;
+  for (size_t i = 0; i < traffic_car_count(traffic); i++)
+    police += traffic_car(traffic, i).variant == FLEET_POLICE_VARIANT;
+  assert(police >= 3);
+  traffic_destroy(traffic, world);
+  fleet_destroy(&fleet, renderer);
+  physics_world_destroy(world);
+  renderer_destroy(renderer);
+}
+
+static void
+the_law_comes_after_crashes_and_the_chase_ends_in_a_bust_or_a_getaway(void) {
+  wanted_t law;
+  wanted_init(&law);
+  assert(law.stars == 0 && wanted_pursuers(&law) == 0);
+  /* A first crime starts the chase; a second right on its heels does not
+   * count, a later one adds a star. */
+  assert(wanted_crime(&law) == WANTED_STARTED && law.stars == 1);
+  assert(wanted_pursuers(&law) == 1);
+  wanted_step(&law, 500.0f, 20.0f, 0.5f);
+  wanted_crime(&law);
+  assert(law.stars == 1);
+  wanted_step(&law, 500.0f, 20.0f, 1.5f);
+  wanted_crime(&law);
+  assert(law.stars == 2 && wanted_pursuers(&law) == 1);
+  for (int i = 0; i < 5; i++) {
+    wanted_step(&law, 500.0f, 20.0f, 2.0f);
+    wanted_crime(&law);
+  }
+  assert(law.stars == WANTED_MAX_STARS && wanted_pursuers(&law) == 3);
+  /* Caught standing: busted after two seconds, and the stars clear. */
+  wanted_event_t event = WANTED_NOTHING;
+  for (int i = 0; i < 10 && event == WANTED_NOTHING; i++)
+    event = wanted_step(&law, 6.0f, 1.0f, 0.25f);
+  assert(event == WANTED_BUSTED && law.stars == 0);
+  /* A police car alongside a player who keeps moving does not catch them. */
+  wanted_crime(&law);
+  for (int i = 0; i < 20; i++)
+    assert(wanted_step(&law, 6.0f, 15.0f, 0.5f) == WANTED_NOTHING);
+  assert(law.stars == 1);
+  wanted_init(&law);
+  wanted_crime(&law);
+  /* Police a long way off that have not found the player yet are no
+   * getaway: the chase waits for them (but not for ever). */
+  event = WANTED_NOTHING;
+  float waited = 0;
+  for (; waited < 120.0f && event == WANTED_NOTHING; waited += 0.5f)
+    event = wanted_step(&law, 400.0f, 30.0f, 0.5f);
+  assert(event == WANTED_ESCAPED && waited > 60.0f);
+  wanted_crime(&law);
+  law.since_crime = 9.0f;
+  /* Once they have come close, far away for twelve seconds is a getaway. */
+  wanted_step(&law, 100.0f, 30.0f, 0.5f);
+  event = WANTED_NOTHING;
+  float elapsed = 0;
+  for (; elapsed < 30.0f && event == WANTED_NOTHING; elapsed += 0.5f)
+    event = wanted_step(&law, 400.0f, 30.0f, 0.5f);
+  assert(event == WANTED_ESCAPED && elapsed > 11.0f && elapsed < 14.0f);
+  assert(law.stars == 0);
+  /* Nothing happens while the law is not interested. */
+  assert(wanted_step(&law, 1.0f, 0.0f, 5.0f) == WANTED_NOTHING);
+}
+
 static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -952,6 +1066,9 @@ void run_traffic_tests(void) {
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(a_driver_held_up_by_the_player_sounds_the_horn);
   RUN(the_satnav_finds_the_way_round_by_road_respecting_one_ways);
+  RUN(police_after_the_player_take_the_way_that_leads_to_them);
+  RUN(a_sizeable_traffic_has_police_cars_in_it);
+  RUN(the_law_comes_after_crashes_and_the_chase_ends_in_a_bust_or_a_getaway);
   RUN(a_delivery_run_sets_a_far_destination_pays_and_gives_the_next);
   RUN(a_car_follows_the_curve_through_a_corner_without_jumping);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);

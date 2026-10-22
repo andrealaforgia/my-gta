@@ -26,6 +26,7 @@
 #include "textures.h"
 #include "traffic.h"
 #include "vehicle.h"
+#include "wanted.h"
 #include "window.h"
 #include "world.h"
 
@@ -80,6 +81,9 @@ typedef struct {
   mission_t mission;
   mission_markers_t mission_markers;
   float mission_ground; /* road height at the destination */
+  wanted_t wanted;
+  char notice[40];   /* a line across the screen for a moment */
+  float notice_time; /* seconds it has left */
   nav_t* nav;
   float satnav[2 * 1024]; /* the way to the destination, x, z pairs */
   size_t satnav_count;

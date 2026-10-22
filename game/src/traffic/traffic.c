@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "navigation.h"
 #include "route_path.h"
+#include "vehicle_bodies.h"
 
 #define ACCELERATION 2.4f
 #define BRAKING 6.5f
@@ -20,6 +22,8 @@ typedef struct {
   float wheel_turn;
   bool braking;
   bool responding;   /* an emergency vehicle on a call */
+  bool on_call;      /* it is on a call whether or not it is after anyone */
+  bool pursuing;     /* a police car after the player */
   int planned_route; /* where it will go at the end of this lane, or -1 */
   int planned_direction;
   int indicator; /* -1 turning left, +1 right, 0 straight on */
@@ -67,6 +71,10 @@ struct traffic {
   bool has_focus;
   const vec3_t* walkers;
   size_t walker_count;
+  nav_t* nav;           /* for pursuers to find the way, optional */
+  int wanted_pursuers;  /* how many police cars should be after the player */
+  float dispatch_clock; /* seconds since a pursuer was last sent */
+  vec3_t player;        /* where the player was at the latest step */
 };
 
 static uint32_t next_random(traffic_t* t) {
@@ -200,9 +208,12 @@ traffic_t* traffic_create(const city_route_t* routes, size_t route_count,
     }
     int style = (int)(next_random(t) % 1000);
     car->variant = fleet_traffic_variant_for(style);
+    /* A few police cars in any sizeable traffic, for the player to meet. */
+    if (car_count >= 12 && i < 3) car->variant = FLEET_POLICE_VARIANT;
     car->paint = (int)(next_random(t) % 1000);
-    car->responding =
+    car->on_call =
         fleet->visuals[car->variant].emergency && next_random(t) % 100 < 30;
+    car->responding = car->on_call;
     pose(t, car, true, 0);
     car->collider = physics_add_static_box(
         physics, transform_at(car->position, quat_from_yaw(car->yaw)),
@@ -301,13 +312,37 @@ bool traffic_signals_open(float seconds) {
   return traffic_signal_open(seconds, 0);
 }
 
+void traffic_set_nav(traffic_t* t, nav_t* nav) { t->nav = nav; }
+
+void traffic_set_pursuit(traffic_t* t, int pursuers) {
+  t->wanted_pursuers = pursuers < 0 ? 0 : pursuers;
+}
+
+int traffic_pursuer_count(const traffic_t* t) {
+  int count = 0;
+  for (size_t i = 0; i < t->car_count; i++) count += t->cars[i].pursuing;
+  return count;
+}
+
+float traffic_nearest_pursuer(const traffic_t* t, vec3_t point) {
+  float nearest = 1e9f;
+  for (size_t i = 0; i < t->car_count; i++) {
+    if (!t->cars[i].pursuing) continue;
+    float d = hypotf(t->cars[i].position.x - point.x,
+                     t->cars[i].position.z - point.z);
+    if (d < nearest) nearest = d;
+  }
+  return nearest;
+}
+
 size_t traffic_car_count(const traffic_t* t) { return t->car_count; }
 
 traffic_car_t traffic_car(const traffic_t* t, size_t index) {
   const car_t* car = &t->cars[index];
   traffic_car_t out = {car->position, car->yaw,        car->speed,
                        car->route,    car->variant,    car->paint,
-                       car->braking,  car->wheel_turn, car->indicator};
+                       car->braking,  car->wheel_turn, car->indicator,
+                       car->pursuing};
   return out;
 }
 
@@ -355,6 +390,16 @@ static void plan_next(traffic_t* t, car_t* car) {
     return;
   }
   int pick = (int)(next_random(t) % (uint32_t)count);
+  if (car->pursuing && t->nav) {
+    /* After the player: take the road the shortest way leads by. */
+    int route, forward;
+    if (nav_next_hop(t->nav, car->route, car->direction > 0, t->player.x,
+                     t->player.z, &route, &forward)) {
+      for (int c = 0; c < count; c++)
+        if (candidates[c][0] == route && candidates[c][1] == (forward ? 1 : -1))
+          pick = c;
+    }
+  }
   car->planned_route = candidates[pick][0];
   car->planned_direction = candidates[pick][1];
   const lane_t* here = &t->lanes[car->route];
@@ -397,10 +442,46 @@ static float curve_speed(const lane_t* lane, float s, int direction) {
   return cosine > 0.97f ? 99.0f : (cosine > 0.85f ? 6.0f : 3.5f);
 }
 
+/* Keeps as many police cars after the player as are wanted: sends one from
+ * the road out of sight, once a second, or calls them all off. */
+static void send_pursuers(traffic_t* t, float dt) {
+  int pursuing = 0;
+  for (size_t i = 0; i < t->car_count; i++) pursuing += t->cars[i].pursuing;
+  if (t->wanted_pursuers == 0) {
+    if (pursuing == 0) return;
+    for (size_t i = 0; i < t->car_count; i++) {
+      t->cars[i].pursuing = false;
+      t->cars[i].responding = t->cars[i].on_call;
+    }
+    return;
+  }
+  t->dispatch_clock += dt;
+  if (pursuing >= t->wanted_pursuers || t->dispatch_clock < 1.0f) return;
+  t->dispatch_clock = 0;
+  for (size_t i = 0; i < t->car_count; i++) {
+    car_t* car = &t->cars[i];
+    if (car->pursuing || t->fleet->visuals[car->variant].style != BODY_POLICE)
+      continue;
+    float d =
+        hypotf(car->position.x - t->player.x, car->position.z - t->player.z);
+    if (d < 260.0f && t->has_focus) {
+      /* In sight: another road, out of it. */
+      recycle(t, car);
+      pose(t, car, true, 0);
+    }
+    car->pursuing = true;
+    car->responding = true;
+    car->planned_route = -1;
+    return;
+  }
+}
+
 void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
                   vec3_t player_velocity, float dt) {
   (void)player_velocity;
   t->ground_clock += dt;
+  t->player = player;
+  send_pursuers(t, dt);
   for (size_t i = 0; i < t->car_count; i++) {
     car_t* car = &t->cars[i];
     if (t->has_focus) {
@@ -420,10 +501,14 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
         lane->cruise * (own_visual->emergency
                             ? 1.2f
                             : (own_half_length > 3.0f ? 0.85f : 1.0f));
+    if (car->pursuing) target = lane->cruise * 2.6f;
     float to_end = lane->length - car->s;
     if (to_end < 30.0f && car->planned_route < 0) plan_next(t, car);
-    if (to_end < 14.0f) target = fminf(target, 4.5f + to_end * 0.2f);
-    target = fminf(target, curve_speed(lane, car->s, car->direction));
+    if (to_end < 14.0f)
+      target = fminf(
+          target, car->pursuing ? 8.0f + to_end * 0.5f : 4.5f + to_end * 0.2f);
+    target = fminf(target, curve_speed(lane, car->s, car->direction) *
+                               (car->pursuing ? 1.6f : 1.0f));
     /* The way ahead: a point a few metres in front of the nose. */
     float fx = -sinf(car->yaw), fz = -cosf(car->yaw);
     /* Make way for an emergency vehicle coming up behind, or, on a call
@@ -450,6 +535,9 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     }
     car->lateral_goal = goal;
     car->lateral += (car->lateral_goal - car->lateral) * fminf(1.0f, 2.5f * dt);
+    /* Fast cars see further: it takes a long way to stop. */
+    float look =
+        LOOKAHEAD + (car->speed > 8.0f ? car->speed * car->speed / 9.0f : 0.0f);
     float limit = target;
     bool must_stop = false;
     bool held_by_player = false;
@@ -479,8 +567,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
         float ofx = -sinf(t->cars[j].yaw), ofz = -cosf(t->cars[j].yaw);
         if (ofx * fx + ofz * fz < -0.5f) side_limit = fminf(side_limit, 1.3f);
       }
-      if (ahead < 1.0f ||
-          ahead > LOOKAHEAD + own_half_length + other_half_length ||
+      if (ahead < 1.0f || ahead > look + own_half_length + other_half_length ||
           side > side_limit)
         continue;
       /* Of two cars facing each other, only one yields, so they cannot
@@ -538,7 +625,7 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     }
     /* Junctions: wait outside while another car is in them, or is closer
      * to them and also coming in (the lower index goes first). */
-    if (to_end < 22.0f + own_half_length) {
+    if (to_end < 22.0f + own_half_length && !car->pursuing) {
       float px, pz, pdx, pdz, pg;
       sample(lane, lane->length, car->direction, &px, &pz, &pdx, &pdz, &pg);
       bool blocked = false;
@@ -567,9 +654,10 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     /* A red signal ahead for the way this car is heading: stop six metres
      * short of it. A junction can have several heads of both groups, so the
      * car obeys the one that faces it best, or it could never go. */
-    const city_signal_t* obeyed = NULL;
+    const city_signal_t* obeyed =
+        NULL; /* a police car after someone has none */
     float best_alignment = 0.7f, obeyed_ahead = 0;
-    for (size_t k = 0; k < t->signal_count; k++) {
+    for (size_t k = 0; k < t->signal_count && !car->pursuing; k++) {
       const city_signal_t* signal = &t->signals[k];
       if (signal->group < 0) continue; /* knocked down */
       bool any_heading = signal->heading_x == 0 && signal->heading_z == 0;
@@ -593,9 +681,11 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
     if (must_stop) limit = 0;
     float before = car->speed;
     if (car->speed < limit) {
-      car->speed = fminf(limit, car->speed + ACCELERATION * dt);
+      car->speed =
+          fminf(limit,
+                car->speed + ACCELERATION * (car->pursuing ? 2.6f : 1.0f) * dt);
     } else {
-      float slowdown = BRAKING * dt;
+      float slowdown = BRAKING * (car->pursuing ? 1.5f : 1.0f) * dt;
       car->speed = fmaxf(limit, car->speed - slowdown);
     }
     car->braking = car->speed < before - 0.002f || must_stop;
@@ -614,7 +704,8 @@ void traffic_step(traffic_t* t, physics_world_t* physics, vec3_t player,
       car->waited = 0;
     } else if (car->speed < 0.1f && car->ghost <= 0) {
       car->waited += dt;
-      if (car->waited > 35.0f) car->ghost = 25.0f, car->waited = 0;
+      if (car->waited > (car->pursuing ? 8.0f : 35.0f))
+        car->ghost = 25.0f, car->waited = 0;
     }
     car->wheel_turn +=
         car->speed * dt / t->fleet->visuals[car->variant].wheel_radius;

@@ -14,6 +14,7 @@
 #define MAX_CATCH_UP 0.25
 #define IMPACT_THRESHOLD 400.0f
 #define IMPACT_FULL 6000.0f
+#define CRIME_IMPACT 3600.0f /* a crash this hard is a crime */
 
 /* The chase camera sits further back and higher behind a long vehicle. */
 static chase_camera_params_t chase_camera_params_for(
@@ -89,7 +90,9 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
                         stage->scene.signal_count);
   if (options.scene == SCENE_CITY && stage->scene.route_count > 0) {
     mission_init(&stage->mission, 7);
+    wanted_init(&stage->wanted);
     stage->nav = nav_create(stage->scene.routes, stage->scene.route_count);
+    if (stage->traffic) traffic_set_nav(stage->traffic, stage->nav);
     stage->mission_markers = mission_markers_create(renderer);
     stage->missions = true;
   }
@@ -176,6 +179,46 @@ static void send_audio_state(driving_stage_t* stage) {
     audio_device_trigger_impact(stage->audio, felt / IMPACT_FULL);
 }
 
+static void say(driving_stage_t* stage, const char* text) {
+  snprintf(stage->notice, sizeof(stage->notice), "%s", text);
+  stage->notice_time = 3.0f;
+}
+
+static void back_to_spawn(driving_stage_t* stage) {
+  vehicle_reset(&stage->vehicle, stage->physics);
+  chase_camera_reset(&stage->camera,
+                     transform_at(stage->vehicle.spawn_position,
+                                  stage->vehicle.spawn_rotation));
+}
+
+/* The law's side of the drive: crashes are crimes, police cars come, and the
+ * chase ends in being caught or getting away. */
+static void step_the_law(driving_stage_t* stage, bool pole_down, float dt) {
+  if (stage->notice_time > 0) stage->notice_time -= dt;
+  if (!stage->missions || !stage->traffic) return;
+  float felt = stage->vehicle.impact_impulse /
+               fmaxf(stage->vehicle.params.mass / 1200.0f, 1.0f);
+  wanted_event_t event = WANTED_NOTHING;
+  if (felt > CRIME_IMPACT || pole_down) event = wanted_crime(&stage->wanted);
+  if (event == WANTED_STARTED) say(stage, "WANTED");
+  traffic_set_pursuit(stage->traffic, wanted_pursuers(&stage->wanted));
+  const rigid_body_t* me = physics_body(stage->physics, stage->vehicle.body);
+  float speed = vec3_length(me->velocity);
+  event = wanted_step(&stage->wanted,
+                      traffic_nearest_pursuer(stage->traffic, me->position),
+                      speed, dt);
+  if (event == WANTED_BUSTED) {
+    int fine = stage->mission.cash / 4;
+    stage->mission.cash -= fine;
+    char text[40];
+    snprintf(text, sizeof(text), "BUSTED  -$%d", fine);
+    say(stage, text);
+    back_to_spawn(stage);
+  } else if (event == WANTED_ESCAPED) {
+    say(stage, "LOST THEM");
+  }
+}
+
 void driving_stage_step(driving_stage_t* stage, driving_input_t input,
                         float dt) {
   vehicle_update(&stage->vehicle, stage->physics, input, dt);
@@ -211,8 +254,10 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   physics_world_step(stage->physics, dt);
   /* A pole the car hits at speed goes over, and gives way rather than
    * stopping the car dead. */
-  if (poles_topple_struck(&stage->scene, stage->physics, &stage->world,
-                          stage->vehicle.body, velocity_before) > 0) {
+  bool pole_down =
+      poles_topple_struck(&stage->scene, stage->physics, &stage->world,
+                          stage->vehicle.body, velocity_before) > 0;
+  if (pole_down) {
     chassis_body = physics_body(stage->physics, stage->vehicle.body);
     vec3_t after = chassis_body->velocity;
     chassis_body->velocity =
@@ -220,6 +265,7 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
              after.z + (velocity_before.z - after.z) * 0.6f);
   }
   poles_step(&stage->scene, &stage->world, dt);
+  step_the_law(stage, pole_down, dt);
   if (stage->missions) {
     vec3_t at = physics_body(stage->physics, stage->vehicle.body)->position;
     /* The way to the destination, worked out again every second or two. */
@@ -460,6 +506,37 @@ static void draw_street_name(driving_stage_t* stage) {
                      text_scale, vec3(0, 0, 0), stage->street);
   renderer_draw_text(r, x, y, text_scale, vec3(1.0f, 0.97f, 0.85f),
                      stage->street);
+}
+
+/* The stars under the street name, flashing red and blue while police are
+ * after the player, and a line across the screen for the news of the moment:
+ * wanted, busted, lost them. */
+static void draw_law(driving_stage_t* stage) {
+  renderer_t* r = stage->renderer;
+  float width = (float)stage->window->drawable_width;
+  float scale = width / 640.0f;
+  if (scale < 2) scale = 2;
+  if (stage->wanted.stars > 0) {
+    char line[48] = "WANTED ";
+    for (int i = 0; i < stage->wanted.stars; i++) strcat(line, "* ");
+    float text_scale = scale * 1.6f;
+    float w = (float)strlen(line) * 6 * text_scale;
+    bool red = fmodf(stage->rain_clock * 3.0f, 2.0f) < 1.0f;
+    vec3_t colour = red ? vec3(1.0f, 0.25f, 0.2f) : vec3(0.35f, 0.5f, 1.0f);
+    float x = (width - w) * 0.5f, y = 34.0f * scale;
+    renderer_draw_text(r, x + text_scale * 0.4f, y + text_scale * 0.4f,
+                       text_scale, vec3(0, 0, 0), line);
+    renderer_draw_text(r, x, y, text_scale, colour, line);
+  }
+  if (stage->notice_time > 0 && stage->notice[0]) {
+    float big = scale * 2.6f;
+    float w = (float)strlen(stage->notice) * 6 * big;
+    float x = (width - w) * 0.5f;
+    float y = (float)stage->window->drawable_height * 0.34f;
+    renderer_draw_text(r, x + big * 0.4f, y + big * 0.4f, big, vec3(0, 0, 0),
+                       stage->notice);
+    renderer_draw_text(r, x, y, big, vec3(1.0f, 0.9f, 0.3f), stage->notice);
+  }
 }
 
 /* A small north-up window on the map at the top right, with the car at its
@@ -789,6 +866,7 @@ void driving_stage_render(driving_stage_t* stage) {
     }
     draw_minimap(stage);
     draw_street_name(stage);
+    draw_law(stage);
   }
   renderer_end_frame(r);
 }
@@ -798,12 +876,7 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   if (events.resized)
     renderer_resize(stage->renderer, stage->window->drawable_width,
                     stage->window->drawable_height);
-  if (events.reset_vehicle) {
-    vehicle_reset(&stage->vehicle, stage->physics);
-    chase_camera_reset(&stage->camera,
-                       transform_at(stage->vehicle.spawn_position,
-                                    stage->vehicle.spawn_rotation));
-  }
+  if (events.reset_vehicle) back_to_spawn(stage);
   if (events.back_to_menu && stage->has_menu) {
     stage->back_to_menu = true;
     stage->quit = true;

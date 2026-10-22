@@ -13,6 +13,7 @@
 
 #include "city_package.h"
 #include "fleet.h"
+#include "navigation.h"
 #include "physics_world.h"
 
 typedef struct traffic traffic_t;
@@ -27,6 +28,7 @@ typedef struct {
   bool braking;
   float wheel_turn;
   int indicator; /* -1 signalling left, +1 right, 0 none */
+  bool pursuing; /* a police car after the player */
 } traffic_car_t;
 
 /* Routes are borrowed: they must outlive the traffic. Puts `car_count` cars
@@ -72,11 +74,11 @@ bool traffic_signals_open(float seconds);
  * scenes and tests. */
 void traffic_car_set_kind(traffic_t* traffic, size_t index, int variant,
                           bool responding);
-/* Distance from a point to the nearest emergency vehicle that is on a call
- * (beacons flashing, siren sounding), 1e9 with none. */
 /* Distance to the nearest car that is sounding its horn at the player, who
  * has held it up for a while, or a huge number if none is. */
 float traffic_nearest_honk(const traffic_t* t, vec3_t point);
+/* Distance from a point to the nearest emergency vehicle that is on a call
+ * (beacons flashing, siren sounding), 1e9 with none. */
 float traffic_nearest_siren(const traffic_t* traffic, vec3_t point);
 /* Whether car `index` is on a call. */
 bool traffic_car_responding(const traffic_t* traffic, size_t index);
@@ -86,5 +88,16 @@ float traffic_nearest_distance(const traffic_t* traffic, vec3_t point);
 int traffic_draw(const traffic_t* traffic, const fleet_t* fleet,
                  renderer_t* renderer, vec3_t eye, float range,
                  float lights_on);
+
+/* The road graph pursuers use to find their way to the player; borrowed,
+ * optional (without it they choose junctions at random). */
+void traffic_set_nav(traffic_t* traffic, nav_t* nav);
+/* How many police cars should be after the player, 0 for none: the traffic
+ * has a few police cars, and sends them from out of sight, siren sounding,
+ * faster than anyone, ignoring signals. Call them off with 0. */
+void traffic_set_pursuit(traffic_t* traffic, int pursuers);
+int traffic_pursuer_count(const traffic_t* traffic);
+/* Distance from a point to the nearest pursuing police car, 1e9 with none. */
+float traffic_nearest_pursuer(const traffic_t* traffic, vec3_t point);
 
 #endif  // GAME_SRC_TRAFFIC_TRAFFIC_H_

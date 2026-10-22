@@ -365,3 +365,56 @@ size_t nav_path(nav_t* nav, float from_x, float from_z, float to_x, float to_z,
     slice(nav, &w, b.route, lb, b.along);
   return w.count;
 }
+
+bool nav_next_hop(nav_t* nav, int route, int forward, float to_x, float to_z,
+                  int* next_route, int* next_forward) {
+  if (!nav || route < 0 || (size_t)route >= nav->route_count) return false;
+  const city_route_t* here = &nav->routes[route];
+  snap_t b = snap(nav, to_x, to_z);
+  if (b.route < 0 || b.route == route) return false;
+  const city_route_t* rb = &nav->routes[b.route];
+  float lb = nav->lengths[b.route];
+  int origin = node_index(nav, forward ? here->end_node : here->start_node);
+  if (origin < 0) return false;
+  for (int i = 0; i < nav->node_count; i++) {
+    nav->distance[i] = 1e30f;
+    nav->came_by[i] = -1;
+    nav->heap_position[i] = -1;
+  }
+  nav->heap_size = 0;
+  relax(nav, origin, 0, -1);
+  while (nav->heap_size > 0) {
+    int node = nav->heap[0];
+    heap_swap(nav, 0, nav->heap_size - 1);
+    nav->heap_size--;
+    nav->heap_position[node] = -2;
+    if (nav->heap_size > 0) heap_down(nav, 0);
+    for (int e = nav->first_edge[node]; e < nav->first_edge[node + 1]; e++) {
+      int to = nav->edges[e].to;
+      if (nav->heap_position[to] == -2) continue;
+      relax(nav, to, nav->distance[node] + nav->edges[e].length, e);
+    }
+  }
+  int goal_from_start = node_index(nav, rb->start_node);
+  int goal_from_end = node_index(nav, rb->end_node);
+  float via_start = nav->distance[goal_from_start] + b.along;
+  float via_end =
+      rb->oneway ? 1e30f : nav->distance[goal_from_end] + (lb - b.along);
+  if (fminf(via_start, via_end) >= 1e29f) return false;
+  int goal = via_start <= via_end ? goal_from_start : goal_from_end;
+  if (nav->came_by[goal] < 0) {
+    /* The target's road leaves from where we are. */
+    *next_route = b.route;
+    *next_forward = goal == goal_from_start ? 1 : 0;
+    return true;
+  }
+  int node = goal, first = -1, hops = 0;
+  while (nav->came_by[node] >= 0 && hops++ < 100000) {
+    first = nav->came_by[node];
+    node = nav->edge_from[first];
+  }
+  if (first < 0) return false;
+  *next_route = nav->edges[first].route;
+  *next_forward = nav->edges[first].forward;
+  return true;
+}

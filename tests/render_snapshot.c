@@ -85,8 +85,24 @@ int main(int argc, char* argv[]) {
   size_t watched = watch_stuck ? traffic_car_count(stage.traffic) : 0;
   float* stood = watched ? calloc(watched, sizeof(float)) : NULL;
   float* longest = watched ? calloc(watched, sizeof(float)) : NULL;
+  /* SNAPSHOT_CRIME starts a police chase and reports it every five seconds. */
+  bool crime = getenv("SNAPSHOT_CRIME") != NULL && stage.traffic;
+  if (crime) wanted_crime(&stage.wanted);
   for (int i = 0; i < steps; i++) {
     driving_stage_step(&stage, input, 1.0f / 120.0f);
+    if (crime && i % 240 == 0) {
+      const rigid_body_t* me = physics_body(stage.physics, stage.vehicle.body);
+      float chaser = 0;
+      for (size_t k = 0; k < traffic_car_count(stage.traffic); k++)
+        if (traffic_car(stage.traffic, k).pursuing)
+          chaser = traffic_car(stage.traffic, k).speed;
+      printf(
+          "t=%d stars %d pursuers %d nearest %.0f m at %.0f m/s, player %.0f "
+          "km/h '%s'\n",
+          i / 120, stage.wanted.stars, traffic_pursuer_count(stage.traffic),
+          traffic_nearest_pursuer(stage.traffic, me->position), chaser,
+          vehicle_speed_kmh(&stage.vehicle), stage.notice);
+    }
     if (watched && i % 120 == 0) {
       for (size_t k = 0; k < watched; k++) {
         traffic_car_t car = traffic_car(stage.traffic, k);
