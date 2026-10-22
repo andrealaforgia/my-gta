@@ -234,3 +234,13 @@ CPU for the simulation (physics, traffic, people, streaming) is about 30 ms
 per simulated second, since the collider grid (see Physics queries); a
 minute of the soak run (random driving, walking, stealing cars) costs under
 a second. Barletta (700 chunks, 1.3 million triangles) draws in 5 to 9 ms.
+
+## Street life, part two and the airport (2026-10-23)
+
+Pistol on foot (G, click, pad X): `driving_stage_fire`, tracer and flash, `pedestrians_shoot`, `pedestrians_alarm` for the bystanders. Hit people are launched (`launch` in `pedestrians.c`): a rise speed, a flight time and a number of quarter turns, so a car at speed makes them somersault before they land flat; `pedestrian_t.fall` goes past 1 while they turn and `lift` is the height. Missions follow the vehicle (`mission_kind_t`: delivery, taxi fare, ambulance patient).
+
+Airports: `tools/common/generator_airport.c` finds a dry site beside the city's extent (`airport_side` in the city config: N, E, S, W, empty to choose, `-` for none), extends the ground to it and lays a 900 m runway with markings, a taxiway with links, an apron, two helicopter pads, a terminal, two hangars and a tower. The package gains `airport` and `aircraft` manifest lines (three planes and two helicopters, with their height).
+
+Flying: `game/src/air/aircraft.c` is the flight model (arcade, no physics world; the caller gives the ground height), `aircraft_visual.c` the shapes. `game/src/stage/air_stage.c` is the integration: F near an aircraft steals it (a crime), the walker is pinned to it so streaming, people and traffic follow, the camera is a level chase camera with a longer near plane, streaming and fog widen, a wall ahead or a hard landing is a crash (the blast, WASTED, the aircraft back on its stand). Keys: W/S pitch, A/D bank, Shift or Space power up, Ctrl power down or brake. The map's edge turns the aircraft back.
+
+Junctions: kerb corners are arcs (`round_corner` in `junction_geometry.c`) when the roads have room (`junction_arm_t.room`), so the roads are cut back a little further.
