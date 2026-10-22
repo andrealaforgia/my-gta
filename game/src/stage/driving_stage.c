@@ -219,6 +219,36 @@ static void back_to_spawn(driving_stage_t* stage) {
                                   stage->vehicle.spawn_rotation));
 }
 
+/* A wreck burns and then blows up, and the player wakes at the start with a
+ * lighter wallet. */
+static void step_the_fire(driving_stage_t* stage, float dt) {
+  if (stage->blast > 0) {
+    stage->blast += dt;
+    if (stage->blast > 2.2f) {
+      int fine = stage->mission.cash / 10;
+      stage->mission.cash -= fine;
+      char text[40];
+      snprintf(text, sizeof(text), "WASTED  -$%d", fine);
+      say(stage, text);
+      back_to_spawn(stage);
+      stage->blast = 0;
+      stage->burning = 0;
+    }
+    return;
+  }
+  if (!stage->on_foot && stage->vehicle.damage >= 0.97f) {
+    stage->burning += dt;
+    if (stage->burning > 7.0f) {
+      stage->blast = 0.001f;
+      stage->blast_at =
+          physics_body(stage->physics, stage->vehicle.body)->position;
+      if (stage->audio) audio_device_trigger_impact(stage->audio, 1.0f);
+    }
+  } else if (stage->vehicle.damage < 0.97f) {
+    stage->burning = 0;
+  }
+}
+
 /* The law's side of the drive: crashes are crimes, police cars come, and the
  * chase ends in being caught or getting away. */
 static void step_the_law(driving_stage_t* stage, bool pole_down, float dt) {
@@ -321,6 +351,7 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   }
   poles_step(&stage->scene, &stage->world, dt);
   step_the_law(stage, pole_down, dt);
+  step_the_fire(stage, dt);
   if (stage->missions) {
     vec3_t at = player_position(stage);
     /* The way to the destination, worked out again every second or two. */
@@ -1117,10 +1148,17 @@ void driving_stage_render(driving_stage_t* stage) {
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
-  car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night,
-                  stage->rain_clock);
-  car_visual_draw_smoke(&stage->car_visual, r, chassis, stage->vehicle.damage,
-                        stage->rain_clock);
+  if (stage->blast < 0.15f)
+    car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night,
+                    stage->rain_clock);
+  if (stage->blast > 0) {
+    car_visual_draw_blast(&stage->car_visual, r, stage->blast_at, stage->blast);
+  } else {
+    car_visual_draw_smoke(&stage->car_visual, r, chassis, stage->vehicle.damage,
+                          stage->rain_clock);
+    if (stage->burning > 0)
+      car_visual_draw_fire(&stage->car_visual, r, chassis, stage->rain_clock);
+  }
   if (stage->view_mode == 2)
     car_visual_draw_cockpit(&stage->car_visual, r, chassis,
                             driving_stage_wheel_angle(stage));

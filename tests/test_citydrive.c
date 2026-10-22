@@ -502,6 +502,33 @@ static void a_wrecked_car_smokes_and_looks_scuffed(void) {
   stop(&run);
 }
 
+static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
+    void) {
+  city_run_t run;
+  start(&run);
+  driving_input_t idle = {0, 0, 0, false};
+  run.stage.vehicle.damage = 1.0f;
+  for (int i = 0; i < 120 * 3; i++)
+    driving_stage_step(&run.stage, idle, 1.0f / 120.0f);
+  assert(run.stage.burning > 2.0f && run.stage.blast == 0);
+  /* A car that is mended stops burning. */
+  run.stage.vehicle.damage = 0.5f;
+  driving_stage_step(&run.stage, idle, 1.0f / 120.0f);
+  assert(run.stage.burning == 0);
+  run.stage.vehicle.damage = 1.0f;
+  run.stage.mission.cash = 500;
+  bool blew = false;
+  for (int i = 0; i < 120 * 12; i++) {
+    driving_stage_step(&run.stage, idle, 1.0f / 120.0f);
+    if (run.stage.blast > 0) blew = true;
+  }
+  /* It went up, and then the player was put back at the start, mended and
+   * fined a tenth. */
+  assert(blew && run.stage.blast == 0);
+  assert(run.stage.vehicle.damage == 0 && run.stage.mission.cash == 450);
+  stop(&run);
+}
+
 static void walls_are_grubbier_at_the_foot_but_roads_are_not(void) {
   city_run_t run;
   start(&run);
@@ -765,6 +792,7 @@ void run_citydrive_tests(void) {
   RUN(every_vehicle_pulls_away_and_stays_on_its_wheels);
   RUN(a_car_that_hits_a_lamp_post_hard_knocks_it_down);
   RUN(a_gentle_bump_leaves_a_lamp_post_standing);
+  RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(the_map_and_the_pause_silence_the_engine);
   RUN(the_player_can_get_out_walk_get_back_in_and_steal_a_car);
   RUN(the_menu_lists_the_cooked_cities_by_name_and_wraps_round);

@@ -62,6 +62,9 @@ typedef struct {
   bool paused;
   float rain; /* 0..1, eased towards rain_target */
   float rain_target;
+  float burning; /* seconds the car has been on fire */
+  float blast;   /* seconds since it blew up; 0 while it has not */
+  vec3_t blast_at;
   int people_struck;  /* people the car ran into this step */
   int radio_station;  /* 0 off .. RADIO_STATIONS */
   float radio_banner; /* seconds left to show the station's name */

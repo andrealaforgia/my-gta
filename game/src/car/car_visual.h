@@ -77,4 +77,12 @@ float car_visual_damage_tint(float damage);
 void car_visual_draw_smoke(const car_visual_t* visual, renderer_t* renderer,
                            transform_t chassis, float damage, float time);
 
+/* Flames licking up from the bonnet of a car that is on fire. */
+void car_visual_draw_fire(const car_visual_t* visual, renderer_t* renderer,
+                          transform_t chassis, float time);
+/* The fireball of a car blowing up, `age` seconds after it went: it swells
+ * and fades from white-hot to orange to dark smoke. */
+void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
+                           vec3_t at, float age);
+
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

@@ -100,6 +100,8 @@ int main(int argc, char* argv[]) {
       driving_stage_step(&stage, brake, 1.0f / 120.0f);
     driving_stage_interact(&stage);
   }
+  /* SNAPSHOT_FIRE=1 wrecks the car: flames after 0 s, a blast after 7 s. */
+  if (getenv("SNAPSHOT_FIRE")) stage.vehicle.damage = 1.0f;
   int steps = (int)(seconds * 120);
   /* SNAPSHOT_STUCK reports the cars that stood still for long. */
   bool watch_stuck = getenv("SNAPSHOT_STUCK") != NULL && stage.traffic;

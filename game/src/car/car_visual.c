@@ -486,3 +486,48 @@ void car_visual_draw_smoke(const car_visual_t* visual, renderer_t* renderer,
     renderer_draw_mesh(renderer, visual->smoke_puff, grey, model);
   }
 }
+
+void car_visual_draw_fire(const car_visual_t* visual, renderer_t* renderer,
+                          transform_t chassis, float time) {
+  vec3_t nose =
+      transform_point(chassis, vec3(0, 0.2f, -visual->half_extents.z * 0.7f));
+  for (int i = 0; i < 9; i++) {
+    float phase = fmodf(time * 1.7f + (float)i / 9.0f, 1.0f);
+    float flicker = sinf(time * 23.0f + (float)i * 5.1f);
+    float size = (0.45f - 0.38f * phase) * (1.0f + 0.25f * flicker);
+    vec3_t at = vec3(nose.x + 0.3f * sinf((float)i * 1.9f) * (1.0f - phase),
+                     nose.y + phase * 1.5f,
+                     nose.z + 0.3f * cosf((float)i * 2.7f) * (1.0f - phase));
+    material_t flame =
+        material_rough(vec3(1.0f, 0.22f + 0.3f * (1.0f - phase), 0.04f), 1.0f);
+    flame.emissive = 1.0f;
+    mat4_t model = mat4_multiply(mat4_translation(at),
+                                 mat4_scaling(vec3(size, size * 1.6f, size)));
+    renderer_draw_mesh(renderer, visual->smoke_puff, flame, model);
+  }
+}
+
+void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
+                           vec3_t at, float age) {
+  float swell = 1.0f - expf(-age * 4.0f);
+  float cool = fminf(age / 2.0f, 1.0f);
+  for (int i = 0; i < 16; i++) {
+    float a = (float)i * 2.4f;
+    float reach = 0.6f + 1.8f * fmodf((float)i * 0.37f, 1.0f);
+    float rise =
+        (0.3f + 2.4f * fmodf((float)i * 0.61f, 1.0f)) * swell + 1.2f * cool;
+    vec3_t where = vec3(at.x + cosf(a) * reach * swell, at.y + rise,
+                        at.z + sinf(a) * reach * swell);
+    float size = (0.5f + 0.5f * fmodf((float)i * 0.53f, 1.0f)) * swell *
+                 (1.0f + 0.6f * cool);
+    /* Orange fire at first, going to sooty smoke. */
+    float heat = 1.0f - cool;
+    material_t fire = material_rough(
+        vec3(0.12f + 0.88f * heat, 0.1f + 0.2f * heat, 0.09f - 0.05f * heat),
+        1.0f);
+    fire.emissive = 0.8f * heat * heat;
+    mat4_t model = mat4_multiply(mat4_translation(where),
+                                 mat4_scaling(vec3(size, size, size)));
+    renderer_draw_mesh(renderer, visual->smoke_puff, fire, model);
+  }
+}
