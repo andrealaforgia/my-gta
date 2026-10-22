@@ -19,6 +19,7 @@ typedef struct {
   int variant;
   int paint;
   collider_handle_t collider;
+  bool taken; /* driven away by the player: nothing stands here now */
 } parked_car_t;
 
 typedef struct {
@@ -31,6 +32,12 @@ bool parked_cars_create(parked_cars_t* parked, const city_parking_t* spots,
                         size_t spot_count, physics_world_t* physics,
                         const fleet_t* fleet);
 void parked_cars_destroy(parked_cars_t* parked, physics_world_t* physics);
+/* Takes the nearest standing car within `radius` metres of a point (flat
+ * distance): it is gone from its place, and what it was is returned. False if
+ * none is near. */
+bool parked_cars_take(parked_cars_t* parked, physics_world_t* physics,
+                      vec3_t near, float radius, int* variant, vec3_t* position,
+                      float* yaw);
 /* Draws those within `range` metres of the eye; returns how many. */
 int parked_cars_draw(const parked_cars_t* parked, const fleet_t* fleet,
                      renderer_t* renderer, vec3_t eye, float range,

@@ -70,6 +70,11 @@ void pedestrians_place(pedestrians_t* pedestrians, size_t index, int route,
 pedestrian_meshes_t pedestrian_meshes_create(renderer_t* renderer);
 void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
                                renderer_t* renderer);
+/* One figure at a place (feet), facing yaw, as people walking are drawn: the
+ * outfit number chooses clothes and build, speed and phase the stride. */
+void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
+                            renderer_t* renderer, vec3_t position, float yaw,
+                            float speed, float phase, int outfit);
 int pedestrians_draw(const pedestrians_t* pedestrians,
                      const pedestrian_meshes_t* meshes, renderer_t* renderer,
                      vec3_t eye, float range);

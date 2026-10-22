@@ -15,6 +15,7 @@
 #include "test_groups.h"
 #include "test_support.h"
 #include "traffic.h"
+#include "walker.h"
 #include "wanted.h"
 
 static physics_world_t* ground_world(void) {
@@ -913,6 +914,50 @@ the_law_comes_after_crashes_and_the_chase_ends_in_a_bust_or_a_getaway(void) {
   assert(wanted_step(&law, 1.0f, 0.0f, 5.0f) == WANTED_NOTHING);
 }
 
+static void the_player_on_foot_walks_runs_turns_and_is_stopped_by_walls(void) {
+  physics_world_t* world = ground_world(); /* ground at y = 2 */
+  /* A wall across the way, 5 m ahead (north, -z), and a kerb 0.15 m high. */
+  physics_add_static_box(world, transform_at(vec3(0, 3, -6), quat_identity()),
+                         vec3(10, 1.5f, 0.3f), COLLISION_LAYER_BUILDING, 0.6f,
+                         0);
+  walker_t walker;
+  walker_init(&walker, vec3(0, 2, 0), 0.0f);
+  walker_input_t stand = {0, 0, false}, walk = {1, 0, false},
+                 run = {1, 0, true};
+  for (int i = 0; i < 120; i++) walker_step(&walker, world, stand, 1.0f / 120);
+  assert(fabsf(walker.position.z) < 0.01f &&
+         fabsf(walker.position.y - 2) < 0.01f);
+  /* A second's walk covers about two metres, a run's second more. */
+  for (int i = 0; i < 120; i++) walker_step(&walker, world, walk, 1.0f / 120);
+  float walked = -walker.position.z;
+  assert(walked > 1.5f && walked < 2.2f);
+  float before = walker.position.z;
+  for (int i = 0; i < 120; i++) walker_step(&walker, world, run, 1.0f / 120);
+  assert(before - walker.position.z > 3.5f || walker.position.z < -4.0f);
+  /* The wall stops it, with room to spare, and it does not go through. */
+  for (int i = 0; i < 600; i++) walker_step(&walker, world, run, 1.0f / 120);
+  assert(walker.position.z > -6.3f + 0.0f - 0.01f && walker.position.z < -5.2f);
+  assert(fabsf(walker.position.y - 2) < 0.05f);
+  /* Turning to the right turns the way it faces to the right. */
+  walker_init(&walker, vec3(0, 2, 50), 0.0f);
+  walker_input_t right = {0, 1, false};
+  for (int i = 0; i < 120; i++) walker_step(&walker, world, right, 1.0f / 120);
+  vec3_t facing = walker_forward(&walker);
+  assert(facing.x > 0.2f); /* north turned towards the east */
+  /* Backing away is slower than going forward. */
+  walker_init(&walker, vec3(0, 2, 50), 0.0f);
+  walker_input_t back = {-1, 0, false};
+  for (int i = 0; i < 240; i++) walker_step(&walker, world, back, 1.0f / 120);
+  assert(walker.position.z - 50 > 1.0f && walker.position.z - 50 < 2.5f);
+  /* Out of a parked car's way. */
+  walker_init(&walker, vec3(0.2f, 2, 60), 0.0f);
+  walker_push_out_of_box(&walker, vec3(0, 2.7f, 60), 0.0f,
+                         vec3(0.9f, 0.7f, 2.2f));
+  assert(fabsf(walker.position.x) > 1.2f ||
+         fabsf(walker.position.z - 60) > 2.5f);
+  physics_world_destroy(world);
+}
+
 static void cars_pull_over_for_an_emergency_vehicle_that_passes_them(void) {
   renderer_t* renderer = renderer_create(64, 64);
   physics_world_t* world = ground_world();
@@ -1073,6 +1118,7 @@ void run_traffic_tests(void) {
   RUN(a_car_signals_before_it_turns_and_stops_once_round);
   RUN(a_driver_held_up_by_the_player_sounds_the_horn);
   RUN(the_satnav_finds_the_way_round_by_road_respecting_one_ways);
+  RUN(the_player_on_foot_walks_runs_turns_and_is_stopped_by_walls);
   RUN(police_after_the_player_take_the_way_that_leads_to_them);
   RUN(a_sizeable_traffic_has_police_cars_in_it);
   RUN(the_law_comes_after_crashes_and_the_chase_ends_in_a_bust_or_a_getaway);

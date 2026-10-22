@@ -445,8 +445,9 @@ void pedestrian_meshes_destroy(pedestrian_meshes_t* meshes,
   renderer_release_mesh(renderer, meshes->cap);
 }
 
-int pedestrians_draw(const pedestrians_t* p, const pedestrian_meshes_t* meshes,
-                     renderer_t* renderer, vec3_t eye, float range) {
+void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
+                            renderer_t* renderer, vec3_t position, float yaw,
+                            float speed, float phase, int outfit) {
   static const float shirts[8][3] = {{0.75f, 0.2f, 0.18f}, {0.2f, 0.35f, 0.65f},
                                      {0.85f, 0.85f, 0.8f}, {0.2f, 0.5f, 0.3f},
                                      {0.9f, 0.7f, 0.2f},   {0.35f, 0.3f, 0.35f},
@@ -463,78 +464,81 @@ int pedestrians_draw(const pedestrians_t* p, const pedestrian_meshes_t* meshes,
   static const float hairs[6][3] = {
       {0.08f, 0.06f, 0.05f}, {0.25f, 0.15f, 0.08f}, {0.55f, 0.4f, 0.18f},
       {0.75f, 0.62f, 0.35f}, {0.5f, 0.18f, 0.08f},  {0.12f, 0.1f, 0.09f}};
+  int o = outfit;
+  unsigned h = outfit_hash(o);
+  person_kind_t kind = pedestrian_kind(o);
+  float s = pedestrian_scale(o);
+  const float* shirt = shirts[o % 8];
+  const float* trouser = trousers[(o / 8) % 5];
+  const float* skin = skins[(o / 40) % 4];
+  const float* hair = kind == PERSON_ELDER ? hairs[5] : hairs[h / 7 % 5];
+  bool dress = kind == PERSON_ADULT && (h / 3) % 10 < 3;
+  bool long_hair = kind != PERSON_ELDER && (dress || (h / 11) % 10 < 2);
+  float grey = kind == PERSON_ELDER ? 0.62f : 1.0f;
+  material_t shirt_material =
+      material_rough(vec3(shirt[0], shirt[1], shirt[2]), 0.9f);
+  material_t skin_material =
+      material_rough(vec3(skin[0], skin[1], skin[2]), 0.8f);
+  material_t hair_material = material_rough(
+      vec3(hair[0] * grey + (kind == PERSON_ELDER ? 0.3f : 0.0f),
+           hair[1] * grey + (kind == PERSON_ELDER ? 0.3f : 0.0f),
+           hair[2] * grey + (kind == PERSON_ELDER ? 0.3f : 0.0f)),
+      0.9f);
+  material_t trouser_material =
+      material_rough(vec3(trouser[0], trouser[1], trouser[2]), 0.9f);
+  mat4_t scaling = mat4_scaling(vec3(s, s, s));
+  transform_t base = transform_at(position, quat_from_yaw(yaw));
+  mat4_t model = mat4_multiply(transform_to_matrix(base), scaling);
+  renderer_draw_mesh(renderer, meshes->torso, shirt_material, model);
+  renderer_draw_mesh(renderer, meshes->head, skin_material, model);
+  if (kind == PERSON_ELDER)
+    renderer_draw_mesh(renderer, meshes->cap,
+                       material_rough(vec3(0.3f, 0.28f, 0.25f), 0.9f), model);
+  else
+    renderer_draw_mesh(renderer,
+                       long_hair ? meshes->hair_long : meshes->hair_short,
+                       hair_material, model);
+  if (dress)
+    renderer_draw_mesh(renderer, meshes->skirt, trouser_material, model);
+  if (kind == PERSON_CHILD || (kind == PERSON_ADULT && (h / 5) % 10 == 0))
+    renderer_draw_mesh(renderer, meshes->backpack,
+                       material_rough(vec3(shirt[2], shirt[0], shirt[1]), 0.9f),
+                       model);
+  else if (kind == PERSON_ADULT && (h / 5) % 10 < 3)
+    renderer_draw_mesh(renderer, meshes->bag,
+                       material_rough(vec3(0.35f, 0.22f, 0.12f), 0.9f), model);
+  float amplitude = kind == PERSON_JOGGER ? 0.85f : 0.55f;
+  float swing = sinf(phase) * amplitude *
+                fminf(speed, kind == PERSON_JOGGER ? 3.2f : 1.4f) /
+                (kind == PERSON_JOGGER ? 3.2f : 1.4f);
+  for (int side = -1; side <= 1; side += 2) {
+    float angle = side * swing;
+    /* Pivot positions in the person's frame: hips and shoulders. */
+    transform_t leg = base;
+    leg.position = transform_point(base, vec3(side * 0.1f * s, 0.8f * s, 0));
+    leg.rotation = quat_multiply(base.rotation,
+                                 quat_from_axis_angle(vec3(1, 0, 0), angle));
+    renderer_draw_mesh(renderer, meshes->leg,
+                       dress ? skin_material : trouser_material,
+                       mat4_multiply(transform_to_matrix(leg), scaling));
+    transform_t arm = base;
+    arm.position = transform_point(base, vec3(side * 0.27f * s, 1.38f * s, 0));
+    arm.rotation = quat_multiply(base.rotation,
+                                 quat_from_axis_angle(vec3(1, 0, 0), -angle));
+    renderer_draw_mesh(renderer, meshes->arm, shirt_material,
+                       mat4_multiply(transform_to_matrix(arm), scaling));
+  }
+}
+
+int pedestrians_draw(const pedestrians_t* p, const pedestrian_meshes_t* meshes,
+                     renderer_t* renderer, vec3_t eye, float range) {
   int drawn = 0;
   for (size_t i = 0; i < p->count; i++) {
     const person_t* person = &p->people[i];
     float dx = person->position.x - eye.x, dz = person->position.z - eye.z;
     if (dx * dx + dz * dz > range * range) continue;
-    int o = person->outfit;
-    unsigned h = outfit_hash(o);
-    person_kind_t kind = pedestrian_kind(o);
-    float s = pedestrian_scale(o);
-    const float* shirt = shirts[o % 8];
-    const float* trouser = trousers[(o / 8) % 5];
-    const float* skin = skins[(o / 40) % 4];
-    const float* hair = kind == PERSON_ELDER ? hairs[5] : hairs[h / 7 % 5];
-    bool dress = kind == PERSON_ADULT && (h / 3) % 10 < 3;
-    bool long_hair = kind != PERSON_ELDER && (dress || (h / 11) % 10 < 2);
-    float grey = kind == PERSON_ELDER ? 0.62f : 1.0f;
-    material_t shirt_material =
-        material_rough(vec3(shirt[0], shirt[1], shirt[2]), 0.9f);
-    material_t skin_material =
-        material_rough(vec3(skin[0], skin[1], skin[2]), 0.8f);
-    material_t hair_material = material_rough(
-        vec3(hair[0] * grey + (kind == PERSON_ELDER ? 0.3f : 0.0f),
-             hair[1] * grey + (kind == PERSON_ELDER ? 0.3f : 0.0f),
-             hair[2] * grey + (kind == PERSON_ELDER ? 0.3f : 0.0f)),
-        0.9f);
-    material_t trouser_material =
-        material_rough(vec3(trouser[0], trouser[1], trouser[2]), 0.9f);
-    mat4_t scaling = mat4_scaling(vec3(s, s, s));
-    transform_t base =
-        transform_at(person->position, quat_from_yaw(person->yaw));
-    mat4_t model = mat4_multiply(transform_to_matrix(base), scaling);
-    renderer_draw_mesh(renderer, meshes->torso, shirt_material, model);
-    renderer_draw_mesh(renderer, meshes->head, skin_material, model);
-    if (kind == PERSON_ELDER)
-      renderer_draw_mesh(renderer, meshes->cap,
-                         material_rough(vec3(0.3f, 0.28f, 0.25f), 0.9f), model);
-    else
-      renderer_draw_mesh(renderer,
-                         long_hair ? meshes->hair_long : meshes->hair_short,
-                         hair_material, model);
-    if (dress)
-      renderer_draw_mesh(renderer, meshes->skirt, trouser_material, model);
-    if (kind == PERSON_CHILD || (kind == PERSON_ADULT && (h / 5) % 10 == 0))
-      renderer_draw_mesh(
-          renderer, meshes->backpack,
-          material_rough(vec3(shirt[2], shirt[0], shirt[1]), 0.9f), model);
-    else if (kind == PERSON_ADULT && (h / 5) % 10 < 3)
-      renderer_draw_mesh(renderer, meshes->bag,
-                         material_rough(vec3(0.35f, 0.22f, 0.12f), 0.9f),
-                         model);
-    float amplitude = kind == PERSON_JOGGER ? 0.85f : 0.55f;
-    float swing = sinf(person->phase) * amplitude *
-                  fminf(person->speed, kind == PERSON_JOGGER ? 3.2f : 1.4f) /
-                  (kind == PERSON_JOGGER ? 3.2f : 1.4f);
-    for (int side = -1; side <= 1; side += 2) {
-      float angle = side * swing;
-      /* Pivot positions in the person's frame: hips and shoulders. */
-      transform_t leg = base;
-      leg.position = transform_point(base, vec3(side * 0.1f * s, 0.8f * s, 0));
-      leg.rotation = quat_multiply(base.rotation,
-                                   quat_from_axis_angle(vec3(1, 0, 0), angle));
-      renderer_draw_mesh(renderer, meshes->leg,
-                         dress ? skin_material : trouser_material,
-                         mat4_multiply(transform_to_matrix(leg), scaling));
-      transform_t arm = base;
-      arm.position =
-          transform_point(base, vec3(side * 0.27f * s, 1.38f * s, 0));
-      arm.rotation = quat_multiply(base.rotation,
-                                   quat_from_axis_angle(vec3(1, 0, 0), -angle));
-      renderer_draw_mesh(renderer, meshes->arm, shirt_material,
-                         mat4_multiply(transform_to_matrix(arm), scaling));
-    }
+    pedestrian_draw_figure(meshes, renderer, person->position, person->yaw,
+                           person->speed, person->phase, person->outfit);
     drawn++;
   }
   return drawn;

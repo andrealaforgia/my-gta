@@ -798,3 +798,54 @@ int traffic_draw(const traffic_t* t, const fleet_t* fleet, renderer_t* renderer,
   }
   return drawn;
 }
+
+bool traffic_take_car(traffic_t* t, vec3_t near, float radius, int* variant,
+                      vec3_t* position, float* yaw) {
+  car_t* best = NULL;
+  float best_distance = radius;
+  for (size_t i = 0; i < t->car_count; i++) {
+    car_t* car = &t->cars[i];
+    float d = hypotf(car->position.x - near.x, car->position.z - near.z);
+    if (d < best_distance) best_distance = d, best = car;
+  }
+  if (!best) return false;
+  *variant = best->variant;
+  *position = best->position;
+  *yaw = best->yaw;
+  /* It is gone from here: out of sight on some road. */
+  best->pursuing = false;
+  best->responding = best->on_call;
+  vec3_t was = t->focus;
+  bool had_focus = t->has_focus;
+  t->focus = near;
+  t->has_focus = true;
+  recycle(t, best);
+  t->focus = was;
+  t->has_focus = had_focus;
+  pose(t, best, true, 0);
+  if (hypotf(best->position.x - near.x, best->position.z - near.z) < 40.0f) {
+    /* A small city has no road out of sight: the road's farthest end will
+     * do. */
+    float farthest = 0;
+    for (size_t r = 0; r < t->lane_count; r++) {
+      const lane_t* lane = &t->lanes[r];
+      if (!lane->route->drivable || lane->length <= 12.0f) continue;
+      for (int end = 0; end < 2; end++) {
+        float x, z, dx, dz, g;
+        sample(lane, end ? lane->length - 6.0f : 6.0f, 1, &x, &z, &dx, &dz, &g);
+        float d = hypotf(x - near.x, z - near.z);
+        if (d > farthest) {
+          farthest = d;
+          best->route = (int)r;
+          best->direction = 1;
+          best->s = end ? lane->length - 6.0f : 6.0f;
+        }
+      }
+    }
+    best->speed = 0;
+    best->planned_route = -1;
+    pose(t, best, true, 0);
+  }
+  move_collider(t, t->physics, best);
+  return true;
+}

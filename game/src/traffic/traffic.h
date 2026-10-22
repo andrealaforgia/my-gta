@@ -105,4 +105,10 @@ int traffic_pursuer_count(const traffic_t* traffic);
 /* Distance from a point to the nearest pursuing police car, 1e9 with none. */
 float traffic_nearest_pursuer(const traffic_t* traffic, vec3_t point);
 
+/* Takes the nearest car within `radius` metres of a point (flat distance),
+ * which is what a player does to steal one: the car is moved to a road out
+ * of sight, and what it was is returned. False if none is near. */
+bool traffic_take_car(traffic_t* traffic, vec3_t near, float radius,
+                      int* variant, vec3_t* position, float* yaw);
+
 #endif  // GAME_SRC_TRAFFIC_TRAFFIC_H_

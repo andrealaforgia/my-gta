@@ -26,6 +26,7 @@
 #include "textures.h"
 #include "traffic.h"
 #include "vehicle.h"
+#include "walker.h"
 #include "wanted.h"
 #include "window.h"
 #include "world.h"
@@ -81,6 +82,11 @@ typedef struct {
   mission_t mission;
   mission_markers_t mission_markers;
   float mission_ground; /* road height at the destination */
+  bool has_figures;     /* meshes for drawing people, so the player can walk */
+  bool on_foot;         /* out of the car, walking */
+  walker_t walker;
+  int walker_outfit;
+  chase_camera_params_t car_camera_params; /* kept while on foot */
   wanted_t wanted;
   char notice[40];   /* a line across the screen for a moment */
   float notice_time; /* seconds it has left */
@@ -115,6 +121,12 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage);
 /* Swaps the player's car for the next of hatchback, saloon, van and city
  * car, on the spot, keeping its heading. */
 void driving_stage_next_vehicle(driving_stage_t* stage);
+/* F: out of the car if it is nearly stopped, or, on foot, into the car left
+ * behind or the nearest other car (standing or driving), which is stolen. */
+void driving_stage_interact(driving_stage_t* stage);
+/* Makes the player's vehicle fleet variant `index`, at a place and facing. */
+bool driving_stage_set_vehicle(driving_stage_t* stage, int index,
+                               vec3_t position, quat_t rotation);
 /* Rain from 0 to 1 now: eased towards its target a little each frame. */
 void driving_stage_set_rain(driving_stage_t* stage, float rain);
 /* The steering wheel's angle: one and a half turns each way at full lock. */

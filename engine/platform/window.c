@@ -102,6 +102,9 @@ static void handle_key(window_events_t* events, SDL_Scancode key) {
     case SDL_SCANCODE_T:
       events->toggle_weather = true;
       break;
+    case SDL_SCANCODE_F:
+      events->interact = true;
+      break;
     case SDL_SCANCODE_BACKSPACE:
       events->back_to_menu = true;
       break;

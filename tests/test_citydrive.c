@@ -686,6 +686,59 @@ static void the_menu_lists_the_cooked_cities_by_name_and_wraps_round(void) {
   assert(city_menu_move(1, 4, MENU_KEY_DOWN) == 2);
 }
 
+static void the_player_can_get_out_walk_get_back_in_and_steal_a_car(void) {
+  test_traffic_cars = 20;
+  test_pedestrians = 10;
+  city_run_t run;
+  start(&run);
+  assert(run.stage.has_figures && !run.stage.on_foot);
+  driving_input_t stand = {0, 0, 0, false};
+  drive(&run, stand, 1.0f);
+  vec3_t car_at = car(&run)->position;
+  /* Out by the car's side; the car stays where it is. */
+  driving_stage_interact(&run.stage);
+  assert(run.stage.on_foot);
+  float apart = hypotf(run.stage.walker.position.x - car_at.x,
+                       run.stage.walker.position.z - car_at.z);
+  assert(apart > 1.0f && apart < 3.5f);
+  driving_input_t walk = {1.0f, 0, 0, false};
+  vec3_t start_at = run.stage.walker.position;
+  for (int i = 0; i < 120 * 2; i++)
+    driving_stage_step(&run.stage, walk, 1.0f / 120.0f);
+  assert(hypotf(run.stage.walker.position.x - start_at.x,
+                run.stage.walker.position.z - start_at.z) > 2.0f);
+  assert(isfinite(run.stage.walker.position.y));
+  assert(hypotf(car(&run)->position.x - car_at.x,
+                car(&run)->position.z - car_at.z) < 0.5f);
+  /* Too far from any car to get in. */
+  run.stage.walker.position = vec3(car_at.x + 60.0f, car_at.y, car_at.z);
+  driving_stage_interact(&run.stage);
+  assert(run.stage.on_foot);
+  /* Back by the car: in again. */
+  run.stage.walker.position = vec3(car_at.x + 1.8f, car_at.y, car_at.z);
+  driving_stage_interact(&run.stage);
+  assert(!run.stage.on_foot);
+  /* Steal one off the road: stand beside a traffic car and get in. */
+  driving_stage_interact(&run.stage);
+  assert(run.stage.on_foot);
+  traffic_car_t other = traffic_car(run.stage.traffic, 3);
+  run.stage.walker.position =
+      vec3(other.position.x + 1.4f, other.position.y - 0.5f, other.position.z);
+  int index_before = run.stage.vehicle_index;
+  (void)index_before;
+  driving_stage_interact(&run.stage);
+  assert(!run.stage.on_foot);
+  assert(run.stage.vehicle_index == other.variant);
+  assert(hypotf(car(&run)->position.x - other.position.x,
+                car(&run)->position.z - other.position.z) < 2.5f);
+  assert(run.stage.wanted.stars >= 1); /* stealing a car is a crime */
+  /* The car it was has been moved on, off the spot. */
+  traffic_car_t moved = traffic_car(run.stage.traffic, 3);
+  assert(hypotf(moved.position.x - other.position.x,
+                moved.position.z - other.position.z) > 5.0f);
+  stop(&run);
+}
+
 void run_citydrive_tests(void) {
   cook_fixture_city();
   RUN(the_city_loads_with_roads_buildings_and_a_spawn_on_a_road);
@@ -711,5 +764,6 @@ void run_citydrive_tests(void) {
   RUN(a_car_that_hits_a_lamp_post_hard_knocks_it_down);
   RUN(a_gentle_bump_leaves_a_lamp_post_standing);
   RUN(the_map_and_the_pause_silence_the_engine);
+  RUN(the_player_can_get_out_walk_get_back_in_and_steal_a_car);
   RUN(the_menu_lists_the_cooked_cities_by_name_and_wraps_round);
 }

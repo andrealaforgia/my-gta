@@ -79,6 +79,14 @@ int main(int argc, char* argv[]) {
     vehicle_reset(&stage.vehicle, stage.physics);
   }
   driving_input_t input = {1.0f, 0.0f, steering, false};
+  /* SNAPSHOT_FOOT gets out of the car after a short drive and walks. */
+  bool on_foot = getenv("SNAPSHOT_FOOT") != NULL;
+  if (on_foot) {
+    driving_input_t brake = {0.0f, 1.0f, 0.0f, true};
+    for (int i = 0; i < 120 * 3; i++)
+      driving_stage_step(&stage, brake, 1.0f / 120.0f);
+    driving_stage_interact(&stage);
+  }
   int steps = (int)(seconds * 120);
   /* SNAPSHOT_STUCK reports the cars that stood still for long. */
   bool watch_stuck = getenv("SNAPSHOT_STUCK") != NULL && stage.traffic;

@@ -33,7 +33,8 @@ bool parked_cars_create(parked_cars_t* parked, const city_parking_t* spots,
 
 void parked_cars_destroy(parked_cars_t* parked, physics_world_t* physics) {
   for (size_t i = 0; i < parked->count; i++)
-    physics_remove_collider(physics, parked->cars[i].collider);
+    if (!parked->cars[i].taken)
+      physics_remove_collider(physics, parked->cars[i].collider);
   free(parked->cars);
   memset(parked, 0, sizeof(*parked));
 }
@@ -45,6 +46,7 @@ int parked_cars_draw(const parked_cars_t* parked, const fleet_t* fleet,
   float range_squared = range * range;
   for (size_t i = 0; i < parked->count; i++) {
     const parked_car_t* car = &parked->cars[i];
+    if (car->taken) continue;
     float dx = car->position.x - eye.x, dz = car->position.z - eye.z;
     if (dx * dx + dz * dz > range_squared) continue;
     car_visual_draw_still(&fleet->visuals[car->variant], renderer,
@@ -54,4 +56,24 @@ int parked_cars_draw(const parked_cars_t* parked, const fleet_t* fleet,
     drawn++;
   }
   return drawn;
+}
+
+bool parked_cars_take(parked_cars_t* parked, physics_world_t* physics,
+                      vec3_t near, float radius, int* variant, vec3_t* position,
+                      float* yaw) {
+  parked_car_t* best = NULL;
+  float best_distance = radius;
+  for (size_t i = 0; i < parked->count; i++) {
+    parked_car_t* car = &parked->cars[i];
+    if (car->taken) continue;
+    float d = hypotf(car->position.x - near.x, car->position.z - near.z);
+    if (d < best_distance) best_distance = d, best = car;
+  }
+  if (!best) return false;
+  *variant = best->variant;
+  *position = best->position;
+  *yaw = best->yaw;
+  physics_remove_collider(physics, best->collider);
+  best->taken = true;
+  return true;
 }
