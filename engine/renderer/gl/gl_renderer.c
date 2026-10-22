@@ -330,12 +330,11 @@ static void check_gl(const char* where) {
 renderer_t* renderer_create(int drawable_width, int drawable_height) {
   renderer_t* r = calloc(1, sizeof(renderer_t));
   if (!r) return NULL;
-  r->mesh_program = link_shaders(
-      compile_shader(GL_VERTEX_SHADER, mesh_vertex_source, "mesh"),
-      compile_shader_parts(GL_FRAGMENT_SHADER, mesh_fragment_parts,
-                           MESH_FRAGMENT_PART_COUNT,
-                           "mesh"),
-      "mesh");
+  r->mesh_program =
+      link_shaders(compile_shader(GL_VERTEX_SHADER, mesh_vertex_source, "mesh"),
+                   compile_shader_parts(GL_FRAGMENT_SHADER, mesh_fragment_parts,
+                                        MESH_FRAGMENT_PART_COUNT, "mesh"),
+                   "mesh");
   r->line_program =
       link_program(line_vertex_source, line_fragment_source, "line");
   r->text_program =
@@ -615,33 +614,53 @@ static mat4_t light_matrix(const renderer_t* r) {
   return mat4_multiply(projection, view);
 }
 
+/* Where the mesh shader keeps what each draw changes: looked up once, since
+ * asking by name for every draw is slow with thousands of them. */
+typedef struct {
+  GLint model, base_color, metallic, roughness, emissive, window_glow, wall_ao,
+      has_texture;
+} draw_locations_t;
+
+static draw_locations_t locate_draw_uniforms(GLuint program) {
+  draw_locations_t l;
+  l.model = glGetUniformLocation(program, "u_model");
+  l.base_color = glGetUniformLocation(program, "u_base_color");
+  l.metallic = glGetUniformLocation(program, "u_metallic");
+  l.roughness = glGetUniformLocation(program, "u_roughness");
+  l.emissive = glGetUniformLocation(program, "u_emissive");
+  l.window_glow = glGetUniformLocation(program, "u_window_glow");
+  l.wall_ao = glGetUniformLocation(program, "u_wall_ao");
+  l.has_texture = glGetUniformLocation(program, "u_has_texture");
+  return l;
+}
+
 static void draw_list(renderer_t* r, GLuint program, bool bind_materials) {
+  draw_locations_t l = locate_draw_uniforms(program);
+  GLuint bound_texture = 0xffffffffu;
   for (size_t i = 0; i < r->draw_count; i++) {
     const draw_t* draw = &r->draws[i];
     gl_mesh_t* m = &r->meshes[draw->mesh];
-    glUniformMatrix4fv(glGetUniformLocation(program, "u_model"), 1, GL_FALSE,
-                       draw->model.m);
+    glUniformMatrix4fv(l.model, 1, GL_FALSE, draw->model.m);
     if (bind_materials) {
       const material_t* material = &draw->material;
-      set_vec3(program, "u_base_color", material->base_color);
-      glUniform1f(glGetUniformLocation(program, "u_metallic"),
-                  material->metallic);
-      glUniform1f(glGetUniformLocation(program, "u_roughness"),
-                  material->roughness);
-      glUniform1f(glGetUniformLocation(program, "u_emissive"),
-                  material->emissive);
-      glUniform1f(glGetUniformLocation(program, "u_window_glow"),
-                  material->window_glow);
-      glUniform1f(glGetUniformLocation(program, "u_wall_ao"),
-                  material->wall_ao);
+      glUniform3f(l.base_color, material->base_color.x, material->base_color.y,
+                  material->base_color.z);
+      glUniform1f(l.metallic, material->metallic);
+      glUniform1f(l.roughness, material->roughness);
+      glUniform1f(l.emissive, material->emissive);
+      glUniform1f(l.window_glow, material->window_glow);
+      glUniform1f(l.wall_ao, material->wall_ao);
       bool textured = material->texture.id != 0 &&
                       material->texture.id < MAX_TEXTURES &&
                       r->textures[material->texture.id] != 0;
-      glUniform1i(glGetUniformLocation(program, "u_has_texture"),
-                  textured ? 1 : 0);
-      glActiveTexture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D, textured ? r->textures[material->texture.id]
-                                            : r->white_texture);
+      glUniform1i(l.has_texture, textured ? 1 : 0);
+      GLuint texture =
+          textured ? r->textures[material->texture.id] : r->white_texture;
+      if (texture != bound_texture) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        bound_texture = texture;
+      }
     }
     glBindVertexArray(m->vao);
     glDrawElements(GL_TRIANGLES, m->index_count, GL_UNSIGNED_INT, 0);

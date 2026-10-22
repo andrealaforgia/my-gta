@@ -49,25 +49,32 @@ static bool add_area_polygon(city_chunk_t* chunk, city_part_t* part,
 
 /* Trees on a jittered grid inside a park: a trunk with a collider and a
  * canopy of three boxes. Deterministic from the area's source id. */
-/* A tree: a slim trunk and a crown of two overlapping rounded masses, one
- * leaning a little to a side that the seed picks. */
+/* A tree: a trunk with a flared foot and a crown of four rounded masses of
+ * different sizes piled and leaning about, from the seed, so that no two
+ * trees have quite the same outline. */
 static bool add_tree_geometry(city_part_t* trunks, city_part_t* leaves,
                               local_point_t p, float height, float crown,
                               uint64_t seed) {
-  if (!mesh_data_add_cylinder_y(&trunks->mesh, vec3((float)p.x, 0, (float)p.z),
-                                0.16f, height * 0.85f, 6))
+  vec3_t foot = vec3((float)p.x, 0, (float)p.z);
+  if (!mesh_data_add_cylinder_y(&trunks->mesh, foot, 0.15f, height * 0.9f, 6) ||
+      !mesh_data_add_cylinder_y(&trunks->mesh, foot, 0.25f, 0.55f, 6))
     return false;
-  float lean_x = (float)((seed >> 8) % 100) / 100.0f - 0.5f;
-  float lean_z = (float)((seed >> 16) % 100) / 100.0f - 0.5f;
   vec3_t top = vec3((float)p.x, height, (float)p.z);
-  return mesh_data_add_ellipsoid(
-             &leaves->mesh, vec3_add(top, vec3(0, crown * 0.45f, 0)),
-             vec3(crown * 1.15f, crown * 1.0f, crown * 1.15f), 4, 7) &&
-         mesh_data_add_ellipsoid(
-             &leaves->mesh,
-             vec3_add(top, vec3(lean_x * crown * 1.3f, crown * 0.8f,
-                                lean_z * crown * 1.3f)),
-             vec3(crown * 0.8f, crown * 0.75f, crown * 0.8f), 4, 7);
+  for (int lobe = 0; lobe < 4; lobe++) {
+    uint64_t bits = seed >> (6 * lobe);
+    float around = (float)((bits >> 3) % 100) / 100.0f * 6.2831853f;
+    float reach =
+        lobe == 0 ? 0.0f : crown * (0.45f + 0.35f * (float)(bits % 5) / 4.0f);
+    float rise = crown * (lobe == 0 ? 0.35f : 0.25f + 0.2f * (float)lobe);
+    float size =
+        crown * (lobe == 0 ? 1.15f : 0.62f + 0.12f * (float)((bits >> 9) % 4));
+    vec3_t centre =
+        vec3_add(top, vec3(cosf(around) * reach, rise, sinf(around) * reach));
+    if (!mesh_data_add_ellipsoid(&leaves->mesh, centre,
+                                 vec3(size, size * 0.85f, size), 3, 7))
+      return false;
+  }
+  return true;
 }
 
 /* Whether a point lies within `margin` metres of a road's surface (its

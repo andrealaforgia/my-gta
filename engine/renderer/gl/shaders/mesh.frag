@@ -48,12 +48,16 @@ float vnoise(vec3 p) {
  * flat colour: broad patches, a mid grain and a fine speckle, the finer
  * ones fading out with distance so they never shimmer. */
 float surface_detail(vec3 wp, float distance) {
-  float coarse = vnoise(wp * 0.45) - 0.5;
-  float mid = vnoise(wp * 2.3 + 7.1) - 0.5;
-  float fine = vnoise(wp * 9.0 + 3.7) - 0.5;
-  float mid_fade = 1.0 - smoothstep(25.0, 90.0, distance);
-  float fine_fade = 1.0 - smoothstep(6.0, 30.0, distance);
-  return 1.0 + coarse * 0.16 + mid * 0.12 * mid_fade + fine * 0.14 * fine_fade;
+  float v = (vnoise(wp * 0.45) - 0.5) * 0.16;
+  if (distance < 90.0) {
+    float mid_fade = 1.0 - smoothstep(25.0, 90.0, distance);
+    v += (vnoise(wp * 2.3 + 7.1) - 0.5) * 0.12 * mid_fade;
+    if (distance < 30.0) {
+      float fine_fade = 1.0 - smoothstep(6.0, 30.0, distance);
+      v += (vnoise(wp * 9.0 + 3.7) - 0.5) * 0.14 * fine_fade;
+    }
+  }
+  return 1.0 + v;
 }
 
 float shadow_factor(vec3 n, vec3 l) {
@@ -67,13 +71,13 @@ float shadow_factor(vec3 n, vec3 l) {
   float angle = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
   mat2 rotation = mat2(cos(angle), sin(angle), -sin(angle), cos(angle));
   float lit = 0.0;
-  for (int i = 0; i < 16; i++) {
-    float r = sqrt((float(i) + 0.5) / 16.0);
+  for (int i = 0; i < 9; i++) {
+    float r = sqrt((float(i) + 0.5) / 9.0);
     float a = float(i) * 2.39996323;
-    vec2 offset = rotation * vec2(cos(a), sin(a)) * r * 2.6 * texel;
+    vec2 offset = rotation * vec2(cos(a), sin(a)) * r * 3.0 * texel;
     lit += texture(u_shadow_map, vec3(p.xy + offset, p.z - bias));
   }
-  return lit / 16.0;
+  return lit / 9.0;
 }
 
 /* Relief from the texture itself: the light and dark of a surface (the mortar
