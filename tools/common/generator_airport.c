@@ -213,6 +213,11 @@ static bool stand_aircraft(layout_t* layout, const frame_t* f, int kind,
 
 static bool generate_at(layout_t* layout, const frame_t* f) {
   float road = layout->options->road_height;
+  /* Grass all round, as an airfield has. */
+  if (!paint(layout, f, "park", PART_COLLIDER_NONE, 0, -RUNWAY_HALF_LENGTH - 30,
+             RUNWAY_HALF_LENGTH + 30, -AIRPORT_BEHIND, AIRPORT_DEPTH, 0.025f,
+             TILE))
+    return false;
   /* Runway, taxiway and its links. */
   if (!paint_surface(layout, f, "parking", -RUNWAY_HALF_LENGTH,
                      RUNWAY_HALF_LENGTH, -RUNWAY_HALF_WIDTH, RUNWAY_HALF_WIDTH,
