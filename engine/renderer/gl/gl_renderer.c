@@ -533,8 +533,8 @@ void renderer_release_mesh(renderer_t* r, mesh_handle_t handle) {
   r->meshes_uploaded--;
 }
 
-texture_handle_t renderer_upload_texture(renderer_t* r, int width, int height,
-                                         const uint8_t* rgba) {
+static texture_handle_t upload_texture(renderer_t* r, int width, int height,
+                                       const uint8_t* rgba, bool surface) {
   texture_handle_t none = {0};
   uint32_t slot = 0;
   for (uint32_t i = 1; i < MAX_TEXTURES; i++) {
@@ -549,17 +549,33 @@ texture_handle_t renderer_upload_texture(renderer_t* r, int width, int height,
   }
   glGenTextures(1, &r->textures[slot]);
   glBindTexture(GL_TEXTURE_2D, r->textures[slot]);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, rgba);
+  glTexImage2D(GL_TEXTURE_2D, 0, surface ? GL_SRGB8_ALPHA8 : GL_RGBA8, width,
+               height, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
   glGenerateMipmap(GL_TEXTURE_2D);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                   GL_LINEAR_MIPMAP_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  if (surface) {
+    /* Anisotropic filtering where the driver has it: roads and walls seen at
+     * a slant stay sharp. */
+    glTexParameterf(GL_TEXTURE_2D, 0x84FE /* TEXTURE_MAX_ANISOTROPY */, 8.0f);
+  }
   check_gl("renderer_upload_texture");
   texture_handle_t handle = {slot};
   return handle;
+}
+
+texture_handle_t renderer_upload_texture(renderer_t* r, int width, int height,
+                                         const uint8_t* rgba) {
+  return upload_texture(r, width, height, rgba, false);
+}
+
+texture_handle_t renderer_upload_surface_texture(renderer_t* r, int width,
+                                                 int height,
+                                                 const uint8_t* rgba) {
+  return upload_texture(r, width, height, rgba, true);
 }
 
 void renderer_release_texture(renderer_t* r, texture_handle_t handle) {
@@ -938,7 +954,7 @@ void renderer_end_frame(renderer_t* r) {
     r->stats.draw_calls++;
   }
   if (r->post) {
-    gl_post_params_t params = {0.9f, 0.35f, 0.85f, 1.4f, 0.25f, 1.28f};
+    gl_post_params_t params = {1.45f, 0.35f, 0.85f, 1.4f, 0.25f, 1.2f};
     mat4_t inverse = mat4_inverse(r->projection);
     gl_post_finish(r->post, r->projection.m, inverse.m, r->sky_vao, &params);
     glViewport(0, 0, r->width, r->height);

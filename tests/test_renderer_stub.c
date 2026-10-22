@@ -47,6 +47,11 @@ texture_handle_t renderer_upload_texture(renderer_t* r, int w, int h,
   return handle;
 }
 
+texture_handle_t renderer_upload_surface_texture(renderer_t* r, int w, int h,
+                                                 const uint8_t* rgba) {
+  return renderer_upload_texture(r, w, h, rgba);
+}
+
 void renderer_release_texture(renderer_t* r, texture_handle_t t) {
   (void)r;
   (void)t;

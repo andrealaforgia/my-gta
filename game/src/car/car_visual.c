@@ -327,7 +327,7 @@ car_visual_t car_visual_create(renderer_t* renderer,
                p->wheelbase * 0.5f + build.extra_axle_z * (float)(axle + 1));
   body_build_free(&build);
   visual.wheel = upload(renderer, &wheel);
-  visual.paint = material_plain(vec3(0.72f, 0.1f, 0.08f));
+  visual.paint = material_plain(vec3(0.56f, 0.07f, 0.06f));
   if (visual.own_paint) visual.paint.base_color = visual.own_colour;
   visual.paint.metallic = 0.35f;
   visual.paint.roughness = 0.3f;

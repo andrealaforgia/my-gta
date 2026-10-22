@@ -10,7 +10,7 @@
 
 #include "renderer.h"
 
-#define TEXTURE_SIZE 256
+#define TEXTURE_SIZE 512
 #define CITY_FACADE_STYLES 12
 
 typedef struct {
@@ -29,6 +29,11 @@ typedef struct {
   texture_handle_t shopfront; /* ground-floor shops on main streets */
   texture_handle_t roof_slate;
   texture_handle_t roof_flat;
+  texture_handle_t bark;    /* tree trunks */
+  texture_handle_t foliage; /* tree crowns and hedges */
+  texture_handle_t stone;   /* rubble walls and cornices */
+  texture_handle_t planks;  /* fences */
+  texture_handle_t metal;   /* lamp posts, poles, rails, furniture */
   texture_handle_t checker;
 } texture_set_t;
 
@@ -47,6 +52,11 @@ uint8_t* texture_paving(unsigned seed);
 uint8_t* texture_door(unsigned seed);
 uint8_t* texture_roof_slate(unsigned seed);
 uint8_t* texture_roof_flat(unsigned seed);
+uint8_t* texture_bark(unsigned seed);
+uint8_t* texture_foliage(unsigned seed);
+uint8_t* texture_stone(unsigned seed);
+uint8_t* texture_planks(unsigned seed);
+uint8_t* texture_metal(unsigned seed);
 uint8_t* texture_checker(void);
 
 texture_set_t texture_set_upload(renderer_t* renderer);

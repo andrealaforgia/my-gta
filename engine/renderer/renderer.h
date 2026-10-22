@@ -92,6 +92,12 @@ void renderer_resize(renderer_t* renderer, int drawable_width,
 mesh_handle_t renderer_upload_mesh(renderer_t* renderer,
                                    const mesh_data_t* mesh);
 void renderer_release_mesh(renderer_t* renderer, mesh_handle_t mesh);
+/* A surface texture: RGBA8 holding colours as they would look in a photograph
+ * (sRGB), tightly packed, repeating, mipmapped and filtered anisotropically;
+ * the alpha channel is carried as it is. */
+texture_handle_t renderer_upload_surface_texture(renderer_t* renderer,
+                                                 int width, int height,
+                                                 const uint8_t* rgba);
 /* RGBA8, tightly packed, repeats with mipmaps. */
 texture_handle_t renderer_upload_texture(renderer_t* renderer, int width,
                                          int height, const uint8_t* rgba);
