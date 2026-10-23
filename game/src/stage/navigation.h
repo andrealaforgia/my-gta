@@ -3,7 +3,7 @@
  * @brief Finding a way by road between two places in the city: the drivable
  * routes are the edges of a graph whose nodes are junctions, and the shortest
  * way is found with Dijkstra's algorithm, one-way streets respected. This is
- * what the satnav line on the minimap and the delivery arrow follow.
+ * what the satnav line on the minimap and the arrow follow.
  */
 #ifndef GAME_SRC_STAGE_NAVIGATION_H_
 #define GAME_SRC_STAGE_NAVIGATION_H_

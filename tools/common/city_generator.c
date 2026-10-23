@@ -350,6 +350,11 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   } else {
     LOG_WARN("generate", "no dry ground for an airport");
   }
+  /* A road from the city to the airport's gate. */
+  city_model_t extended;
+  bool with_road =
+      airport.present && gen_airport_road(model, &airport, &extended);
+  if (with_road) model = &extended;
   const double margin = 40.0;
   layout_t layout;
   layout.package = package;
@@ -375,6 +380,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
   if (!fits || !cuts) {
     free(fits);
     free(cuts);
+    if (with_road) gen_airport_road_free(&extended);
     return false;
   }
   for (size_t r = 0; r < model->road_count; r++)
@@ -431,6 +437,7 @@ bool city_generate(city_package_t* package, const city_model_t* model,
     LOG_INFO("generate", "%zu degenerate triangles dropped", hairlines);
   if (!ok) {
     LOG_ERROR("generate", "out of memory while generating");
+    if (with_road) gen_airport_road_free(&extended);
     return false;
   }
   choose_spawn(package, model, options);
@@ -464,5 +471,6 @@ bool city_generate(city_package_t* package, const city_model_t* model,
            stats->pavements, stats->lamps, stats->areas, stats->trees,
            stats->buildings, stats->buildings_unclean,
            city_package_triangle_count(package));
+  if (with_road) gen_airport_road_free(&extended);
   return true;
 }

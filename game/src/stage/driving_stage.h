@@ -16,8 +16,7 @@
 #include "chase_camera.h"
 #include "fleet.h"
 #include "frame_clock.h"
-#include "mission.h"
-#include "mission_hud.h"
+#include "guide_hud.h"
 #include "navigation.h"
 #include "parked_cars.h"
 #include "pedestrians.h"
@@ -91,12 +90,11 @@ typedef struct {
   pedestrians_t* people;
   vec3_t walkers[64]; /* who is crossing a street now, for the traffic */
   pedestrian_meshes_t people_meshes;
-  bool missions; /* delivery runs, in a city */
-  mission_t mission;
-  mission_markers_t mission_markers;
-  float mission_ground; /* road height at the destination */
-  bool has_figures;     /* meshes for drawing people, so the player can walk */
-  bool on_foot;         /* out of the car, walking (or flying: see piloting) */
+  bool city_rules; /* police, satnav and fines, in a city */
+  guide_t guide;   /* the way to the airport */
+  guide_markers_t guide_markers;
+  bool has_figures; /* meshes for drawing people, so the player can walk */
+  bool on_foot;     /* out of the car, walking (or flying: see piloting) */
   aircraft_visual_t air_visual;
   bool has_air;
   aircraft_t aircraft[CITY_PACKAGE_MAX_AIRCRAFT];
@@ -111,7 +109,7 @@ typedef struct {
   char notice[40];   /* a line across the screen for a moment */
   float notice_time; /* seconds it has left */
   nav_t* nav;
-  float satnav[2 * 1024]; /* the way to the destination, x, z pairs */
+  float satnav[2 * 1024]; /* the way to the airport, x, z pairs */
   size_t satnav_count;
   float satnav_clock; /* seconds since the way was last worked out */
   bool horn;          /* the horn is being held */

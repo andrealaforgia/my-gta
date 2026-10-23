@@ -7,7 +7,6 @@
 #include <string.h>
 
 #include "fleet.h"
-#include "mission.h"
 #include "navigation.h"
 #include "parked_cars.h"
 #include "pedestrians.h"
@@ -831,70 +830,6 @@ static void a_driver_held_up_by_the_player_sounds_the_horn(void) {
   renderer_destroy(renderer);
 }
 
-static void taxi_fares_and_patients_pay_more_and_ambulances_get_less_time(
-    void) {
-  static float long_road[8] = {0, 0, 300, 0, 600, 0, 900, 0};
-  city_route_t roads[1] = {route(long_road, 1, 2, 0)};
-  roads[0].point_count = 4;
-  int cash[3];
-  float limit[3];
-  for (int kind = 0; kind < 3; kind++) {
-    mission_t mission;
-    mission_init(&mission, 5);
-    mission.kind = (mission_kind_t)kind;
-    assert(mission_step(&mission, roads, 1, 0, 0, 2.0f) == MISSION_STARTED);
-    limit[kind] = mission.time_limit / (20.0f + mission.distance / 6.0f);
-    assert(mission_step(&mission, roads, 1, mission.x - 3.0f, mission.z,
-                        0.0f) == MISSION_DELIVERED);
-    cash[kind] = mission.cash;
-  }
-  assert(cash[MISSION_FARE] > cash[MISSION_DELIVERY] &&
-         cash[MISSION_PATIENT] > cash[MISSION_FARE]);
-  assert(limit[MISSION_PATIENT] < 0.9f * limit[MISSION_DELIVERY]);
-  assert(strcmp(mission_verb(MISSION_FARE), "FARE TO") == 0 &&
-         strcmp(mission_done_text(MISSION_PATIENT), "PATIENT SAVED") == 0);
-}
-
-static void a_delivery_run_sets_a_far_destination_pays_and_gives_the_next(
-    void) {
-  static float long_road[8] = {0, 0, 300, 0, 600, 0, 900, 0};
-  city_route_t roads[1] = {route(long_road, 1, 2, 0)};
-  roads[0].point_count = 4;
-  mission_t mission;
-  mission_init(&mission, 5);
-  assert(!mission.active);
-  /* Nothing at once; a run is set after the first pause. */
-  assert(mission_step(&mission, roads, 1, 0, 0, 0.5f) == MISSION_NOTHING);
-  assert(mission_step(&mission, roads, 1, 0, 0, 1.5f) == MISSION_STARTED);
-  assert(mission.active);
-  float d = mission_distance_to(&mission, 0, 0);
-  assert(d >= 250.0f && d <= 1000.0f);
-  assert(mission.time_limit > 20.0f + d / 7.0f &&
-         mission.time_limit < 20.0f + d / 5.0f);
-  /* Getting there pays more for a quicker run, and a new run follows. */
-  assert(mission_reward(500, 40) > mission_reward(500, 5));
-  assert(mission_reward(900, 10) > mission_reward(300, 10));
-  assert(mission_step(&mission, roads, 1, mission.x - 3.0f, mission.z, 0.1f) ==
-         MISSION_DELIVERED);
-  assert(!mission.active && mission.delivered == 1);
-  assert(mission.cash == mission.last_reward && mission.last_reward >= 100);
-  assert(mission.result_time > 3.0f);
-  bool next = false;
-  for (int i = 0; i < 60 && !next; i++)
-    next = mission_step(&mission, roads, 1, 0, 0, 0.1f) == MISSION_STARTED;
-  assert(next && mission.active);
-  /* Out of time: no pay, and another run later. */
-  mission_event_t event = MISSION_NOTHING;
-  for (int i = 0; i < 20000 && event != MISSION_TIMED_OUT; i++)
-    event = mission_step(&mission, roads, 1, 0, 0, 0.1f);
-  assert(event == MISSION_TIMED_OUT && mission.failed == 1);
-  assert(mission.last_reward == 0 && mission.cash >= 100);
-  /* A city with no roads offers nothing and does not hang. */
-  mission_t empty;
-  mission_init(&empty, 1);
-  assert(mission_step(&empty, roads, 0, 0, 0, 2.0f) == MISSION_NOTHING);
-}
-
 static void the_satnav_finds_the_way_round_by_road_respecting_one_ways(void) {
   /* A square ring of one-way roads, anticlockwise on the map: east along the
    * top, south down the right, west along the bottom, north up the left. */
@@ -1306,8 +1241,6 @@ void run_traffic_tests(void) {
   RUN(police_after_the_player_take_the_way_that_leads_to_them);
   RUN(a_sizeable_traffic_has_police_cars_in_it);
   RUN(the_law_comes_after_crashes_and_the_chase_ends_in_a_bust_or_a_getaway);
-  RUN(a_delivery_run_sets_a_far_destination_pays_and_gives_the_next);
-  RUN(taxi_fares_and_patients_pay_more_and_ambulances_get_less_time);
   RUN(a_car_follows_the_curve_through_a_corner_without_jumping);
   RUN(some_emergency_vehicles_are_on_a_call_and_can_be_heard);
   RUN(a_signal_stops_only_the_traffic_it_faces_and_its_own_group);

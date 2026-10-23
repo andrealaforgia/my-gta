@@ -106,10 +106,12 @@ typedef struct {
 } city_aircraft_t;
 
 /* The airport beside the city: the middle of its runway, the way the runway
- * lies (yaw of its first end, as for the spawn), and its size in metres. */
+ * lies (yaw of its first end, as for the spawn), its size in metres and the
+ * gate, where the road from the city ends, and the height of the road there. */
 typedef struct {
   bool present;
   float x, z, yaw, length, width;
+  float gate_x, gate_y, gate_z;
 } city_airport_t;
 
 typedef struct {

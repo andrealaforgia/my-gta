@@ -99,6 +99,7 @@ typedef struct {
   vec2_t axis;                   /* along the runway */
   vec2_t toward;                 /* from the runway towards the city */
   double lo_x, lo_z, hi_x, hi_z; /* the airport's footprint */
+  local_point_t gate;            /* where the road from the city ends */
 } airport_site_t;
 
 /* ---- common ---- */
@@ -256,6 +257,14 @@ bool gen_apply_terrain(layout_t* layout);
 bool gen_airport_site(const city_model_t* model, const char* side, double min_x,
                       double min_z, double max_x, double max_z,
                       airport_site_t* site);
+
+/* Makes `out` a copy of `model` with a road added from the nearest drivable
+ * junction to the airport's gate, so the airport can be reached. The copy
+ * shares the model's roads' points: release it with gen_airport_road_free,
+ * never city_model_free. False when there is no junction to join. */
+bool gen_airport_road(const city_model_t* model, const airport_site_t* site,
+                      city_model_t* out);
+void gen_airport_road_free(city_model_t* out);
 
 /* Runway, taxiway, apron, buildings and the aircraft that stand there. */
 bool generate_airport(layout_t* layout, const airport_site_t* site);

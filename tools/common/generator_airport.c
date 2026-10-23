@@ -3,6 +3,7 @@
  * aircraft that stand there. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "generator_internal.h"
@@ -17,6 +18,10 @@
 #define AIRPORT_BEHIND 40.0 /* and away from it */
 #define AIRPORT_GAP 60.0    /* between the city's edge and the airport */
 #define TILE 40.0
+#define GATE_U 100.0 /* where the road from the city meets the apron */
+#define GATE_W 120.0
+#define GATE_NODE 9100000001ll
+#define ACCESS_ROAD_SOURCE 9100
 
 /* The airport's own frame: u along the runway, w towards the city. */
 typedef struct {
@@ -324,6 +329,7 @@ bool gen_airport_site(const city_model_t* model, const char* side, double min_x,
   if (side && side[0] == '-') return false; /* none wanted */
   if (!choose_frame(model, side, min_x, min_z, max_x, max_z, &f)) return false;
   site->present = true;
+  site->gate = frame_point(&f, GATE_U, GATE_W);
   site->origin = f.origin;
   site->axis = f.axis;
   site->toward = f.toward;
@@ -350,5 +356,99 @@ bool generate_airport(layout_t* layout, const airport_site_t* site) {
   package->airport.yaw = (float)atan2(-site->axis.x, -site->axis.z);
   package->airport.length = (float)(2 * RUNWAY_HALF_LENGTH);
   package->airport.width = (float)(2 * RUNWAY_HALF_WIDTH);
+  package->airport.gate_x = (float)site->gate.x;
+  package->airport.gate_y =
+      (float)gen_terrain_at(layout, site->gate.x, site->gate.z) +
+      layout->options->road_height;
+  package->airport.gate_z = (float)site->gate.z;
   return true;
+}
+
+static bool drivable_for_access(const city_road_t* road) {
+  return road->class != ROAD_CLASS_PEDESTRIAN &&
+         road->class != ROAD_CLASS_PATH && road->class != ROAD_CLASS_WATERWAY &&
+         road->class != ROAD_CLASS_MOTORWAY && !road->tunnel && !road->bridge;
+}
+
+bool gen_airport_road(const city_model_t* model, const airport_site_t* site,
+                      city_model_t* out) {
+  *out = *model;
+  if (!site->present) return false;
+  /* The nearest end of a street a car can use to the airport's front. */
+  frame_t f = {site->origin, site->axis, site->toward};
+  local_point_t front = frame_point(&f, GATE_U, AIRPORT_DEPTH + 10.0);
+  const city_road_t* best = NULL;
+  size_t best_end = 0;
+  double best_distance = 1e300;
+  for (size_t r = 0; r < model->road_count; r++) {
+    const city_road_t* road = &model->roads[r];
+    if (!drivable_for_access(road) || road->point_count < 2) continue;
+    for (int end = 0; end < 2; end++) {
+      size_t i = end ? road->point_count - 1 : 0;
+      double d =
+          hypot(road->points[i].x - front.x, road->points[i].z - front.z);
+      if (d < best_distance && road->node_ids[i] != 0)
+        best = road, best_end = i, best_distance = d;
+    }
+  }
+  if (!best) return false;
+  local_point_t start = best->points[best_end];
+  size_t junction = 0;
+  while (junction < model->junction_count &&
+         model->junctions[junction].node_id != best->node_ids[best_end])
+    junction++;
+  if (junction == model->junction_count) return false;
+
+  out->roads = malloc((model->road_count + 1) * sizeof(city_road_t));
+  out->junctions =
+      malloc((model->junction_count + 1) * sizeof(city_junction_t));
+  if (!out->roads || !out->junctions) {
+    free(out->roads);
+    free(out->junctions);
+    *out = *model;
+    return false;
+  }
+  memcpy(out->roads, model->roads, model->road_count * sizeof(city_road_t));
+  memcpy(out->junctions, model->junctions,
+         model->junction_count * sizeof(city_junction_t));
+  out->junctions[junction].degree++;
+  city_junction_t* gate = &out->junctions[out->junction_count++];
+  gate->node_id = GATE_NODE;
+  gate->position = site->gate;
+  gate->degree = 1;
+
+  city_road_t* road = &out->roads[out->road_count++];
+  memset(road, 0, sizeof(*road));
+  road->source_id = ACCESS_ROAD_SOURCE;
+  road->class = ROAD_CLASS_SECONDARY;
+  road->width = 8.0f;
+  road->width_inferred = false;
+  snprintf(road->name, sizeof(road->name), "Airport_Road");
+  road->point_count = 3;
+  road->points = calloc(3, sizeof(local_point_t));
+  road->node_ids = calloc(3, sizeof(int64_t));
+  if (!road->points || !road->node_ids) {
+    free(road->points);
+    free(road->node_ids);
+    free(out->roads);
+    free(out->junctions);
+    *out = *model;
+    return false;
+  }
+  road->points[0] = start;
+  road->points[1] = frame_point(&f, GATE_U, AIRPORT_DEPTH + 10.0);
+  road->points[2] = site->gate;
+  road->node_ids[0] = best->node_ids[best_end];
+  road->node_ids[2] = GATE_NODE;
+  return true;
+}
+
+void gen_airport_road_free(city_model_t* out) {
+  if (out->road_count == 0) return;
+  city_road_t* added = &out->roads[out->road_count - 1];
+  free(added->points);
+  free(added->node_ids);
+  free(out->roads);
+  free(out->junctions);
+  memset(out, 0, sizeof(*out));
 }

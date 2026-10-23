@@ -92,14 +92,14 @@ int main(int argc, char* argv[]) {
                       quat_from_yaw(yaw_degrees * (float)M_PI / 180.0f));
     vehicle_reset(&stage.vehicle, stage.physics);
   }
-  driving_input_t input = {1.0f, 0.0f, steering, false};
+  driving_input_t input = {1.0f, 0.0f, steering, false, false};
   /* SNAPSHOT_FOOT gets out of the car after a short drive and walks. */
   /* SNAPSHOT_FLY=n then steps into the nth aircraft at the airport and takes
    * off with a fixed script: full power, the nose up after nine seconds. */
   int fly = getenv("SNAPSHOT_FLY") ? atoi(getenv("SNAPSHOT_FLY")) : -1;
   bool on_foot = getenv("SNAPSHOT_FOOT") != NULL || fly >= 0;
   if (on_foot) {
-    driving_input_t brake = {0.0f, 1.0f, 0.0f, true};
+    driving_input_t brake = {0.0f, 1.0f, 0.0f, true, false};
     for (int i = 0; i < 120 * 3; i++)
       driving_stage_step(&stage, brake, 1.0f / 120.0f);
     driving_stage_interact(&stage);
@@ -124,14 +124,14 @@ int main(int argc, char* argv[]) {
     }
     /* SNAPSHOT_SHOOT fires the pistol, so the shot shows the tracer. */
     if (getenv("SNAPSHOT_SHOOT")) {
-      driving_input_t stand = {0.0f, 0.0f, 0.0f, false};
+      driving_input_t stand = {0.0f, 0.0f, 0.0f, false, false};
       for (int i = 0; i < 60; i++)
         driving_stage_step(&stage, stand, 1.0f / 120.0f);
       driving_stage_fire(&stage);
     }
     /* SNAPSHOT_ENTER then gets back in, so the shot is mid-climb. */
     if (getenv("SNAPSHOT_ENTER")) {
-      driving_input_t stand = {0.0f, 0.0f, 0.0f, false};
+      driving_input_t stand = {0.0f, 0.0f, 0.0f, false, false};
       for (int i = 0; i < 120; i++)
         driving_stage_step(&stage, stand, 1.0f / 120.0f);
       driving_stage_interact(&stage);
@@ -295,12 +295,7 @@ int main(int argc, char* argv[]) {
   free(longest);
   if (jerk) printf("overlap samples: %d\n", overlaps);
   free(jerk_before);
-  if (soak)
-    printf(
-        "soak done: %d crimes' stars now %d, cash %d, delivered %d, failed "
-        "%d\n",
-        0, stage.wanted.stars, stage.mission.cash, stage.mission.delivered,
-        stage.mission.failed);
+  if (soak) printf("soak done: stars now %d\n", stage.wanted.stars);
   if (fly >= 0) {
     size_t loaded = 0;
     for (size_t k = 0; k < stage.scene.package->chunk_count; k++)

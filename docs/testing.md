@@ -14,7 +14,7 @@ needs a window or a GPU.
 | core | fixed-step frame clock and catch-up cap, configuration parsing and defaults, keyboard mapping, dead zones, steering filter |
 | citymap | the pause-screen map: roads and roofs painted north up, points off the map |
 | daylight | the sun's arc, sky, stars, lamp glow, no jumps over a day, the bell strikes |
-| traffic | fleet, parked cars, lanes, junction right of way, stopping, people on pavements, skid marks, cars following corners without jumps, drivers who honk, delivery runs, the satnav (one-ways, islands), police pursuit, the law (stars, bust, getaway), the player on foot |
+| traffic | fleet, parked cars, lanes, junction right of way, stopping, people on pavements, skid marks, cars following corners without jumps, drivers who honk, the satnav (one-ways, islands), police pursuit, the law (stars, bust, getaway), the player on foot |
 | textures | road wear and markings |
 | mesh | box and cylinder builders, winding, appending, subdividing, the 5x7 font |
 | physics | the collider grid (what is near, moves, removals, slot reuse), a dropped box lands and rests, contact impulses, a wall stops a slide, friction, ray casts with layers and friction, torque from point forces, interpolation state |

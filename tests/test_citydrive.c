@@ -524,16 +524,15 @@ static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
   driving_stage_step(&run.stage, idle, 1.0f / 120.0f);
   assert(run.stage.burning == 0);
   run.stage.vehicle.damage = 1.0f;
-  run.stage.mission.cash = 500;
   bool blew = false;
   for (int i = 0; i < 120 * 12; i++) {
     driving_stage_step(&run.stage, idle, 1.0f / 120.0f);
     if (run.stage.blast > 0) blew = true;
   }
   /* It went up, and then the player was put back at the start, mended and
-   * fined a tenth. */
+   * mended. */
   assert(blew && run.stage.blast == 0);
-  assert(run.stage.vehicle.damage == 0 && run.stage.mission.cash == 450);
+  assert(run.stage.vehicle.damage == 0);
   stop(&run);
 }
 
@@ -583,11 +582,33 @@ static void a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged(void) {
   /* A reset in the middle of a blast leaves no second one behind. */
   run.stage.on_foot = false;
   run.stage.vehicle.damage = 1.0f;
-  run.stage.mission.cash = 1000;
   run.stage.blast = 0.5f;
   driving_stage_reset(&run.stage);
   drive(&run, stand, 4.0f);
-  assert(run.stage.blast == 0 && run.stage.mission.cash == 1000);
+  assert(run.stage.blast == 0);
+  stop(&run);
+}
+
+/* The airport has a road from the city, and the guide follows it. */
+static void the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it(
+    void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  const city_airport_t* airport = &stage->scene.package->airport;
+  assert(stage->guide.active && stage->guide.x == airport->gate_x &&
+         stage->guide.z == airport->gate_z);
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(&run, stand, 2.0f);
+  /* The way from the start runs on to the gate, and ends beside it. */
+  assert(stage->satnav_count > 1);
+  float last_x = stage->satnav[2 * (stage->satnav_count - 1)],
+        last_z = stage->satnav[2 * (stage->satnav_count - 1) + 1];
+  assert(hypotf(last_x - airport->gate_x, last_z - airport->gate_z) < 30.0f);
+  bool road = false;
+  for (size_t i = 0; i < stage->scene.route_count; i++)
+    road |= strcmp(stage->scene.routes[i].name, "Airport_Road") == 0;
+  assert(road);
   stop(&run);
 }
 
@@ -944,6 +965,7 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
+  RUN(the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it);
   RUN(a_plane_can_be_stolen_and_flown_off_the_runway);
   RUN(a_crash_blows_the_aircraft_up_and_puts_it_back_on_its_stand);
   RUN(the_map_and_the_pause_silence_the_engine);

@@ -220,9 +220,11 @@ bool city_package_write(const city_package_t* package, const char* directory) {
     fprintf(file, "crossing %.3f %.3f\n", package->crossings[2 * i],
             package->crossings[2 * i + 1]);
   if (package->airport.present)
-    fprintf(file, "airport %.2f %.2f %.4f %.1f %.1f\n", package->airport.x,
-            package->airport.z, package->airport.yaw, package->airport.length,
-            package->airport.width);
+    fprintf(file, "airport %.2f %.2f %.4f %.1f %.1f %.2f %.2f %.2f\n",
+            package->airport.x, package->airport.z, package->airport.yaw,
+            package->airport.length, package->airport.width,
+            package->airport.gate_x, package->airport.gate_y,
+            package->airport.gate_z);
   for (size_t i = 0; i < package->aircraft_count; i++)
     fprintf(file, "aircraft %d %.2f %.2f %.2f %.4f\n",
             package->aircraft[i].kind, package->aircraft[i].x,
@@ -336,8 +338,16 @@ bool city_package_read(city_package_t* package, const char* directory) {
     } else if (strncmp(line, "airport ", 8) == 0) {
       city_airport_t* airport = &package->airport;
       airport->present = true;
-      ok = sscanf(line, "airport %f %f %f %f %f", &airport->x, &airport->z,
-                  &airport->yaw, &airport->length, &airport->width) == 5;
+      int fields =
+          sscanf(line, "airport %f %f %f %f %f %f %f %f", &airport->x,
+                 &airport->z, &airport->yaw, &airport->length, &airport->width,
+                 &airport->gate_x, &airport->gate_y, &airport->gate_z);
+      ok = fields == 5 || fields == 8;
+      /* Older packages have no gate: the runway's middle will do. */
+      if (fields == 5) {
+        airport->gate_x = airport->x, airport->gate_z = airport->z;
+        airport->gate_y = 0;
+      }
     } else if (strncmp(line, "aircraft ", 9) == 0) {
       if (package->aircraft_count < CITY_PACKAGE_MAX_AIRCRAFT) {
         city_aircraft_t* craft = &package->aircraft[package->aircraft_count];

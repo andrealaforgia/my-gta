@@ -102,12 +102,18 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     traffic_set_signals(stage->traffic, stage->scene.signals,
                         stage->scene.signal_count);
   if (options.scene == SCENE_CITY && stage->scene.route_count > 0) {
-    mission_init(&stage->mission, 7);
     wanted_init(&stage->wanted);
     stage->nav = nav_create(stage->scene.routes, stage->scene.route_count);
     if (stage->traffic) traffic_set_nav(stage->traffic, stage->nav);
-    stage->mission_markers = mission_markers_create(renderer);
-    stage->missions = true;
+    stage->guide_markers = guide_markers_create(renderer);
+    const city_airport_t* airport = &stage->scene.package->airport;
+    if (airport->present) {
+      stage->guide.active = true;
+      stage->guide.x = airport->gate_x;
+      stage->guide.y = airport->gate_y;
+      stage->guide.z = airport->gate_z;
+    }
+    stage->city_rules = true;
   }
   skid_marks_reset(&stage->skid_marks);
   stage->skid_strip = skid_mark_mesh_create(renderer);
@@ -132,8 +138,8 @@ void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
     renderer_release_mesh(stage->renderer, stage->skid_strip);
-    if (stage->missions)
-      mission_markers_destroy(&stage->mission_markers, stage->renderer);
+    if (stage->city_rules)
+      guide_markers_destroy(&stage->guide_markers, stage->renderer);
     nav_destroy(stage->nav);
     traffic_destroy(stage->traffic, stage->physics);
     if (stage->has_figures)
@@ -243,17 +249,12 @@ static void back_to_spawn(driving_stage_t* stage) {
                                   stage->vehicle.spawn_rotation));
 }
 
-/* A wreck burns and then blows up, and the player wakes at the start with a
- * lighter wallet. */
+/* A wreck burns and then blows up, and the player wakes at the start. */
 static void step_the_fire(driving_stage_t* stage, float dt) {
   if (stage->blast > 0) {
     stage->blast += dt;
     if (stage->blast > 2.2f) {
-      int fine = stage->mission.cash / 10;
-      stage->mission.cash -= fine;
-      char text[40];
-      snprintf(text, sizeof(text), "WASTED  -$%d", fine);
-      say(stage, text);
+      say(stage, "WASTED");
       back_to_spawn(stage);
     }
     return;
@@ -278,7 +279,7 @@ void driving_stage_say(driving_stage_t* stage, const char* text) {
 }
 
 void driving_stage_commit_crime(driving_stage_t* stage) {
-  if (stage->missions && stage->traffic &&
+  if (stage->city_rules && stage->traffic &&
       wanted_crime(&stage->wanted) == WANTED_STARTED)
     say(stage, "WANTED");
 }
@@ -293,7 +294,7 @@ void driving_stage_crash_at(driving_stage_t* stage, vec3_t at) {
  * chase ends in being caught or getting away. */
 static void step_the_law(driving_stage_t* stage, bool pole_down, float dt) {
   if (stage->notice_time > 0) stage->notice_time -= dt;
-  if (!stage->missions || !stage->traffic) return;
+  if (!stage->city_rules || !stage->traffic) return;
   float felt = stage->vehicle.impact_impulse /
                fmaxf(stage->vehicle.params.mass / 1200.0f, 1.0f);
   wanted_event_t event = WANTED_NOTHING;
@@ -307,11 +308,7 @@ static void step_the_law(driving_stage_t* stage, bool pole_down, float dt) {
   event = wanted_step(&stage->wanted,
                       traffic_nearest_pursuer(stage->traffic, me), speed, dt);
   if (event == WANTED_BUSTED) {
-    int fine = stage->mission.cash / 4;
-    stage->mission.cash -= fine;
-    char text[40];
-    snprintf(text, sizeof(text), "BUSTED  -$%d", fine);
-    say(stage, text);
+    say(stage, "BUSTED");
     back_to_spawn(stage);
   } else if (event == WANTED_ESCAPED) {
     say(stage, "LOST THEM");
@@ -402,44 +399,17 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   poles_step(&stage->scene, &stage->world, dt);
   step_the_law(stage, pole_down, dt);
   step_the_fire(stage, dt);
-  if (stage->missions) {
-    vec3_t at = player_position(stage);
-    /* The way to the destination, worked out again every second or two. */
+  if (stage->city_rules) {
+    /* The way to the airport, worked out again every second or two. */
     stage->satnav_clock += dt;
-    if (!stage->mission.active) {
+    if (!stage->guide.active || stage->piloting > 0) {
       stage->satnav_count = 0;
     } else if (stage->nav &&
                (stage->satnav_clock > 1.5f || stage->satnav_count == 0)) {
+      vec3_t at = player_position(stage);
       stage->satnav_clock = 0;
-      stage->satnav_count =
-          nav_path(stage->nav, at.x, at.z, stage->mission.x, stage->mission.z,
-                   stage->satnav, 1024, NULL);
-    }
-    if (!stage->mission.active)
-      stage->mission.kind =
-          stage->car_visual.style == BODY_TAXI
-              ? MISSION_FARE
-              : (stage->car_visual.style == BODY_AMBULANCE ? MISSION_PATIENT
-                                                           : MISSION_DELIVERY);
-    mission_event_t started =
-        mission_step(&stage->mission, stage->scene.routes,
-                     stage->scene.route_count, at.x, at.z, dt);
-    /* A destination no road leads to is no use: ask for another. */
-    if (started == MISSION_STARTED && stage->nav &&
-        nav_path(stage->nav, at.x, at.z, stage->mission.x, stage->mission.z,
-                 stage->satnav, 1024, NULL) == 0) {
-      stage->mission.active = false;
-      stage->mission.pause = 0.5f;
-      started = MISSION_NOTHING;
-    }
-    if (started == MISSION_STARTED) {
-      ray_t down = {vec3(stage->mission.x, 300.0f, stage->mission.z),
-                    vec3(0, -1, 0)};
-      ray_cast_result_t hit;
-      stage->mission_ground = physics_ray_cast(stage->physics, down, 600.0f,
-                                               COLLISION_LAYER_GROUND, &hit)
-                                  ? hit.hit.point.y
-                                  : 0.0f;
+      stage->satnav_count = nav_path(stage->nav, at.x, at.z, stage->guide.x,
+                                     stage->guide.z, stage->satnav, 1024, NULL);
     }
   }
   /* The name of the street under the car, looked up four times a second. */
@@ -643,11 +613,11 @@ static void draw_map(driving_stage_t* stage) {
                             2 * scale, white);
   renderer_draw_text(r, left + 8 * scale, top + side - 26 * scale, scale, white,
                      "100 M");
-  if (stage->missions) {
-    mission_route_on_map(r, map, stage->satnav, stage->satnav_count, left, top,
-                         side, scale);
-    mission_map_mark(&stage->mission, r, map, left, top, side, scale,
-                     stage->rain_clock);
+  if (stage->city_rules) {
+    guide_route_on_map(r, map, stage->satnav, stage->satnav_count, left, top,
+                       side, scale);
+    guide_map_mark(&stage->guide, r, map, left, top, side, scale,
+                   stage->rain_clock);
   }
 }
 
@@ -807,11 +777,11 @@ static void draw_minimap(driving_stage_t* stage) {
                             1.2f * scale, red);
   renderer_draw_text(r, x + side * 0.5f - 2 * scale, y + 1 * scale,
                      scale * 0.9f, vec3(1, 0.9f, 0.4f), "N");
-  if (stage->missions) {
-    mission_route_on_minimap(r, map, stage->satnav, stage->satnav_count, x, y,
-                             side, u0, v0, u1, v1, scale);
-    mission_minimap_mark(&stage->mission, r, map, x, y, side, u0, v0, u1, v1,
-                         scale, stage->rain_clock);
+  if (stage->city_rules) {
+    guide_route_on_minimap(r, map, stage->satnav, stage->satnav_count, x, y,
+                           side, u0, v0, u1, v1, scale);
+    guide_minimap_mark(&stage->guide, r, map, x, y, side, u0, v0, u1, v1, scale,
+                       stage->rain_clock);
   }
 }
 
@@ -1075,6 +1045,27 @@ static vec3_t driver_door(const driving_stage_t* stage, float* yaw_out) {
 #define ENTRY_WALK 0.7f
 #define ENTRY_SEAT 0.45f
 
+/* The pillar over the airport gate and the way to it laid on the road. */
+static void draw_guide_in_world(driving_stage_t* stage) {
+  renderer_t* r = stage->renderer;
+  guide_marker_draw(&stage->guide, &stage->guide_markers, r, stage->rain_clock);
+  if (stage->satnav_count < 2) return;
+  vec3_t me = player_position(stage);
+  float ground[1024];
+  for (size_t i = 0; i < stage->satnav_count; i++) {
+    float x = stage->satnav[2 * i], z = stage->satnav[2 * i + 1];
+    ground[i] = me.y;
+    if (hypotf(x - me.x, z - me.z) > 160.0f) continue;
+    ray_t down = {vec3(x, me.y + 40.0f, z), vec3(0, -1, 0)};
+    ray_cast_result_t hit;
+    if (physics_ray_cast(stage->physics, down, 120.0f, COLLISION_LAYER_GROUND,
+                         &hit))
+      ground[i] = hit.hit.point.y;
+  }
+  guide_route_draw(&stage->guide_markers, r, stage->satnav, ground,
+                   stage->satnav_count, me.x, me.z, 150.0f, stage->rain_clock);
+}
+
 static void step_entry(driving_stage_t* stage, float dt) {
   stage->entering += dt;
   walker_t* w = &stage->walker;
@@ -1170,7 +1161,7 @@ void driving_stage_interact(driving_stage_t* stage) {
   stage->camera.params = walking_camera_params();
   begin_entry(stage);
   say(stage, "CAR STOLEN");
-  if (stage->missions && stage->traffic &&
+  if (stage->city_rules && stage->traffic &&
       wanted_crime(&stage->wanted) == WANTED_STARTED)
     say(stage, "WANTED");
 }
@@ -1199,7 +1190,7 @@ bool driving_stage_fire(driving_stage_t* stage) {
   stage->shot_flash = 0.09f;
   if (stage->audio) audio_device_trigger_shot(stage->audio);
   /* Hitting someone is a crime, and so is the first shot fired. */
-  if (stage->missions && stage->traffic &&
+  if (stage->city_rules && stage->traffic &&
       (downed || stage->wanted.stars == 0) &&
       wanted_crime(&stage->wanted) == WANTED_STARTED)
     say(stage, "WANTED");
@@ -1385,22 +1376,20 @@ void driving_stage_render(driving_stage_t* stage) {
                        mat4_multiply(mat4_translation(stage->shot_from),
                                      mat4_scaling(vec3(0.12f, 0.12f, 0.12f))));
   }
-  if (stage->missions && stage->piloting == 0)
-    mission_marker_draw(&stage->mission, &stage->mission_markers, r,
-                        stage->mission_ground, stage->rain_clock);
+  if (stage->city_rules && stage->piloting == 0) draw_guide_in_world(stage);
   if (stage->show_debug) draw_debug(stage, chassis);
   if (stage->map_open) {
     draw_map(stage);
   } else {
     draw_hud(stage);
-    if (stage->missions && stage->piloting == 0) {
+    if (stage->city_rules && stage->piloting == 0) {
       const rigid_body_t* me =
           physics_body(stage->physics, stage->vehicle.body);
       vec3_t heading = quat_rotate(me->rotation, vec3(0, 0, -1));
       float length = hypotf(heading.x, heading.z);
       /* The arrow follows the satnav: the first point of the way that is
        * a little ahead, else straight at the destination. */
-      float aim_x = stage->mission.x, aim_z = stage->mission.z;
+      float aim_x = stage->guide.x, aim_z = stage->guide.z;
       for (size_t i = 0; i < stage->satnav_count; i++) {
         float ax = stage->satnav[2 * i], az = stage->satnav[2 * i + 1];
         if (hypotf(ax - me->position.x, az - me->position.z) > 35.0f) {
@@ -1408,10 +1397,10 @@ void driving_stage_render(driving_stage_t* stage) {
           break;
         }
       }
-      mission_hud_draw(&stage->mission, r, (float)stage->window->drawable_width,
-                       (float)stage->window->drawable_height, me->position.x,
-                       me->position.z, length > 1e-4f ? heading.x / length : 0,
-                       length > 1e-4f ? heading.z / length : -1, aim_x, aim_z);
+      guide_hud_draw(&stage->guide, r, (float)stage->window->drawable_width,
+                     (float)stage->window->drawable_height, me->position.x,
+                     me->position.z, length > 1e-4f ? heading.x / length : 0,
+                     length > 1e-4f ? heading.z / length : -1, aim_x, aim_z);
     }
     draw_minimap(stage);
     draw_street_name(stage);

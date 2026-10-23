@@ -97,10 +97,12 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
 
 ## The drive's purpose (2026-10-22)
 
-- **Delivery runs** (`mission.c`, `mission_hud.c`): a destination on a drivable
-  route 250 to 1000 m away, a time limit of 20 s plus a sixth of the distance
-  in seconds, and cash for arriving within 9 m. A pillar of light stands over
-  it and the HUD, minimap and map mark it.
+- **The way to the airport** (`guide_hud.c`): the delivery runs, fares and cash
+  are gone. The guide always points at the airport's gate: a pillar of light, a
+  glowing ribbon laid on the road ahead, the arrow and distance on the HUD, and
+  the satnav line and a mark on the minimap and map. The generator joins the
+  gate to the nearest drivable junction with "Airport Road"
+  (`gen_airport_road`), so the satnav can find it.
 - **Satnav** (`navigation.c`): the drivable routes are a graph (junction
   nodes, one-ways respected) searched with Dijkstra. `nav_path` gives the way
   as a polyline for the minimap, map and arrow; `nav_next_hop` tells a police
@@ -237,7 +239,7 @@ a second. Barletta (700 chunks, 1.3 million triangles) draws in 5 to 9 ms.
 
 ## Street life, part two and the airport (2026-10-23)
 
-Pistol on foot (G, click, pad X): `driving_stage_fire`, tracer and flash, `pedestrians_shoot`, `pedestrians_alarm` for the bystanders. Hit people are launched (`launch` in `pedestrians.c`): a rise speed, a flight time and a number of quarter turns, so a car at speed makes them somersault before they land flat; `pedestrian_t.fall` goes past 1 while they turn and `lift` is the height. Missions follow the vehicle (`mission_kind_t`: delivery, taxi fare, ambulance patient).
+Pistol on foot (G, click, pad X): `driving_stage_fire`, tracer and flash, `pedestrians_shoot`, `pedestrians_alarm` for the bystanders. Hit people are launched (`launch` in `pedestrians.c`): a rise speed, a flight time and a number of quarter turns, so a car at speed makes them somersault before they land flat; `pedestrian_t.fall` goes past 1 while they turn and `lift` is the height.
 
 Airports: `tools/common/generator_airport.c` finds a dry site beside the city's extent (`airport_side` in the city config: N, E, S, W, empty to choose, `-` for none), extends the ground to it and lays a 900 m runway with markings, a taxiway with links, an apron, two helicopter pads, a terminal, two hangars and a tower. The package gains `airport` and `aircraft` manifest lines (three planes and two helicopters, with their height).
 
