@@ -26,8 +26,9 @@ typedef struct {
   float phase; /* walking cycle in radians */
   int outfit;
   int route;
-  float fall; /* 0 upright, 1 flat on the ground, more while somersaulting */
-  float lift; /* metres off the ground while thrown through the air */
+  float fall;  /* 0 upright, 1 flat on the ground, more while somersaulting */
+  float lift;  /* metres off the ground while thrown through the air */
+  float flail; /* 0 calm, 1 arms and legs thrashing, after a hit */
 } pedestrian_t;
 
 typedef enum {
@@ -99,11 +100,16 @@ void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
                             renderer_t* renderer, vec3_t position, float yaw,
                             float speed, float phase, int outfit);
 /* The same, tipped over backwards by `fall` quarter turns (1 is lying) and
- * `lift` metres in the air. */
+ * `lift` metres in the air, arms and legs thrashing by `flail` (0 to 1). */
 void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
                                    renderer_t* renderer, vec3_t position,
                                    float yaw, float speed, float phase,
-                                   int outfit, float fall, float lift);
+                                   int outfit, float fall, float lift,
+                                   float flail);
+/* People are drawn within this many metres, and never put down nearer than
+ * it, so nobody appears in front of the player. */
+#define PEDESTRIAN_DRAW_RANGE 200.0f
+
 int pedestrians_draw(const pedestrians_t* pedestrians,
                      const pedestrian_meshes_t* meshes, renderer_t* renderer,
                      vec3_t eye, float range);

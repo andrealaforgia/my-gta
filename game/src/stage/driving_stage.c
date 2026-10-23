@@ -1354,7 +1354,8 @@ void driving_stage_render(driving_stage_t* stage) {
     vec3_t eye = stage->camera.position;
     parked_cars_draw(&stage->parked, &stage->fleet, r, eye, 300.0f, night);
     if (stage->people)
-      pedestrians_draw(stage->people, &stage->people_meshes, r, eye, 110.0f);
+      pedestrians_draw(stage->people, &stage->people_meshes, r, eye,
+                       PEDESTRIAN_DRAW_RANGE);
     if (stage->traffic)
       traffic_draw(stage->traffic, &stage->fleet, r, eye, TRAFFIC_VISIBLE_RANGE,
                    night);

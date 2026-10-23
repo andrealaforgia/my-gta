@@ -239,7 +239,7 @@ a second. Barletta (700 chunks, 1.3 million triangles) draws in 5 to 9 ms.
 
 ## Street life, part two and the airport (2026-10-23)
 
-Pistol on foot (G, click, pad X): `driving_stage_fire`, tracer and flash, `pedestrians_shoot`, `pedestrians_alarm` for the bystanders. Hit people are launched (`launch` in `pedestrians.c`): a rise speed, a flight time and a number of quarter turns, so a car at speed makes them somersault before they land flat; `pedestrian_t.fall` goes past 1 while they turn and `lift` is the height.
+Pistol on foot (G, click, pad X): `driving_stage_fire`, tracer and flash, `pedestrians_shoot`, `pedestrians_alarm` for the bystanders. Hit people are launched (`launch` in `pedestrians.c`): a rise speed, a flight time and a number of quarter turns, so a car at speed makes them somersault before they land flat, arms and legs thrashing (`body_flail`) in the air and for a couple of seconds after; `pedestrian_t.fall` goes past 1 while they turn and `lift` is the height.
 
 Airports: `tools/common/generator_airport.c` finds a dry site beside the city's extent (`airport_side` in the city config: N, E, S, W, empty to choose, `-` for none), extends the ground to it and lays a 900 m runway with markings, a taxiway with links, an apron, two helicopter pads, a terminal, two hangars and a tower. The package gains `airport` and `aircraft` manifest lines (three planes and two helicopters, with their height).
 

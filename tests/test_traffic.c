@@ -406,6 +406,30 @@ static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
   physics_world_destroy(world);
 }
 
+static void a_person_who_is_hit_thrashes_their_limbs_then_lies_still(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 1, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).flail == 0);
+  vec3_t at = pedestrians_get(people, 0).position;
+  assert(pedestrians_hit(people, at, 0, vec3(0.9f, 0.7f, 2.2f),
+                         vec3(0, 0, -14.0f)) == 1);
+  /* Thrashing in the air, the limbs moving all the while. */
+  float phase = pedestrians_get(people, 0).phase;
+  for (int step = 0; step < 30; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).flail == 1.0f &&
+         pedestrians_get(people, 0).phase > phase + 1.0f);
+  /* Still after a few seconds. */
+  for (int step = 0; step < 120 * 5; step++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).flail == 0);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
 static void a_person_hit_fast_is_thrown_up_and_somersaults_before_landing(
     void) {
   physics_world_t* world = ground_world();
@@ -1260,6 +1284,7 @@ void run_traffic_tests(void) {
   RUN(cars_turn_at_junctions_onto_every_road_and_keep_apart);
   RUN(a_car_at_speed_knocks_a_person_down_and_they_lie_still);
   RUN(a_person_hit_fast_is_thrown_up_and_somersaults_before_landing);
+  RUN(a_person_who_is_hit_thrashes_their_limbs_then_lies_still);
   RUN(a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it);
   RUN(people_near_trouble_run_and_then_calm_down);
   RUN(a_car_stops_short_of_the_player_in_its_way);
