@@ -63,4 +63,17 @@ void guide_map_mark(const guide_t* guide, renderer_t* renderer,
                     const city_map_t* map, float left, float top, float side,
                     float scale, float clock);
 
+/* Police cars after the player, as flashing red and blue dots: `cars` is x, z
+ * pairs. On the minimap window, as for guide_minimap_mark, a car beyond the
+ * window is held at its edge, so the direction it comes from shows. */
+void police_minimap_marks(renderer_t* renderer, const city_map_t* map,
+                          const float* cars, size_t count, float left,
+                          float top, float side, float u0, float v0, float u1,
+                          float v1, float scale, float clock);
+
+/* The same on the full-screen map. */
+void police_map_marks(renderer_t* renderer, const city_map_t* map,
+                      const float* cars, size_t count, float left, float top,
+                      float side, float scale, float clock);
+
 #endif  // GAME_SRC_STAGE_GUIDE_HUD_H_

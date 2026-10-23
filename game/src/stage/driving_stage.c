@@ -548,6 +548,21 @@ static void draw_debug(driving_stage_t* stage, transform_t chassis) {
   }
 }
 
+/* Where the police cars after the player are, x, z pairs; none unless the
+ * player is wanted. */
+static size_t police_positions(const driving_stage_t* stage, float* out,
+                               size_t max) {
+  size_t n = 0;
+  if (!stage->traffic || stage->wanted.stars == 0) return 0;
+  for (size_t i = 0; i < traffic_car_count(stage->traffic) && n < max; i++) {
+    traffic_car_t car = traffic_car(stage->traffic, i);
+    if (!car.pursuing) continue;
+    out[2 * n] = car.position.x, out[2 * n + 1] = car.position.z;
+    n++;
+  }
+  return n;
+}
+
 /* M: the city as a dark translucent panel, north up, with the car on it. */
 static void draw_map(driving_stage_t* stage) {
   renderer_t* r = stage->renderer;
@@ -636,6 +651,9 @@ static void draw_map(driving_stage_t* stage) {
                        side, scale);
     guide_map_mark(&stage->guide, r, map, left, top, side, scale,
                    stage->rain_clock);
+    float police[2 * 16];
+    police_map_marks(r, map, police, police_positions(stage, police, 16), left,
+                     top, side, scale, stage->rain_clock);
   }
 }
 
@@ -800,6 +818,9 @@ static void draw_minimap(driving_stage_t* stage) {
                            side, u0, v0, u1, v1, scale);
     guide_minimap_mark(&stage->guide, r, map, x, y, side, u0, v0, u1, v1, scale,
                        stage->rain_clock);
+    float police[2 * 16];
+    police_minimap_marks(r, map, police, police_positions(stage, police, 16), x,
+                         y, side, u0, v0, u1, v1, scale, stage->rain_clock);
   }
 }
 

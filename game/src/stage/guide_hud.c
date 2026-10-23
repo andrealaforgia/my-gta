@@ -191,3 +191,44 @@ void guide_route_on_map(renderer_t* renderer, const city_map_t* map,
                   top + (line[2 * i + 1] - map->min_z) * k, left, top, side,
                   2.2f * scale);
 }
+
+/* A police car's dot: red and blue taking turns, in a dark ring. */
+static void police_dot(renderer_t* renderer, float x, float y, float radius,
+                       float clock, size_t index) {
+  bool red = fmodf(clock * 4.0f + (float)index * 0.37f, 1.0f) < 0.5f;
+  texture_handle_t none = {0};
+  renderer_draw_screen_image(renderer, none, x - radius * 1.3f,
+                             y - radius * 1.3f, radius * 2.6f, radius * 2.6f,
+                             vec3(0.02f, 0.02f, 0.04f), 1.0f);
+  renderer_draw_screen_image(
+      renderer, none, x - radius, y - radius, radius * 2.0f, radius * 2.0f,
+      red ? vec3(1.0f, 0.15f, 0.1f) : vec3(0.2f, 0.4f, 1.0f), 1.0f);
+}
+
+void police_minimap_marks(renderer_t* renderer, const city_map_t* map,
+                          const float* cars, size_t count, float left,
+                          float top, float side, float u0, float v0, float u1,
+                          float v1, float scale, float clock) {
+  if (map->size == 0) return;
+  float edge = 2.5f * scale;
+  for (size_t i = 0; i < count; i++) {
+    float px = left + ((cars[2 * i] - map->min_x) / map->extent - u0) /
+                          (u1 - u0) * side;
+    float py = top + ((cars[2 * i + 1] - map->min_z) / map->extent - v0) /
+                         (v1 - v0) * side;
+    px = fminf(fmaxf(px, left + edge), left + side - edge);
+    py = fminf(fmaxf(py, top + edge), top + side - edge);
+    police_dot(renderer, px, py, 1.7f * scale, clock, i);
+  }
+}
+
+void police_map_marks(renderer_t* renderer, const city_map_t* map,
+                      const float* cars, size_t count, float left, float top,
+                      float side, float scale, float clock) {
+  if (map->size == 0) return;
+  float k = side / map->extent;
+  for (size_t i = 0; i < count; i++)
+    police_dot(renderer, left + (cars[2 * i] - map->min_x) * k,
+               top + (cars[2 * i + 1] - map->min_z) * k, 3.0f * scale, clock,
+               i);
+}
