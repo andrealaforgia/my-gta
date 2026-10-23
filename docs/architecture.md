@@ -98,8 +98,7 @@ crossings, terrain). Helpers used across files are exported with a `gen_` prefix
 ## The drive's purpose (2026-10-22)
 
 - **The way to the airport** (`guide_hud.c`): the delivery runs, fares and cash
-  are gone. The guide always points at the airport's gate: a pillar of light, a
-  glowing ribbon laid on the road ahead, the arrow and distance on the HUD, and
+  are gone. The guide always points at the airport's gate: a pillar of light, the arrow and distance on the HUD, and
   the satnav line and a mark on the minimap and map. The generator joins the
   gate to the nearest drivable junction with "Airport Road"
   (`gen_airport_road`), so the satnav can find it.

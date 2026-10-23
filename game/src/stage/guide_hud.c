@@ -5,7 +5,7 @@
 #include <string.h>
 
 guide_markers_t guide_markers_create(renderer_t* renderer) {
-  guide_markers_t markers = {{0}, {0}, {0}};
+  guide_markers_t markers = {{0}, {0}};
   mesh_data_t pillar = mesh_data_create();
   mesh_data_add_cylinder_y(&pillar, vec3(0, 0, 0), 0.45f, 120.0f, 10);
   markers.pillar = renderer_upload_mesh(renderer, &pillar);
@@ -15,17 +15,12 @@ guide_markers_t guide_markers_create(renderer_t* renderer) {
                            0.12f, 24);
   markers.ring = renderer_upload_mesh(renderer, &ring);
   mesh_data_free(&ring);
-  mesh_data_t strip = mesh_data_create();
-  mesh_data_add_box(&strip, vec3(0, 0, 0), vec3(0.5f, 0.05f, 0.5f));
-  markers.strip = renderer_upload_mesh(renderer, &strip);
-  mesh_data_free(&strip);
   return markers;
 }
 
 void guide_markers_destroy(guide_markers_t* markers, renderer_t* renderer) {
   renderer_release_mesh(renderer, markers->pillar);
   renderer_release_mesh(renderer, markers->ring);
-  renderer_release_mesh(renderer, markers->strip);
 }
 
 void guide_marker_draw(const guide_t* guide, const guide_markers_t* markers,
@@ -37,29 +32,6 @@ void guide_marker_draw(const guide_t* guide, const guide_markers_t* markers,
   mat4_t at = mat4_translation(vec3(guide->x, guide->y, guide->z));
   renderer_draw_mesh(renderer, markers->pillar, light, at);
   renderer_draw_mesh(renderer, markers->ring, light, at);
-}
-
-void guide_route_draw(const guide_markers_t* markers, renderer_t* renderer,
-                      const float* line, const float* ground, size_t count,
-                      float x, float z, float reach, float clock) {
-  float pulse = 0.8f + 0.2f * sinf(clock * 5.0f);
-  material_t glow = material_plain(vec3(0.2f, 0.62f, 1.0f));
-  glow.emissive = 0.9f * pulse;
-  for (size_t i = 1; i < count; i++) {
-    float ax = line[2 * i - 2], az = line[2 * i - 1];
-    float bx = line[2 * i], bz = line[2 * i + 1];
-    float mx = (ax + bx) * 0.5f, mz = (az + bz) * 0.5f;
-    if (hypotf(mx - x, mz - z) > reach) continue;
-    float dx = bx - ax, dz = bz - az;
-    float length = hypotf(dx, dz);
-    if (length < 0.1f) continue;
-    float y = (ground[i - 1] + ground[i]) * 0.5f + 0.3f;
-    mat4_t place = mat4_multiply(
-        mat4_translation(vec3(mx, y, mz)),
-        mat4_multiply(mat4_from_quat(quat_from_yaw(atan2f(-dx, -dz))),
-                      mat4_scaling(vec3(1.0f, 1.0f, length))));
-    renderer_draw_mesh(renderer, markers->strip, glow, place);
-  }
 }
 
 /* Text with a dark shadow, readable against anything. */

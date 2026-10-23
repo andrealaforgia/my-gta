@@ -22,7 +22,7 @@ typedef struct {
 } guide_t;
 
 typedef struct {
-  mesh_handle_t pillar, ring, strip;
+  mesh_handle_t pillar, ring;
 } guide_markers_t;
 
 guide_markers_t guide_markers_create(renderer_t* renderer);
@@ -31,13 +31,6 @@ void guide_markers_destroy(guide_markers_t* markers, renderer_t* renderer);
 /* The pillar and ring at the gate, in the world; `clock` pulses the light. */
 void guide_marker_draw(const guide_t* guide, const guide_markers_t* markers,
                        renderer_t* renderer, float clock);
-
-/* The way to the gate laid on the road as a glowing ribbon: `line` is x, z
- * pairs, `ground` the road height at each, and only what lies within
- * `reach` metres of (x, z) is drawn. */
-void guide_route_draw(const guide_markers_t* markers, renderer_t* renderer,
-                      const float* line, const float* ground, size_t count,
-                      float x, float z, float reach, float clock);
 
 /* The compass arrow towards (aim_x, aim_z) and the distance to the airport.
  * The player is at (x, z) heading (fx, fz), a unit vector. */
