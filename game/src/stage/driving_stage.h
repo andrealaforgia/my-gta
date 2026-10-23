@@ -66,6 +66,8 @@ typedef struct {
   float burning; /* seconds the car has been on fire */
   float blast;   /* seconds since it blew up; 0 while it has not */
   vec3_t blast_at;
+  bool blast_kills;    /* whether the player is close enough to die in it */
+  bool wrecked;        /* the car has blown up and is no use any more */
   float entering;      /* seconds into getting into a car; 0 when not */
   vec3_t entry_start;  /* where the walker set off from */
   float shot_cooldown; /* seconds until the pistol can fire again */

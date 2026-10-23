@@ -235,6 +235,7 @@ static void back_to_spawn(driving_stage_t* stage) {
   stage->entering = 0;
   stage->burning = 0;
   stage->blast = 0;
+  stage->wrecked = false;
   stage->shot_cooldown = 0;
   stage->shot_flash = 0;
   air_stage_stop(stage);
@@ -249,23 +250,42 @@ static void back_to_spawn(driving_stage_t* stage) {
                                   stage->vehicle.spawn_rotation));
 }
 
-/* A wreck burns and then blows up, and the player wakes at the start. */
+#define BLAST_RADIUS 9.0f
+
+/* Sets off an explosion at `at`. It kills the player only if they are in the
+ * car or the aircraft, or on foot within the blast's reach. */
+static void start_blast(driving_stage_t* stage, vec3_t at) {
+  stage->blast = 0.001f;
+  stage->blast_at = at;
+  stage->blast_kills =
+      stage->piloting > 0 || !stage->on_foot ||
+      vec3_length(vec3_sub(stage->walker.position, at)) < BLAST_RADIUS;
+  if (stage->audio) audio_device_trigger_impact(stage->audio, 1.0f);
+}
+
+/* A wreck burns and then blows up. Whoever is caught in it wakes at the
+ * start; a player who got out in time just loses the car. */
 static void step_the_fire(driving_stage_t* stage, float dt) {
   if (stage->blast > 0) {
     stage->blast += dt;
     if (stage->blast > 2.2f) {
-      say(stage, "WASTED");
-      back_to_spawn(stage);
+      if (stage->blast_kills) {
+        say(stage, "WASTED");
+        back_to_spawn(stage);
+      } else {
+        stage->blast = 0;
+        stage->burning = 0;
+        stage->wrecked = true;
+      }
     }
     return;
   }
+  if (stage->wrecked) return;
   if (stage->vehicle.damage >= 0.97f) {
     stage->burning += dt;
     if (stage->burning > 7.0f) {
-      stage->blast = 0.001f;
-      stage->blast_at =
-          physics_body(stage->physics, stage->vehicle.body)->position;
-      if (stage->audio) audio_device_trigger_impact(stage->audio, 1.0f);
+      start_blast(stage,
+                  physics_body(stage->physics, stage->vehicle.body)->position);
     }
   } else if (stage->vehicle.damage < 0.97f) {
     stage->burning = 0;
@@ -285,9 +305,7 @@ void driving_stage_commit_crime(driving_stage_t* stage) {
 }
 
 void driving_stage_crash_at(driving_stage_t* stage, vec3_t at) {
-  stage->blast = 0.001f;
-  stage->blast_at = at;
-  if (stage->audio) audio_device_trigger_impact(stage->audio, 1.0f);
+  start_blast(stage, at);
 }
 
 /* The law's side of the drive: crashes are crimes, police cars come, and the
@@ -993,6 +1011,8 @@ bool driving_stage_set_vehicle(driving_stage_t* stage, int index,
   stage->camera.params = chase_camera_params_for(&params);
   stage->car_camera_params = stage->camera.params;
   stage->vehicle_index = index;
+  stage->wrecked = false;
+  stage->burning = 0;
   return true;
 }
 
@@ -1133,7 +1153,7 @@ void driving_stage_interact(driving_stage_t* stage) {
   }
   if (air_stage_board(stage)) return;
   /* Back into the car left behind, if it is close. */
-  if (distance_to_own_car(stage) < GET_IN_REACH) {
+  if (!stage->wrecked && distance_to_own_car(stage) < GET_IN_REACH) {
     begin_entry(stage);
     return;
   }

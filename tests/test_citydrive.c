@@ -536,6 +536,45 @@ static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
   stop(&run);
 }
 
+/* Out of the car, the player only dies in the blast if they are near it. */
+static void a_player_who_got_out_survives_the_car_blowing_up_unless_close(
+    void) {
+  for (int close = 0; close < 2; close++) {
+    city_run_t run;
+    start(&run);
+    driving_input_t stand = {0, 0, 0, false, false};
+    drive(&run, stand, 1.0f);
+    driving_stage_interact(&run.stage); /* out of the car */
+    assert(run.stage.on_foot);
+    if (!close) {
+      /* Well away from the car. */
+      run.stage.walker.position.x += 40.0f;
+    }
+    vec3_t car =
+        physics_body(run.stage.physics, run.stage.vehicle.body)->position;
+    vec3_t walker_before = run.stage.walker.position;
+    run.stage.vehicle.damage = 1.0f;
+    bool blew = false;
+    for (int i = 0; i < 120 * 12; i++) {
+      driving_stage_step(&run.stage, stand, 1.0f / 120.0f);
+      if (run.stage.blast > 0) blew = true;
+    }
+    assert(blew && run.stage.blast == 0);
+    if (close) {
+      /* Caught in it: back at the start, in the car. */
+      assert(!run.stage.on_foot && !run.stage.wrecked);
+    } else {
+      /* Still on foot where they stood, and the wreck is no use. */
+      assert(run.stage.on_foot && run.stage.wrecked);
+      assert(near_to(run.stage.walker.position.x, walker_before.x, 3.0f));
+      run.stage.walker.position = car;
+      driving_stage_interact(&run.stage);
+      assert(run.stage.on_foot && run.stage.entering == 0);
+    }
+    stop(&run);
+  }
+}
+
 static void on_foot_the_pistol_fires_leaves_a_trail_and_cools_down(void) {
   test_traffic_cars = 20;
   test_pedestrians = 10;
@@ -963,6 +1002,7 @@ void run_citydrive_tests(void) {
   RUN(a_car_that_hits_a_lamp_post_hard_knocks_it_down);
   RUN(a_gentle_bump_leaves_a_lamp_post_standing);
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
+  RUN(a_player_who_got_out_survives_the_car_blowing_up_unless_close);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
   RUN(the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it);
