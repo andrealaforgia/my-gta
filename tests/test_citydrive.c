@@ -81,7 +81,7 @@ static void start_in(city_run_t* run, const char* directory) {
   run->renderer = renderer_create(1280, 720);
   stage_options_t options = {
       SCENE_CITY,        directory,        NULL, false, true, 10.0f, 0.0f,
-      test_traffic_cars, test_pedestrians, 0.0f, false, false};
+      test_traffic_cars, test_pedestrians, 0.0f, false};
   assert(driving_stage_init(&run->stage, &run->window, run->renderer, NULL,
                             options));
 }
@@ -533,51 +533,6 @@ static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
    * mended. */
   assert(blew && run.stage.blast == 0);
   assert(run.stage.vehicle.damage == 0);
-  stop(&run);
-}
-
-/* The scripted player: from the gate on foot, it walks to a plane, takes off
- * and flies over the city. */
-static void the_autoplay_flies_a_plane_it_steals_at_the_airport(void) {
-  city_run_t run;
-  start_in(&run, airport_directory);
-  driving_stage_t* stage = &run.stage;
-  const city_airport_t* airport = &stage->scene.package->airport;
-  autoplay_init(&stage->autoplay);
-  stage->autoplay.act = ACT_BOARD_PLANE;
-  walker_init(&stage->walker,
-              vec3(airport->gate_x, airport->gate_y, airport->gate_z), 0.0f);
-  stage->on_foot = true;
-  float highest = -1e9f;
-  float ground = airport->gate_y;
-  for (int i = 0; i < 60 * 150 && stage->autoplay.act < ACT_CROSS_CITY; i++) {
-    driving_input_t input =
-        autoplay_step(&stage->autoplay, stage, 1.0f / 60.0f);
-    driving_stage_step(stage, input, 1.0f / 60.0f);
-    if (stage->piloting > 0)
-      highest = fmaxf(highest, stage->aircraft[stage->piloting - 1].position.y);
-  }
-  /* Up in a plane, well above the airfield, and on to flying over the city. */
-  assert(stage->autoplay.act >= ACT_CROSS_CITY && stage->piloting > 0);
-  assert(highest > ground + 60.0f);
-  assert(stage->aircraft[stage->piloting - 1].kind == AIRCRAFT_PLANE);
-  stop(&run);
-}
-
-/* The scripted player starts by driving. */
-static void the_autoplay_drives_off_on_its_own(void) {
-  city_run_t run;
-  start_in(&run, airport_directory);
-  autoplay_init(&run.stage.autoplay);
-  vec3_t before = car(&run)->position;
-  for (int i = 0; i < 60 * 12; i++) {
-    driving_input_t input =
-        autoplay_step(&run.stage.autoplay, &run.stage, 1.0f / 60.0f);
-    driving_stage_step(&run.stage, input, 1.0f / 60.0f);
-  }
-  vec3_t after = car(&run)->position;
-  assert(run.stage.autoplay.act >= ACT_DRIVE);
-  assert(hypotf(after.x - before.x, after.z - before.z) > 10.0f);
   stop(&run);
 }
 
@@ -1065,8 +1020,6 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(a_player_who_got_out_survives_the_car_blowing_up_unless_close);
   RUN(every_fleet_vehicle_can_be_stolen_and_driven);
-  RUN(the_autoplay_drives_off_on_its_own);
-  RUN(the_autoplay_flies_a_plane_it_steals_at_the_airport);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
   RUN(the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it);

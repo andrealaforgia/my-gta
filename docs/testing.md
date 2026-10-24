@@ -26,7 +26,7 @@ needs a window or a GPU.
 | city | road classification and splitting, cleaning, junction degrees, building heights and winding, deterministic defaults, text round trip |
 | junction | corner intersections, cuts, exact patches, bevels, forks, pavement corners, polyline cutting |
 | generator | ear clipping, every feature becomes geometry, widths and heights, corridor fitting, lamp posts, winding, spawn on a road, package round trip and validation, determinism, settings hash |
-| citydrive | the fixture city loads from a cooked package, the car drives its spawn road and through a junction, a building stops it, the scripted player drives off and flies a plane it steals |
+| citydrive | the fixture city loads from a cooked package, the car drives its spawn road and through a junction, a building stops it |
 
 `make sound` renders ten seconds of a standing start (idle, a skid at
 launch, full throttle through the gears with wind rising, an impact,

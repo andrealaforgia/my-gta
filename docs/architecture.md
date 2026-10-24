@@ -246,12 +246,6 @@ Flying: `game/src/air/aircraft.c` is the flight model (arcade, no physics world;
 
 Junctions: kerb corners are arcs (`round_corner` in `junction_geometry.c`) when the roads have room (`junction_arm_t.room`), so the roads are cut back a little further.
 
-## Autoplay and the road to the airport (2026-10-24)
+## The road to the airport (2026-10-24)
 
 The drive starts on "Airport Road" (`spawn_on_airport_road` in `city_generator.c`), about 230 m from the airport's gate, facing it. `gen_airport_road` (in `generator_airport.c`) adds that road to a copy of the model before generation, from the nearest crossing of streets (a junction of degree 3 or more, so the rest of the city reaches it) to the gate, which the manifest records (`gate_x`, `gate_y`, `gate_z` on the `airport` line).
-
-`--autoplay` is `game/src/stage/autoplay.c`, a scripted player. Each frame `autoplay_step` returns the `driving_input_t` a player would give and presses F through `driving_stage_interact`, so it exercises the real game. The acts, in order: DRIVE, HIT_CAR, STEAL_CAR, RUN_OVER, STEAL_TRUCK, TO_AIRPORT, BOARD_PLANE, TAKE_OFF, CROSS_CITY, LAND, STEAL_HELICOPTER, HELICOPTER, DONE. Cars follow the satnav path (`nav_path`) with a carrot a few metres ahead, hold back for what is in the lane (`speed_limit_ahead`), give parked cars room (`room_to_pass`), swing out round what blocks them and back out of corners; the walker picks a free direction with three-ray probes (`way_is_clear`); the aeroplane is flown with simple loops for heading, climb rate and throttle, and landed on a glide path to the runway's near end. Every act has a time limit, a crash sends the script back to the airport, and a car that goes nowhere is backed out and then reset (R).
-
-Stage directions, which are the script's licence and nothing the game does: a car, lorry or person for an act is stood up the street ahead of the player, out of the way of the traffic (`traffic_car_place`, `traffic_car_hold`, `pedestrians_place`), the law is called off at the start of each act from the car theft on, and a wrecked car is patched up between acts.
-
-`render_snapshot` runs it without a window: `SNAPSHOT_AUTOPLAY=n` (0 from the start, or the number of an act to begin at; from BOARD_PLANE on it begins on foot at the gate) with `SNAPSHOT_TRAFFIC` and `SNAPSHOT_PEOPLE`; it prints each act as it begins.

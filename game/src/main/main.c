@@ -15,9 +15,8 @@ typedef struct {
   stage_options_t stage;
   bool help;
   bool no_audio;
-  bool scene_chosen;                 /* on the command line, so no menu */
-  bool traffic_set, pedestrians_set; /* given, so autoplay leaves them */
-  char city_path[256];               /* the package for --city=NAME */
+  bool scene_chosen;   /* on the command line, so no menu */
+  char city_path[256]; /* the package for --city=NAME */
 } options_t;
 
 #define CITIES_DIRECTORY "assets_cooked/cities"
@@ -42,13 +41,6 @@ static void print_help(void) {
       "none)\n"
       "  --pedestrians=N          people on the pavements (default 250)\n"
       "  --rain                   start in the rain (T toggles it)\n"
-      "  --autoplay               a scripted player does it all: drives, hits "
-      "and\n"
-      "                           steals cars, runs someone over, takes a "
-      "truck to\n"
-      "                           the airport, flies a plane and a helicopter\n"
-      "                           (60 cars and 150 people unless you say "
-      "otherwise)\n"
       "  --hour-seconds=S         real seconds per game hour, 0 freezes time\n"
       "  --debug                  start with the debug overlay on\n"
       "  --help\n\n"
@@ -92,12 +84,8 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
       options->stage.hour_seconds = (float)atof(argument + 15);
     } else if (strncmp(argument, "--traffic=", 10) == 0) {
       options->stage.traffic_cars = atoi(argument + 10);
-      options->traffic_set = true;
     } else if (strncmp(argument, "--pedestrians=", 14) == 0) {
       options->stage.pedestrians = atoi(argument + 14);
-      options->pedestrians_set = true;
-    } else if (strcmp(argument, "--autoplay") == 0) {
-      options->stage.autoplay = true;
     } else if (strcmp(argument, "--rain") == 0) {
       options->stage.rain = 1.0f;
     } else if (strncmp(argument, "--width=", 8) == 0) {
@@ -123,12 +111,6 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
       fprintf(stderr, "unknown option %s\n", argument);
       return false;
     }
-  }
-  /* The scripted player gets a calmer city than the default, so that it can
-   * get through. */
-  if (options->stage.autoplay) {
-    if (!options->traffic_set) options->stage.traffic_cars = 60;
-    if (!options->pedestrians_set) options->stage.pedestrians = 150;
   }
   if (options->window.width < 320 || options->window.height < 200) {
     fprintf(stderr, "window size must be at least 320x200\n");
