@@ -30,7 +30,7 @@ moves. Keep the full citydrive group in the ordinary test and sanitizer runs.
 
 | Slice | Value | Status |
 |---|---|---|
-| slice-01 | Run the busy fixture city under sanitizers nightly and on demand | pending |
+| slice-01 | Run the busy fixture city under sanitizers nightly and on demand | shipped |
 
 ## DEVOPS
 
@@ -38,3 +38,25 @@ Validate lint, build, tests, sanitizers and fixture cooking on macOS and in
 an isolated Ubuntu container. Commit and push the green slice to main, inspect
 the push workflow and manually dispatch the soak workflow. GPU rendering is
 unchanged; record a fixture snapshot as a separate visual check.
+
+## Review and validation
+
+Independent plan and implementation reviews approved this slice without
+blocking findings. `make soak` changed from a missing-target failure to a
+passing sanitizer run. The clean macOS copy passed lint, build, all 19 test
+groups, all 19 sanitizer groups, soak and fixture cooking/validation.
+
+The [push workflow](https://github.com/andrealaforgia/my-gta/actions/runs/40101971343)
+and the manually dispatched
+[soak workflow](https://github.com/andrealaforgia/my-gta/actions/runs/40102009952)
+both passed on Ubuntu and macOS at commit `24eff3b`. A concurrent aircraft
+change committed the staged soak implementation in that commit; history was
+preserved. The final session note is a separate commit.
+
+Viewed `/tmp/gta-like-soak-fixture.png`: the three-second fixture drive
+renders streets, cars, pedestrians and HUD. The bottom control hint has low
+contrast against pale ground; retained as a future UI issue. Handling still
+needs manual play-testing. Next slice: roadmap 0.2, frame-time benchmark.
+
+The fixture uses fixed `/tmp` directories, so same-host citydrive runs must
+remain sequential. No production runtime code changed in this slice.

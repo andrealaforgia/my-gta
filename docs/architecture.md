@@ -292,3 +292,26 @@ The airport now stands eight aircraft: three planes, two helicopters, the
 747 on the taxiway, the jet on the apron and the gunship on a third pad.
 Pessano con Bornago (the plain east of Milan) joined Pordenone and Barletta as
 a cooked city (`make new-city`, provenance in `data/`).
+
+## Headless city soak (2026-10-24)
+
+`make soak` runs the existing citydrive group under ASan and UBSan with a
+stub renderer, dummy SDL drivers and allocation tracking. Its busy-city test
+cooks the hand-written fixture, starts 20 traffic cars and 40 pedestrians,
+and drives for 68 simulated seconds, including reversing. It now checks
+that the player travels at least 10 m from the start and that traffic and
+pedestrian positions, headings and speeds stay finite. The player's height
+and position are checked every physics step. This uses the real stage,
+physics, traffic, pedestrian and package-loading code without a GPU.
+
+The `Headless city soak` Actions workflow runs daily at 03:23 UTC and can
+also be dispatched manually, on both Ubuntu and macOS. Assertions,
+sanitizer errors, allocation leaks and test timeouts fail the job. The
+usual push workflow still runs the full test and sanitizer suites.
+
+Viewed a fixture snapshot after three seconds with 20 cars and 40 people:
+the car, streets, traffic, figures, minimap and speedometer render correctly.
+The bottom control hint is hard to read against pale ground; left for the
+UI pass. This slice changes no gameplay or rendering. Handling and feel
+still need play-testing. Next is roadmap 0.2: a repeatable camera-path
+benchmark with average and 99th-percentile frame times and a recorded budget.
