@@ -265,3 +265,30 @@ Cars have a driver's door (`car_visual_draw_door`, hinged at its front edge on t
 The parachute is closer to the person (camera 5 m back), the figure falls belly down, thrashing, for 0.7 s (`air_stage_chute_pose`), the canopy opens with a jolt (`audio_device_trigger_impact`) and sways like a pendulum, leaning into turns; holding S, or the last 3.5 m, flares for a gentler landing; the HUD shows height and descent rate. The wind is `audio_state_t.wind`: a mid-band rush that is there at any speed and grows with the fall, heard close to (`listener_distance` to the camera).
 
 The background sound has no birds and no crickets any more (their pure 2 to 4 kHz tones rang like a bell); `tests/test_audio.c` checks that no pitch stands out of the town's hum, day or night. The yellow pillar and ring over the airport gate are gone; the arrow, distance and map marks remain.
+
+## More aircraft, cockpits and missiles (2026-10-24)
+
+`aircraft_kind_t` grew at the end (packages store the number): airliner (a
+Boeing 747), jet fighter and twin-rotor gunship. Fixed-wing flight reads its
+numbers from the `wings` table in `aircraft.c` (stall and lift-off speed,
+thrust, drag, pitch and roll rates, how hard a banked turn bites); the
+gunship is the helicopter model with a pace of 1.45. `aircraft_models.c`
+builds the shapes from swept slabs, ellipsoids and boxes; `aircraft_cockpit.c`
+builds a flight deck per kind and draws it in the aircraft's frame, with a yoke
+or stick that follows the controls and a roll indicator. C while flying
+toggles `air_view` between chase and cockpit; the hull is not drawn from the
+seat, only what spins (propeller, rotors). The horn sounds from an aircraft.
+
+The jet and the gunship carry missiles. G (`driving_stage_fire`) launches one
+from a rail under a wing (cooldown 0.45 s, eight in flight at most, a crime
+each time). A missile flies straight at 190 m/s on top of the aircraft's speed,
+falls a little, and goes off where a ray along its last step meets anything
+(ground, building, car). `strike` draws the fireball (the car-blast
+visual), throws every person within 12 m (`pedestrians_blast`), and removes
+traffic cars in the blast with `traffic_take_car`. A gunsight ring floats
+120 m ahead of the nose of an armed aircraft.
+
+The airport now stands eight aircraft: three planes, two helicopters, the
+747 on the taxiway, the jet on the apron and the gunship on a third pad.
+Pessano con Bornago (the plain east of Milan) joined Pordenone and Barletta as
+a cooked city (`make new-city`, provenance in `data/`).

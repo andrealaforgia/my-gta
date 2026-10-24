@@ -51,7 +51,9 @@ make run-city CITY=pordenone
 ```
 
 Barletta is fetched the same way (`python3 scripts/fetch_osm.py 16.262 41.306
-16.306 41.336 data/barletta.osm`, then `make city EXTRACT=data/barletta.osm`).
+16.306 41.336 data/barletta.osm`, then `make city EXTRACT=data/barletta.osm`),
+and so is Pessano con Bornago, on the plain east of Milan (`make new-city
+CITY=pessano_con_bornago BBOX="9.345 45.545 9.395 45.580"`).
 Any other place works the same way: `make new-city CITY=lecce BBOX="18.160 40.345 18.200 40.370"`
 downloads the extract and cooks it (a few kilometres square is plenty).
 Run `./gta-like` or `make play` with no scene and a menu lists the test track
@@ -69,13 +71,13 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | arrows or WASD | drive and steer (holding the brake at a standstill reverses) |
 | space | handbrake |
 | R | reset to the spawn |
-| C | change view: chase, bonnet, cockpit |
-| H | horn (hold) |
+| C | change view: chase, bonnet, cockpit; in an aircraft, behind it or from its cockpit |
+| H | horn (hold), in a car or an aircraft |
 | V | swap to the next vehicle: four cars, police car, ambulance, fire engine, bus and six lorries |
 | F | get out of the car, walk (space to run), and get back in or steal any car you stand beside |
-| G, click | on foot: fire the pistol |
+| G, click | on foot: fire the pistol; in the jet or the gunship: launch a missile |
 | Q, right click | on foot: punch whoever is in front; they reel and run |
-| F in the air | bail out on a parachute (A/D turn, W drift, S flare) |
+| F in an aircraft | get out when down and stopped; in the air, bail out on a parachute (A/D turn, W drift, S flare) |
 | M | the city map over a paused game, with street names and your position |
 | P | pause |
 | T | rain on or off |
