@@ -580,6 +580,11 @@ static void f_in_the_air_bails_out_and_the_plane_crashes(void) {
   assert(height_at_jump > 20.0f);
   driving_stage_interact(stage);
   assert(stage->piloting == 0 && stage->chute.active && plane->doomed);
+  /* The wind is heard, close to, from the first moment. */
+  for (int i = 0; i < 30; i++) driving_stage_advance(stage, level, 1.0 / 60.0);
+  audio_state_t sound = driving_stage_audio_state(stage);
+  assert(!sound.engine_running && sound.wind > 0.3f);
+  assert(sound.listener_distance < 12.0f);
   /* Down on the parachute, slowly, while the plane dives and blows up. */
   driving_input_t drift = {0, 0, 0, false, false};
   bool blew = false;

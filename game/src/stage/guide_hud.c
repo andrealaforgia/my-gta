@@ -4,36 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-guide_markers_t guide_markers_create(renderer_t* renderer) {
-  guide_markers_t markers = {{0}, {0}};
-  mesh_data_t pillar = mesh_data_create();
-  mesh_data_add_cylinder_y(&pillar, vec3(0, 0, 0), 0.45f, 120.0f, 10);
-  markers.pillar = renderer_upload_mesh(renderer, &pillar);
-  mesh_data_free(&pillar);
-  mesh_data_t ring = mesh_data_create();
-  mesh_data_add_cylinder_y(&ring, vec3(0, 0, 0), GUIDE_RING_RADIUS * 0.8f,
-                           0.12f, 24);
-  markers.ring = renderer_upload_mesh(renderer, &ring);
-  mesh_data_free(&ring);
-  return markers;
-}
-
-void guide_markers_destroy(guide_markers_t* markers, renderer_t* renderer) {
-  renderer_release_mesh(renderer, markers->pillar);
-  renderer_release_mesh(renderer, markers->ring);
-}
-
-void guide_marker_draw(const guide_t* guide, const guide_markers_t* markers,
-                       renderer_t* renderer, float clock) {
-  if (!guide->active) return;
-  float pulse = 0.75f + 0.25f * sinf(clock * 4.0f);
-  material_t light = material_plain(vec3(1.0f, 0.78f, 0.12f));
-  light.emissive = 1.4f * pulse;
-  mat4_t at = mat4_translation(vec3(guide->x, guide->y, guide->z));
-  renderer_draw_mesh(renderer, markers->pillar, light, at);
-  renderer_draw_mesh(renderer, markers->ring, light, at);
-}
-
 /* Text with a dark shadow, readable against anything. */
 static void shadowed(renderer_t* renderer, float x, float y, float scale,
                      vec3_t colour, const char* text) {

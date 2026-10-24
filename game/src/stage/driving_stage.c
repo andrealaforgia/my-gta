@@ -105,7 +105,6 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     wanted_init(&stage->wanted);
     stage->nav = nav_create(stage->scene.routes, stage->scene.route_count);
     if (stage->traffic) traffic_set_nav(stage->traffic, stage->nav);
-    stage->guide_markers = guide_markers_create(renderer);
     const city_airport_t* airport = &stage->scene.package->airport;
     if (airport->present) {
       stage->guide.active = true;
@@ -138,8 +137,6 @@ void driving_stage_destroy(driving_stage_t* stage) {
   if (stage->renderer) {
     car_visual_destroy(&stage->car_visual, stage->renderer);
     renderer_release_mesh(stage->renderer, stage->skid_strip);
-    if (stage->city_rules)
-      guide_markers_destroy(&stage->guide_markers, stage->renderer);
     nav_destroy(stage->nav);
     traffic_destroy(stage->traffic, stage->physics);
     if (stage->has_figures)
@@ -217,7 +214,15 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     state.listener_distance = vec3_distance(
         stage->camera.position, stage->aircraft[stage->piloting - 1].position);
   }
-  if (stage->chute.active) state.speed_mps = vec3_length(stage->chute.velocity);
+  if (stage->chute.active) {
+    /* The wind in the ears: a breeze under the canopy, a roar in free fall,
+     * heard close to, with the camera by the person. */
+    float rush = -stage->chute.velocity.y / 45.0f;
+    state.wind = 0.3f + 0.7f * (rush < 0 ? 0.0f : (rush > 1.0f ? 1.0f : rush));
+    state.speed_mps = vec3_length(stage->chute.velocity);
+    state.listener_distance =
+        vec3_distance(stage->camera.position, stage->walker.position);
+  }
   return state;
 }
 
@@ -941,7 +946,7 @@ static void draw_hud(driving_stage_t* stage) {
   float scale = (float)stage->window->drawable_width / 640.0f;
   if (scale < 2) scale = 2;
   float x = 16 * scale / 2, y = 16 * scale / 2;
-  if (stage->piloting > 0)
+  if (stage->piloting > 0 || stage->chute.active)
     air_stage_draw_gauge(stage);
   else
     draw_gauge(stage);
@@ -1403,7 +1408,7 @@ void driving_stage_render(driving_stage_t* stage) {
                    night);
   }
   air_stage_draw(stage, night);
-  if (stage->on_foot && stage->piloting == 0 &&
+  if (stage->on_foot && stage->piloting == 0 && !stage->chute.active &&
       (stage->blast == 0 || !stage->blast_kills)) {
     /* The person who got out, in the clothes of an adult from the crowd. */
     pedestrian_draw_figure(&stage->people_meshes, r, stage->walker.position,
@@ -1420,9 +1425,6 @@ void driving_stage_render(driving_stage_t* stage) {
                        mat4_multiply(mat4_translation(stage->shot_from),
                                      mat4_scaling(vec3(0.12f, 0.12f, 0.12f))));
   }
-  if (stage->city_rules && stage->piloting == 0)
-    guide_marker_draw(&stage->guide, &stage->guide_markers, r,
-                      stage->rain_clock);
   if (stage->show_debug) draw_debug(stage, chassis);
   if (stage->map_open) {
     draw_map(stage);

@@ -7,7 +7,7 @@
 
 audio_state_t audio_state_default(void) {
   audio_state_t state = {false, 0, 0, 0,     0, 2.0f, 0.8f, 0,
-                         0,     0, 0, false, 0, 0,    0};
+                         0,     0, 0, false, 0, 0,    0,    0};
   return state;
 }
 
@@ -44,7 +44,6 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   mixer.noise = 0x9e3779b9u;
   mixer.rpm_smoothed = 900;
   mixer.bell_age = 99.0f;
-  mixer.bird_rate = 1.0f / (48000.0f * 2.5f);
   radio_init(&mixer.radio, sample_rate);
   bandpass_set(&mixer.pipe_low, 150, 1.4f, sample_rate);
   bandpass_set(&mixer.pipe_high, 420, 2.5f, sample_rate);
@@ -109,8 +108,8 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
         smooth(mixer->throttle_smoothed, s->throttle, smoothing);
     mixer->skid_smoothed =
         smooth(mixer->skid_smoothed, s->skid, smoothing * 2.0f);
-    mixer->wind_smoothed =
-        smooth(mixer->wind_smoothed, s->speed_mps, smoothing);
+    mixer->wind_smoothed = smooth(
+        mixer->wind_smoothed, fmaxf(s->speed_mps, s->wind * 40.0f), smoothing);
 
     float engine = 0;
     if (s->engine_running) {
@@ -184,11 +183,17 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
 
     float wind_level = mixer->wind_smoothed / 40.0f;
     if (wind_level > 1) wind_level = 1;
-    mixer->wind_lowpass = smooth(mixer->wind_lowpass, noise(mixer), 0.015f);
+    float gust = noise(mixer);
+    mixer->wind_lowpass = smooth(mixer->wind_lowpass, gust, 0.015f);
     float wind = mixer->wind_lowpass * wind_level * wind_level * 0.9f;
+    /* The rush of air past the ears: a middle band of the noise, which is
+     * there even in a gentle breeze and swells with the speed. */
+    mixer->wind_band_low = smooth(mixer->wind_band_low, gust, 0.09f);
+    mixer->wind_band_high = smooth(mixer->wind_band_high, gust, 0.02f);
+    wind += (mixer->wind_band_low - mixer->wind_band_high) *
+            (wind_level * sqrtf(wind_level)) * 1.6f;
 
-    /* The town: a low rumble, cars close by, birds by day, crickets by night.
-     */
+    /* The town: a low rumble, and cars close by. */
     mixer->city_smoothed =
         smooth(mixer->city_smoothed, s->city, smoothing * 0.1f);
     mixer->night_smoothed =
@@ -204,28 +209,6 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
     mixer->traffic_lowpass2 =
         smooth(mixer->traffic_lowpass2, mixer->traffic_lowpass, 0.1f);
     town += mixer->traffic_lowpass2 * 2.2f * mixer->traffic_smoothed;
-    float day = (1.0f - mixer->night_smoothed) * mixer->city_smoothed;
-    if (mixer->bird_envelope < 0.01f && day > 0.05f &&
-        (noise(mixer) * 0.5f + 0.5f) < mixer->bird_rate * 24000.0f * day) {
-      mixer->bird_envelope = 1.0f;
-      mixer->bird_frequency = 2200.0f + 900.0f * (noise(mixer) * 0.5f + 0.5f);
-    }
-    float bird = 0;
-    if (mixer->bird_envelope > 0.001f) {
-      mixer->bird_phase += mixer->bird_frequency * dt;
-      if (mixer->bird_phase >= 1.0f) mixer->bird_phase -= 1.0f;
-      mixer->bird_frequency *= 1.0f - 1.5f * dt; /* falls as it sings */
-      bird = sinf(2.0f * (float)M_PI * mixer->bird_phase) *
-             mixer->bird_envelope * 0.01f * day;
-      mixer->bird_envelope *= expf(-dt * 38.0f);
-    }
-    mixer->cricket_gate += 29.0f * dt;
-    if (mixer->cricket_gate >= 1.0f) mixer->cricket_gate -= 1.0f;
-    mixer->cricket_phase += (float)mixer->sample_rate / 11.0f * dt;
-    if (mixer->cricket_phase >= 1.0f) mixer->cricket_phase -= 1.0f;
-    float cricket = sinf(2.0f * (float)M_PI * mixer->cricket_phase) *
-                    (mixer->cricket_gate < 0.55f ? 1.0f : 0.0f) * 0.007f *
-                    mixer->night_smoothed * mixer->city_smoothed;
     /* Rain: a wash of high noise with a patter of drops in it. */
     mixer->rain_smoothed =
         smooth(mixer->rain_smoothed, s->rain, smoothing * 0.2f);
@@ -323,8 +306,8 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       mixer->shot *= expf(-dt * 22.0f);
     }
     out[i] =
-        soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bird +
-                   cricket + bell + rain + horn + other_horn + siren +
+        soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bell +
+                   rain + horn + other_horn + siren +
                    radio_next(&mixer->radio) * (radio_audible ? 0.5f : 0.0f) +
                    shot * 0.8f) *
                   gain);

@@ -229,8 +229,10 @@ static float power_at(const float* samples, int count, float frequency) {
   return s1 * s1 + s2 * s2 - coefficient * s1 * s2;
 }
 
-/* How much stronger the cricket's pitch is than the pitches either side. */
-static float cricket_prominence(float night) {
+/* How much stronger one pitch is than the pitches round about it: the
+ * strongest of a few bins at it against the mean of many either side, which
+ * a whirr or a tweet would stand out of by hundreds and noise by a few. */
+static float prominence(float night, float frequency) {
   audio_mixer_t mixer = audio_mixer_create(RATE);
   audio_state_t state = audio_state_default();
   state.engine_running = false;
@@ -238,15 +240,50 @@ static float cricket_prominence(float night) {
   state.night = night;
   static float out[RATE];
   for (int i = 0; i < 4; i++) render(&mixer, state, out, RATE); /* settle */
-  float at = power_at(out, RATE, RATE / 11.0f);
-  float around =
-      0.5f * (power_at(out, RATE, 3300.0f) + power_at(out, RATE, 5600.0f));
-  return at / (around + 1e-9f);
+  float at = 0;
+  for (int k = -1; k <= 1; k++) {
+    float p = power_at(out, RATE, frequency + (float)k);
+    if (p > at) at = p;
+  }
+  float around = 0;
+  int count = 0;
+  for (int k = 8; k <= 40; k += 4) {
+    around += power_at(out, RATE, frequency + (float)k);
+    around += power_at(out, RATE, frequency - (float)k);
+    count += 2;
+  }
+  return at / (around / (float)count + 1e-9f);
 }
 
-static void crickets_sing_by_night_in_a_high_steady_note(void) {
-  float night = cricket_prominence(1.0f), day = cricket_prominence(0.0f);
-  assert(night > 30.0f && night > day * 10.0f);
+/* There was once a cricket's whirr and a bird's tweet in the background; they
+ * rang like a bell and are gone: no pitch stands out of the town's hum, by
+ * day or by night. */
+static void the_background_has_no_chirping_by_day_or_night(void) {
+  static const float pitches[] = {RATE / 11.0f, 2200.0f, 2600.0f, 3000.0f};
+  for (int n = 0; n < 2; n++)
+    for (size_t i = 0; i < sizeof(pitches) / sizeof(pitches[0]); i++)
+      assert(prominence((float)n, pitches[i]) < 12.0f);
+}
+
+/* A breeze is heard even when going slowly, and a rush when falling fast. */
+static void the_wind_is_heard_at_any_speed_when_the_air_is_rushing(void) {
+  audio_mixer_t calm = audio_mixer_create(RATE),
+                breezy = audio_mixer_create(RATE),
+                rushing = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  state.engine_running = false;
+  static float out[RATE];
+  float quiet = 0, level[3] = {0, 0, 0};
+  audio_mixer_t* mixers[3] = {&calm, &breezy, &rushing};
+  float winds[3] = {0.0f, 0.35f, 1.0f};
+  for (int m = 0; m < 3; m++) {
+    state.wind = winds[m];
+    for (int i = 0; i < 4; i++) render(mixers[m], state, out, RATE);
+    level[m] = rms(out, RATE);
+  }
+  (void)quiet;
+  assert(level[0] < 1e-4f);
+  assert(level[1] > 0.004f && level[2] > level[1] * 2.0f);
 }
 
 static int onsets(const float* samples, int count, float threshold) {
@@ -428,7 +465,8 @@ void run_audio_tests(void) {
   RUN(the_horn_is_a_two_note_chord_that_starts_and_stops_quickly);
   RUN(rain_is_a_soft_wash_that_is_louder_in_heavier_rain);
   RUN(the_town_has_a_background_that_is_quiet_and_goes_with_the_level);
-  RUN(crickets_sing_by_night_in_a_high_steady_note);
+  RUN(the_background_has_no_chirping_by_day_or_night);
+  RUN(the_wind_is_heard_at_any_speed_when_the_air_is_rushing);
   RUN(the_church_bell_strikes_the_hour_in_a_ringing_tone);
   RUN(the_engine_is_audible_at_idle_and_never_clips);
   RUN(higher_revs_raise_the_pitch);

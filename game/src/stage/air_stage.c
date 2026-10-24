@@ -95,6 +95,21 @@ bool air_stage_board(driving_stage_t* stage) {
 
 /* Out of an aircraft in the air: a jump, a parachute, and the aircraft left
  * to dive. */
+/* Close behind the person and a little above, looking up towards the canopy. */
+static chase_camera_params_t chute_camera(void) {
+  chase_camera_params_t p = chase_camera_default_params();
+  p.distance = 5.0f;
+  p.height = 1.3f;
+  p.look_height = 1.0f;
+  p.look_ahead = 0.0f;
+  p.max_look_ahead = 0.0f;
+  p.position_rate = 7.0f;
+  p.look_rate = 8.0f;
+  p.collision_margin = 0.3f;
+  p.fov_y = 1.15f;
+  return p;
+}
+
 static void bail_out(driving_stage_t* stage) {
   aircraft_t* a = &stage->aircraft[stage->piloting - 1];
   a->doomed = true;
@@ -109,8 +124,15 @@ static void bail_out(driving_stage_t* stage) {
   /* The jump carries on a little of the aircraft's way. */
   vec3_t carried = vec3_scale(aircraft_velocity(a), 0.6f);
   stage->chute.active = true;
+  stage->chute.opened = false;
   stage->chute.time = 0;
+  stage->chute.bank = 0;
   stage->chute.velocity = vec3(carried.x, fminf(carried.y, 0.0f), carried.z);
+  stage->camera.params = chute_camera();
+  chase_camera_reset(
+      &stage->camera,
+      transform_at(vec3_add(stage->walker.position, vec3(0, 0.9f, 0)),
+                   quat_from_yaw(stage->walker.yaw)));
   driving_stage_say(stage, "BAILED OUT");
 }
 
@@ -242,6 +264,7 @@ void air_stage_step_adrift(driving_stage_t* stage, float dt) {
 }
 
 #define CHUTE_FALL_SPEED 5.5f
+#define CHUTE_FLARE_SPEED 2.6f
 #define CHUTE_OPENING_START 0.7f /* seconds of free fall */
 #define CHUTE_OPENING_TIME 0.9f
 
@@ -251,35 +274,61 @@ static float chute_open(const driving_stage_t* stage) {
   return t < 0 ? 0.0f : (t > 1 ? 1.0f : t);
 }
 
+void air_stage_chute_pose(const driving_stage_t* stage, float* fall,
+                          float* flail, float* phase) {
+  float open = chute_open(stage);
+  /* Belly down with the limbs thrashing in free fall; upright, the arms up to
+   * the lines and the legs hanging, once the canopy has filled. */
+  *fall = -0.85f * (1.0f - open);
+  *flail = 0.75f * (1.0f - open) + 0.3f * open;
+  *phase = stage->chute.time * (open < 1.0f ? 11.0f : 1.8f);
+}
+
 void air_stage_step_chute(driving_stage_t* stage, driving_input_t input,
                           float dt) {
   walker_t* w = &stage->walker;
   vec3_t* v = &stage->chute.velocity;
   stage->chute.time += dt;
   float open = chute_open(stage);
-  /* Steering turns, the throttle drifts forward; with the canopy shut there
-   * is no steering. */
-  w->yaw -= input.steering * 0.9f * dt * open;
+  if (!stage->chute.opened && stage->chute.time > CHUTE_OPENING_START + 0.25f) {
+    /* The canopy fills with a jolt. */
+    stage->chute.opened = true;
+    if (stage->audio) audio_device_trigger_impact(stage->audio, 0.22f);
+  }
+  /* The ground, or a roof, under the person. */
+  ray_t down = {vec3(w->position.x, w->position.y + 2.0f, w->position.z),
+                vec3(0, -1, 0)};
+  ray_cast_result_t hit;
+  bool found =
+      physics_ray_cast(stage->physics, down, 4000.0f, AIRCRAFT_LAYERS, &hit);
+  float ground = found ? hit.hit.point.y : w->position.y - 1000.0f;
+  stage->chute.height = w->position.y - ground;
+  /* Steering turns them, the throttle drifts forward, and holding the brake
+   * (or the last few metres) flares: the canopy is hauled down and they slow
+   * for the landing. With it shut there is no steering. */
+  bool flare =
+      open >= 1.0f && (input.brake > 0.3f || stage->chute.height < 3.5f);
+  w->yaw -= input.steering * 1.3f * dt * open;
+  stage->chute.bank +=
+      (input.steering * open - stage->chute.bank) * fminf(1.0f, 3.0f * dt);
   vec3_t forward = walker_forward(w);
-  float drift = open * (1.5f + 4.5f * fminf(fmaxf(input.throttle, 0.0f), 1.0f));
+  float throttle = fminf(fmaxf(input.throttle, 0.0f), 1.0f);
+  float drift = open * (1.5f + 5.0f * throttle) * (flare ? 0.35f : 1.0f);
   float ease = fminf(1.0f, 1.2f * dt);
   v->x += (forward.x * drift - v->x) * ease;
   v->z += (forward.z * drift - v->z) * ease;
   /* Free fall at first, then the canopy takes hold. */
   v->y -= 9.8f * dt;
-  if (open > 0)
-    v->y += (-CHUTE_FALL_SPEED - v->y) * fminf(1.0f, 3.0f * dt * open);
+  if (open > 0) {
+    float want = flare ? -CHUTE_FLARE_SPEED : -CHUTE_FALL_SPEED;
+    v->y += (want - v->y) * fminf(1.0f, 3.0f * dt * open);
+  }
   v->y = fmaxf(v->y, -45.0f);
   w->position = vec3_add(w->position, vec3_scale(*v, dt));
   w->speed = 0;
-  /* The ground, or a roof, ends it. */
-  ray_t down = {vec3(w->position.x, w->position.y + 2.0f, w->position.z),
-                vec3(0, -1, 0)};
-  ray_cast_result_t hit;
-  if (physics_ray_cast(stage->physics, down, 4000.0f, AIRCRAFT_LAYERS, &hit) &&
-      w->position.y <= hit.hit.point.y + 0.05f) {
+  if (found && w->position.y <= ground + 0.05f) {
     float speed = -v->y;
-    w->position.y = hit.hit.point.y;
+    w->position.y = ground;
     w->grounded = true;
     w->fall = 0;
     stage->chute.active = false;
@@ -312,13 +361,44 @@ void air_stage_draw(driving_stage_t* stage, float night) {
     if (dx * dx + dz * dz > 700.0f * 700.0f) continue;
     aircraft_visual_draw(&stage->air_visual, stage->renderer, a, (int)i);
   }
-  if (stage->chute.active)
+  if (stage->chute.active) {
+    const driving_stage_t* c = stage;
+    float open = chute_open(c);
+    float fall, flail, phase;
+    air_stage_chute_pose(c, &fall, &flail, &phase);
+    if (stage->has_figures) {
+      /* Tipped over about the middle of the body, not the feet. */
+      float lift = fall < -0.01f ? 0.6f : 0.0f;
+      pedestrian_draw_figure_fallen(
+          &stage->people_meshes, stage->renderer,
+          vec3_add(stage->walker.position, vec3(0, -lift, 0)),
+          stage->walker.yaw, 0.0f, phase, stage->walker_outfit, fall, lift,
+          flail);
+    }
+    /* The canopy sways like a pendulum and leans into a turn. */
+    float sway = 0.07f * sinf(stage->chute.time * 2.1f) * open;
     aircraft_visual_draw_canopy(&stage->air_visual, stage->renderer,
-                                stage->walker.position, stage->walker.yaw,
-                                chute_open(stage));
+                                stage->walker.position, stage->walker.yaw, open,
+                                sway + 0.3f * stage->chute.bank);
+  }
 }
 
 void air_stage_draw_gauge(driving_stage_t* stage) {
+  if (stage->chute.active) {
+    renderer_t* r = stage->renderer;
+    float width = (float)stage->window->drawable_width;
+    float height = (float)stage->window->drawable_height;
+    float scale = width / 640.0f;
+    if (scale < 2) scale = 2;
+    char text[48];
+    snprintf(text, sizeof(text), "ALT %3.0f M", stage->chute.height);
+    renderer_draw_text(r, width - 120.0f * scale, height - 70.0f * scale,
+                       scale * 1.6f, vec3(0.7f, 0.9f, 1.0f), text);
+    snprintf(text, sizeof(text), "%3.0f M/S DOWN", -stage->chute.velocity.y);
+    renderer_draw_text(r, width - 120.0f * scale, height - 56.0f * scale,
+                       scale * 1.6f, vec3(1, 1, 1), text);
+    return;
+  }
   const aircraft_t* a = air_stage_piloted(stage);
   if (!a) return;
   renderer_t* r = stage->renderer;

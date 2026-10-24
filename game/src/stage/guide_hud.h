@@ -1,8 +1,7 @@
 /**
  * @file guide_hud.h
- * @brief Showing the way to the airport: the pillar of light over its gate,
- * the arrow and distance on the screen, the line of the road on the minimap
- * and the map, and the mark at its end.
+ * @brief Showing the way to the airport: the arrow and distance on the screen,
+ * the line of the road on the minimap and the map, and the mark at its end.
  */
 #ifndef GAME_SRC_STAGE_GUIDE_HUD_H_
 #define GAME_SRC_STAGE_GUIDE_HUD_H_
@@ -13,24 +12,11 @@
 #include "city_map.h"
 #include "renderer.h"
 
-#define GUIDE_RING_RADIUS 9.0f
-
 /* Where the guide points: the airport's gate. */
 typedef struct {
   bool active;
   float x, y, z;
 } guide_t;
-
-typedef struct {
-  mesh_handle_t pillar, ring;
-} guide_markers_t;
-
-guide_markers_t guide_markers_create(renderer_t* renderer);
-void guide_markers_destroy(guide_markers_t* markers, renderer_t* renderer);
-
-/* The pillar and ring at the gate, in the world; `clock` pulses the light. */
-void guide_marker_draw(const guide_t* guide, const guide_markers_t* markers,
-                       renderer_t* renderer, float clock);
 
 /* The compass arrow towards (aim_x, aim_z) and the distance to the airport.
  * The player is at (x, z) heading (fx, fz), a unit vector. */

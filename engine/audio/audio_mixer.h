@@ -20,14 +20,15 @@ typedef struct {
   float speed_mps;         /* for wind */
   float listener_distance; /* m from the car */
   float master_volume;     /* 0..1 */
-  float city;              /* 0..1: the town's background hum and birds */
-  float night;             /* 0..1: crickets in place of birds */
+  float city;              /* 0..1: the town's background hum */
+  float night;             /* 0..1: how dark it is */
   float traffic;           /* 0..1: cars passing close by */
   float rain;              /* 0..1: how hard it is raining */
   bool horn;               /* the horn is held down */
   float siren;             /* 0..1: an emergency siren, louder as it nears */
   float other_horn;        /* 0..1: another driver's horn, louder as it nears */
   int radio_station;       /* 0 off, 1..RADIO_STATIONS; <0 out of earshot */
+  float wind;              /* 0..1: air rushing past, whatever the speed */
 } audio_state_t;
 
 typedef struct {
@@ -60,7 +61,7 @@ typedef struct {
   float skid_phase;    /* tyre squeal oscillator, 0..1 */
   float skid_wobble;   /* fast flutter phase, 0..1 */
   float skid_drift;    /* slow random pitch wander */
-  float wind_lowpass;
+  float wind_lowpass, wind_band_low, wind_band_high;
   float intake_lowpass;
   float impact_lowpass;
   float city_smoothed, night_smoothed, traffic_smoothed, rain_smoothed;
@@ -69,8 +70,6 @@ typedef struct {
   float other_horn_level, other_horn_phase_a, other_horn_phase_b;
   float siren_level, siren_phase, siren_clock, siren_frequency;
   float city_lowpass, city_lowpass2, traffic_lowpass, traffic_lowpass2;
-  float cricket_phase, cricket_gate;
-  float bird_phase, bird_frequency, bird_envelope, bird_rate;
   int bell_strikes_left; /* strikes still to ring */
   float bell_timer;      /* seconds until the next strike */
   float bell_age;        /* seconds since the current strike */

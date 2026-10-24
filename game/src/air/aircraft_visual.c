@@ -152,23 +152,28 @@ void aircraft_visual_draw(const aircraft_visual_t* v, renderer_t* renderer,
 
 void aircraft_visual_draw_canopy(const aircraft_visual_t* visual,
                                  renderer_t* renderer, vec3_t feet, float yaw,
-                                 float open) {
+                                 float open, float tilt) {
   if (open <= 0.01f) return;
-  /* It fills out sideways and rises as it opens. */
-  float size = 0.25f + 0.75f * open;
-  vec3_t top = vec3_add(feet, vec3(0, 2.0f + 2.9f * open, 0));
+  /* It fills out sideways and rises as it opens, with a little overshoot. */
+  float size = 0.25f + 0.75f * open + 0.08f * sinf(open * 3.14159f);
+  float rise = 0.9f + 2.9f * open;
+  /* Everything swings about the shoulders. */
+  vec3_t shoulders = vec3_add(feet, vec3(0, 1.4f, 0));
+  mat4_t base = mat4_multiply(
+      mat4_translation(shoulders),
+      mat4_from_quat(quat_multiply(
+          quat_from_yaw(yaw), quat_from_axis_angle(vec3(0, 0, 1), -tilt))));
   material_t cloth = material_rough(vec3(0.9f, 0.3f, 0.12f), 0.9f);
   mat4_t at = mat4_multiply(
-      mat4_translation(top),
-      mat4_multiply(mat4_from_quat(quat_from_yaw(yaw)),
-                    mat4_scaling(vec3(size, 0.6f + 0.4f * open, size))));
+      base, mat4_multiply(mat4_translation(vec3(0, rise, 0)),
+                          mat4_scaling(vec3(size, 0.6f + 0.4f * open, size))));
   renderer_draw_mesh(renderer, visual->canopy, cloth, at);
   /* Lines from the rim to the shoulders. */
-  vec3_t shoulders = vec3_add(feet, vec3(0, 1.4f, 0));
   for (int i = 0; i < 6; i++) {
-    float angle = yaw + 6.2831853f * (float)i / 6.0f;
-    vec3_t rim = vec3_add(top, vec3(cosf(angle) * 3.2f * size, -0.7f * open,
-                                    sinf(angle) * 3.2f * size));
+    float angle = 6.2831853f * (float)i / 6.0f;
+    vec3_t rim = mat4_transform_point(
+        base, vec3(cosf(angle) * 3.2f * size, rise - 0.7f * open,
+                   sinf(angle) * 3.2f * size));
     renderer_draw_line(renderer, rim, shoulders, vec3(0.9f, 0.9f, 0.9f));
   }
 }

@@ -93,9 +93,8 @@ typedef struct {
   pedestrians_t* people;
   vec3_t walkers[64]; /* who is crossing a street now, for the traffic */
   pedestrian_meshes_t people_meshes;
-  bool city_rules; /* police, satnav and fines, in a city */
-  guide_t guide;   /* the way to the airport */
-  guide_markers_t guide_markers;
+  bool city_rules;  /* police, satnav and fines, in a city */
+  guide_t guide;    /* the way to the airport */
   bool has_figures; /* meshes for drawing people, so the player can walk */
   bool on_foot;     /* out of the car, walking (or flying: see piloting) */
   aircraft_visual_t air_visual;
@@ -106,7 +105,10 @@ typedef struct {
   int piloting; /* 0 on the ground, else the aircraft flown, from 1 */
   struct {
     bool active;     /* the player is coming down on a parachute */
+    bool opened;     /* the canopy has filled (its thump has sounded) */
     float time;      /* seconds since they jumped */
+    float height;    /* metres above the ground or roof below */
+    float bank;      /* how far they lean into a turn, -1 to 1 */
     vec3_t velocity; /* metres a second */
   } chute;
   chase_camera_params_t saved_camera_params; /* kept while flying */

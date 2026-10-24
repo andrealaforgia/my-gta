@@ -23,9 +23,10 @@ void aircraft_visual_draw(const aircraft_visual_t* visual, renderer_t* renderer,
                           const aircraft_t* aircraft, int variant);
 
 /* A parachute over somebody whose feet are at `feet`, `open` from 0 (packed)
- * to 1 (full), with its lines down to the shoulders. */
+ * to 1 (full), with its lines down to the shoulders; `tilt` swings it to one
+ * side (radians, positive to the right) as it sways or banks into a turn. */
 void aircraft_visual_draw_canopy(const aircraft_visual_t* visual,
                                  renderer_t* renderer, vec3_t feet, float yaw,
-                                 float open);
+                                 float open, float tilt);
 
 #endif  // GAME_SRC_AIR_AIRCRAFT_VISUAL_H_

@@ -24,6 +24,10 @@ bool air_stage_leave(driving_stage_t* stage);
  * drifts forward; the ground ends it. */
 void air_stage_step_chute(driving_stage_t* stage, driving_input_t input,
                           float dt);
+/* How the person hangs on the way down: tipped belly down and flailing in
+ * free fall, upright with the arms up to the lines under the canopy. */
+void air_stage_chute_pose(const driving_stage_t* stage, float* fall,
+                          float* flail, float* phase);
 /* Aircraft with nobody in them dive and crash. */
 void air_stage_step_adrift(driving_stage_t* stage, float dt);
 /* The aircraft that was being flown goes back to its stand, and the player
