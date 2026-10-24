@@ -184,6 +184,13 @@ int main(int argc, char* argv[]) {
       if (plane && t > 9.0f) input.brake = t < 16.0f ? 1.0f : 0.0f;
       if (!plane && t > 8.0f) input.throttle = 1.0f;
     }
+    /* SNAPSHOT_BAIL=t presses F in the air at t seconds: the parachute. */
+    if (getenv("SNAPSHOT_BAIL") && stage.piloting > 0 &&
+        (float)i / 120.0f > (float)atof(getenv("SNAPSHOT_BAIL")))
+      driving_stage_interact(&stage);
+    if (stage.chute.active) {
+      input.throttle = 0, input.brake = 0, input.handbrake = false;
+    }
     driving_stage_step(&stage, input, 1.0f / 120.0f);
     if (trace && i % 6 == 0) {
       for (size_t k = 0; k < traffic_car_count(stage.traffic); k++) {
@@ -277,6 +284,12 @@ int main(int argc, char* argv[]) {
     }
     if (i % 2 == 0 && stage.piloting > 0) {
       air_stage_follow(&stage, 1.0f / 60.0f);
+    } else if (i % 2 == 0 && stage.chute.active) {
+      chase_camera_update(
+          &stage.camera,
+          transform_at(vec3_add(stage.walker.position, vec3(0, 0.9f, 0)),
+                       quat_from_yaw(stage.walker.yaw)),
+          stage.chute.velocity, stage.physics, 1.0f / 60.0f);
     } else if (i % 2 == 0) {
       const rigid_body_t* body =
           physics_body(stage.physics, stage.vehicle.body);

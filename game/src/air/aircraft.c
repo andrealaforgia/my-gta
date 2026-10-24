@@ -140,7 +140,9 @@ static aircraft_status_t step_helicopter(aircraft_t* a, aircraft_controls_t c,
   bool lifting = a->rotor_speed >= 0.9f;
   float want_climb =
       lifting ? c.power_change * (c.power_change > 0 ? 10.0f : 8.0f) : 0.0f;
-  a->climb = ease(a->climb, want_climb, 2.2f, dt);
+  /* Nobody at the controls: the rotor loses its bite and it drops. */
+  if (a->doomed) want_climb = -22.0f;
+  a->climb = ease(a->climb, want_climb, a->doomed ? 1.2f : 2.2f, dt);
   /* Forward on W (nose down), back on S, slower; none while on the ground. */
   float want = c.pitch < 0 ? -c.pitch * 42.0f : -c.pitch * 14.0f;
   if (height < 1.0f) want = 0;
@@ -166,6 +168,11 @@ static aircraft_status_t step_helicopter(aircraft_t* a, aircraft_controls_t c,
 aircraft_status_t aircraft_step(aircraft_t* aircraft,
                                 aircraft_controls_t controls, float ground,
                                 float dt) {
+  /* Left to itself, a plane noses over with the engine cut. */
+  if (aircraft->doomed) {
+    controls.pitch = -1.0f, controls.roll = 0, controls.power_change = -1.0f;
+    controls.brake = 0;
+  }
   controls.pitch = clampf(controls.pitch, -1.0f, 1.0f);
   controls.roll = clampf(controls.roll, -1.0f, 1.0f);
   controls.power_change = clampf(controls.power_change, -1.0f, 1.0f);

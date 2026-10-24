@@ -93,10 +93,34 @@ bool air_stage_board(driving_stage_t* stage) {
   return true;
 }
 
+/* Out of an aircraft in the air: a jump, a parachute, and the aircraft left
+ * to dive. */
+static void bail_out(driving_stage_t* stage) {
+  aircraft_t* a = &stage->aircraft[stage->piloting - 1];
+  a->doomed = true;
+  vec3_t heading = aircraft_heading(a);
+  vec3_t left = vec3(heading.z, 0, -heading.x);
+  stage->walker.position =
+      vec3_add(vec3_add(a->position, vec3_scale(left, 2.0f)), vec3(0, 0.6f, 0));
+  stage->walker.yaw = a->yaw;
+  stage->walker.speed = 0;
+  stage->walker.grounded = false;
+  stage->piloting = 0;
+  /* The jump carries on a little of the aircraft's way. */
+  vec3_t carried = vec3_scale(aircraft_velocity(a), 0.6f);
+  stage->chute.active = true;
+  stage->chute.time = 0;
+  stage->chute.velocity = vec3(carried.x, fminf(carried.y, 0.0f), carried.z);
+  driving_stage_say(stage, "BAILED OUT");
+}
+
 bool air_stage_leave(driving_stage_t* stage) {
   const aircraft_t* a = air_stage_piloted(stage);
   if (!a) return false;
-  if (!a->on_ground || a->speed > 3.0f) return false;
+  if (!a->on_ground || a->speed > 3.0f) {
+    bail_out(stage);
+    return true;
+  }
   /* Out on the left of the aircraft. */
   vec3_t heading = aircraft_heading(a);
   vec3_t left = vec3(heading.z, 0, -heading.x);
@@ -119,6 +143,12 @@ void air_stage_stop(driving_stage_t* stage) {
         stage->aircraft_home[stage->piloting - 1];
     stage->camera.params = stage->saved_camera_params;
   }
+  /* Nothing stays in the air: whoever was falling lands, and the aircraft
+   * with nobody in them are back on their stands. */
+  if (stage->chute.active) stage->camera.params = stage->saved_camera_params;
+  stage->chute.active = false;
+  for (size_t i = 0; i < stage->aircraft_count; i++)
+    if (stage->aircraft[i].doomed) stage->aircraft[i] = stage->aircraft_home[i];
   stage->piloting = 0;
   set_streaming(stage, false);
 }
@@ -163,8 +193,9 @@ static bool about_to_hit(const driving_stage_t* stage, const aircraft_t* a,
                           COLLISION_LAYER_BUILDING, &hit);
 }
 
-void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt) {
-  aircraft_t* a = &stage->aircraft[stage->piloting - 1];
+/* One step of an aircraft, kept over the world, and whether it crashed. */
+static bool fly(driving_stage_t* stage, aircraft_t* a,
+                aircraft_controls_t controls, bool say_turn_back, float dt) {
   float ground = height_under(stage, a->position);
   if (ground < -999.0f) ground = a->position.y - 0.001f; /* hold in the air */
   /* Past the edge of the map the aircraft is turned back towards it. */
@@ -175,12 +206,17 @@ void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt) {
     float off = want - a->yaw;
     off -= 6.2831853f * floorf(off / 6.2831853f + 0.5f);
     a->yaw += fmaxf(-1.0f, fminf(1.0f, off)) * dt;
-    driving_stage_say(stage, "TURN BACK");
+    if (say_turn_back) driving_stage_say(stage, "TURN BACK");
   }
   bool crashed = about_to_hit(stage, a, dt);
   if (!crashed)
-    crashed = aircraft_step(a, aircraft_controls_from_input(input), ground,
-                            dt) == AIRCRAFT_CRASHED;
+    crashed = aircraft_step(a, controls, ground, dt) == AIRCRAFT_CRASHED;
+  return crashed;
+}
+
+void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt) {
+  aircraft_t* a = &stage->aircraft[stage->piloting - 1];
+  bool crashed = fly(stage, a, aircraft_controls_from_input(input), true, dt);
   /* The walker rides along, so what follows the player follows the aircraft. */
   stage->walker.position = a->position;
   stage->walker.speed = 0;
@@ -190,6 +226,72 @@ void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt) {
         stage->aircraft_home[stage->piloting - 1];
     stage->piloting = 0;
     set_streaming(stage, false);
+  }
+}
+
+void air_stage_step_adrift(driving_stage_t* stage, float dt) {
+  for (size_t i = 0; i < stage->aircraft_count; i++) {
+    aircraft_t* a = &stage->aircraft[i];
+    if (!a->doomed) continue;
+    aircraft_controls_t none = {0, 0, 0, 0};
+    if (fly(stage, a, none, false, dt)) {
+      driving_stage_crash_at(stage, vec3_add(a->position, vec3(0, 1.0f, 0)));
+      stage->aircraft[i] = stage->aircraft_home[i];
+    }
+  }
+}
+
+#define CHUTE_FALL_SPEED 5.5f
+#define CHUTE_OPENING_START 0.7f /* seconds of free fall */
+#define CHUTE_OPENING_TIME 0.9f
+
+/* How far open the canopy is, 0 to 1. */
+static float chute_open(const driving_stage_t* stage) {
+  float t = (stage->chute.time - CHUTE_OPENING_START) / CHUTE_OPENING_TIME;
+  return t < 0 ? 0.0f : (t > 1 ? 1.0f : t);
+}
+
+void air_stage_step_chute(driving_stage_t* stage, driving_input_t input,
+                          float dt) {
+  walker_t* w = &stage->walker;
+  vec3_t* v = &stage->chute.velocity;
+  stage->chute.time += dt;
+  float open = chute_open(stage);
+  /* Steering turns, the throttle drifts forward; with the canopy shut there
+   * is no steering. */
+  w->yaw -= input.steering * 0.9f * dt * open;
+  vec3_t forward = walker_forward(w);
+  float drift = open * (1.5f + 4.5f * fminf(fmaxf(input.throttle, 0.0f), 1.0f));
+  float ease = fminf(1.0f, 1.2f * dt);
+  v->x += (forward.x * drift - v->x) * ease;
+  v->z += (forward.z * drift - v->z) * ease;
+  /* Free fall at first, then the canopy takes hold. */
+  v->y -= 9.8f * dt;
+  if (open > 0)
+    v->y += (-CHUTE_FALL_SPEED - v->y) * fminf(1.0f, 3.0f * dt * open);
+  v->y = fmaxf(v->y, -45.0f);
+  w->position = vec3_add(w->position, vec3_scale(*v, dt));
+  w->speed = 0;
+  /* The ground, or a roof, ends it. */
+  ray_t down = {vec3(w->position.x, w->position.y + 2.0f, w->position.z),
+                vec3(0, -1, 0)};
+  ray_cast_result_t hit;
+  if (physics_ray_cast(stage->physics, down, 4000.0f, AIRCRAFT_LAYERS, &hit) &&
+      w->position.y <= hit.hit.point.y + 0.05f) {
+    float speed = -v->y;
+    w->position.y = hit.hit.point.y;
+    w->grounded = true;
+    w->fall = 0;
+    stage->chute.active = false;
+    set_streaming(stage, false);
+    stage->camera.params = stage->saved_camera_params;
+    if (speed > 14.0f) {
+      /* The canopy had no time to open. */
+      driving_stage_say(stage, "WASTED");
+      driving_stage_reset(stage);
+    } else {
+      driving_stage_say(stage, "LANDED");
+    }
   }
 }
 
@@ -210,6 +312,10 @@ void air_stage_draw(driving_stage_t* stage, float night) {
     if (dx * dx + dz * dz > 700.0f * 700.0f) continue;
     aircraft_visual_draw(&stage->air_visual, stage->renderer, a, (int)i);
   }
+  if (stage->chute.active)
+    aircraft_visual_draw_canopy(&stage->air_visual, stage->renderer,
+                                stage->walker.position, stage->walker.yaw,
+                                chute_open(stage));
 }
 
 void air_stage_draw_gauge(driving_stage_t* stage) {

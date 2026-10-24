@@ -212,6 +212,12 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
   const rigid_body_t* body = physics_body(stage->physics, car->body);
   state.listener_distance =
       body ? vec3_distance(stage->camera.position, body->position) : 5.0f;
+  if (stage->piloting > 0) {
+    /* The engine is the aircraft's, not the car left behind at the start. */
+    state.listener_distance = vec3_distance(
+        stage->camera.position, stage->aircraft[stage->piloting - 1].position);
+  }
+  if (stage->chute.active) state.speed_mps = vec3_length(stage->chute.velocity);
   return state;
 }
 
@@ -254,9 +260,10 @@ static void back_to_spawn(driving_stage_t* stage) {
 
 /* Sets off an explosion at `at`. It kills the player only if they are in the
  * car or the aircraft, or on foot within the blast's reach. */
-static void start_blast(driving_stage_t* stage, vec3_t at) {
+static void start_blast(driving_stage_t* stage, vec3_t at, bool car) {
   stage->blast = 0.001f;
   stage->blast_at = at;
+  stage->blast_car = car;
   stage->blast_kills =
       stage->piloting > 0 || !stage->on_foot ||
       vec3_length(vec3_sub(stage->walker.position, at)) < BLAST_RADIUS;
@@ -275,7 +282,8 @@ static void step_the_fire(driving_stage_t* stage, float dt) {
       } else {
         stage->blast = 0;
         stage->burning = 0;
-        stage->wrecked = true;
+        /* Only a car that blew up is a wreck. */
+        if (stage->blast_car) stage->wrecked = true;
       }
     }
     return;
@@ -285,7 +293,8 @@ static void step_the_fire(driving_stage_t* stage, float dt) {
     stage->burning += dt;
     if (stage->burning > 7.0f) {
       start_blast(stage,
-                  physics_body(stage->physics, stage->vehicle.body)->position);
+                  physics_body(stage->physics, stage->vehicle.body)->position,
+                  true);
     }
   } else if (stage->vehicle.damage < 0.97f) {
     stage->burning = 0;
@@ -305,7 +314,7 @@ void driving_stage_commit_crime(driving_stage_t* stage) {
 }
 
 void driving_stage_crash_at(driving_stage_t* stage, vec3_t at) {
-  start_blast(stage, at);
+  start_blast(stage, at, false);
 }
 
 /* The law's side of the drive: crashes are crimes, police cars come, and the
@@ -341,8 +350,11 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   driving_input_t parked_car_input = {0.0f, 0.0f, 0.0f, true, false};
   vehicle_update(&stage->vehicle, stage->physics,
                  stage->on_foot ? parked_car_input : input, dt);
+  air_stage_step_adrift(stage, dt);
   if (stage->on_foot && stage->piloting > 0) {
     air_stage_step(stage, input, dt);
+  } else if (stage->on_foot && stage->chute.active) {
+    air_stage_step_chute(stage, input, dt);
   } else if (stage->on_foot && stage->entering > 0) {
     step_entry(stage, dt);
   } else if (stage->on_foot) {
@@ -729,8 +741,8 @@ static void draw_law(driving_stage_t* stage) {
   const char* hint = NULL;
   if (stage->piloting > 0) {
     const aircraft_t* a = air_stage_piloted(stage);
-    if (a->on_ground && a->speed <= 3.0f) hint = "F  GET OUT";
-  } else if (stage->has_figures && !stage->paused) {
+    hint = a->on_ground && a->speed <= 3.0f ? "F  GET OUT" : "F  BAIL OUT";
+  } else if (stage->has_figures && !stage->paused && !stage->chute.active) {
     if (!stage->on_foot) {
       const rigid_body_t* car =
           physics_body(stage->physics, stage->vehicle.body);
@@ -829,10 +841,17 @@ static void draw_minimap(driving_stage_t* stage) {
 static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
   renderer_t* r = stage->renderer;
   float bottom = (float)stage->window->drawable_height - 12 * scale;
-  if (stage->piloting > 0) {
+  if (stage->chute.active) {
     renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
-                       "W/S PITCH  A/D BANK  SHIFT/SPACE POWER UP  CTRL POWER "
-                       "DOWN OR BRAKE  F GET OUT (DOWN AND STOPPED)  M MAP");
+                       "A/D TURN  W DRIFT FORWARD  M MAP");
+    return;
+  }
+  if (stage->piloting > 0) {
+    renderer_draw_text(
+        r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
+        "W/S PITCH  A/D BANK  SHIFT/SPACE POWER UP  CTRL POWER "
+        "DOWN OR BRAKE  F GET OUT (DOWN AND STOPPED) OR BAIL OUT "
+        "IN THE AIR  M MAP");
     return;
   }
   renderer_draw_text(
@@ -1129,6 +1148,7 @@ void driving_stage_interact(driving_stage_t* stage) {
     air_stage_leave(stage);
     return;
   }
+  if (stage->chute.active) return; /* nothing to do on the way down */
   const rigid_body_t* car = physics_body(stage->physics, stage->vehicle.body);
   if (!stage->on_foot) {
     if (vec3_length(car->velocity) > 3.0f) return; /* not while moving */
@@ -1189,7 +1209,8 @@ void driving_stage_interact(driving_stage_t* stage) {
 
 bool driving_stage_fire(driving_stage_t* stage) {
   if (stage->paused || stage->map_open || !stage->on_foot ||
-      stage->piloting > 0 || stage->entering > 0 || stage->shot_cooldown > 0)
+      stage->piloting > 0 || stage->chute.active || stage->entering > 0 ||
+      stage->shot_cooldown > 0)
     return false;
   stage->shot_cooldown = 0.35f;
   const walker_t* w = &stage->walker;
@@ -1259,7 +1280,7 @@ static render_camera_t driving_stage_camera_steady(
     render_camera_t view = chase_camera_render(&stage->camera);
     float speed = fabsf(vehicle_forward_speed(&stage->vehicle));
     view.fov_y += fminf(speed * 0.004f, 0.14f);
-    if (stage->piloting > 0) {
+    if (stage->piloting > 0 || stage->chute.active) {
       /* Far from the ground, and wide: a long near plane keeps the paint on
        * the runway from flickering. */
       view.near_plane = 1.0f;
@@ -1292,7 +1313,7 @@ void driving_stage_render(driving_stage_t* stage) {
   render_environment_t environment = daylight_environment(stage->hour);
   environment.fog_start = stage->scene.environment.fog_start;
   environment.fog_end = stage->scene.environment.fog_end;
-  if (stage->piloting > 0) {
+  if (stage->piloting > 0 || stage->chute.active) {
     /* From the air the city is seen a long way off. */
     environment.fog_start *= 3.0f;
     environment.fog_end *= 3.5f;
@@ -1338,7 +1359,7 @@ void driving_stage_render(driving_stage_t* stage) {
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
-  if (stage->blast < 0.15f)
+  if (stage->blast < 0.15f || !stage->blast_car)
     car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night,
                     stage->rain_clock);
   if (stage->blast > 0) {
@@ -1382,7 +1403,8 @@ void driving_stage_render(driving_stage_t* stage) {
                    night);
   }
   air_stage_draw(stage, night);
-  if (stage->on_foot && stage->piloting == 0 && stage->blast == 0) {
+  if (stage->on_foot && stage->piloting == 0 &&
+      (stage->blast == 0 || !stage->blast_kills)) {
     /* The person who got out, in the clothes of an adult from the crowd. */
     pedestrian_draw_figure(&stage->people_meshes, r, stage->walker.position,
                            stage->walker.yaw, stage->walker.speed,

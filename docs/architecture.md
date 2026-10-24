@@ -249,3 +249,9 @@ Junctions: kerb corners are arcs (`round_corner` in `junction_geometry.c`) when 
 ## The road to the airport (2026-10-24)
 
 The drive starts on "Airport Road" (`spawn_on_airport_road` in `city_generator.c`), about 230 m from the airport's gate, facing it. `gen_airport_road` (in `generator_airport.c`) adds that road to a copy of the model before generation, from the nearest crossing of streets (a junction of degree 3 or more, so the rest of the city reaches it) to the gate, which the manifest records (`gate_x`, `gate_y`, `gate_z` on the `airport` line).
+
+## Bailing out (2026-10-24)
+
+F in the air is a jump (`bail_out` in `air_stage.c`): the player drops with a parachute (`driving_stage_t.chute`: seconds, velocity), 0.7 s of free fall and then 0.9 s for the canopy to open, a descent at about 5.5 m/s, A/D turn and W drifts forward, and the ground or a roof ends it ("LANDED"; an opening too low, over 14 m/s on landing, is WASTED). The aircraft is `doomed`: `aircraft_step` cuts its power and noses it over (a plane) or takes the lift from the rotor (a helicopter), and `air_stage_step_adrift` flies it, with the same wall and ground checks, until it crashes: a blast (`driving_stage_crash_at`, which kills only a player within 9 m) and the aircraft goes back to its stand. A blast from an aircraft does not wreck the player's car (`blast_car`).
+
+The engine note follows the aircraft that is flown: the audio listener distance is taken to it, not to the car left standing at the start, which had made the plane and the helicopter fade away as they climbed.

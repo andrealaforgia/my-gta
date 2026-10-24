@@ -17,8 +17,15 @@ bool air_stage_board(driving_stage_t* stage);
 /* The aircraft within reach of the walker, or NULL. */
 const aircraft_t* air_stage_nearest(const driving_stage_t* stage);
 /* F while piloting: out beside the aircraft if it is down and nearly
- * stopped. True if the player got out. */
+ * stopped; in the air, a jump with a parachute, and the aircraft left to dive
+ * and crash. True if the player got out either way. */
 bool air_stage_leave(driving_stage_t* stage);
+/* One step of the descent on the parachute: steering turns, the throttle
+ * drifts forward; the ground ends it. */
+void air_stage_step_chute(driving_stage_t* stage, driving_input_t input,
+                          float dt);
+/* Aircraft with nobody in them dive and crash. */
+void air_stage_step_adrift(driving_stage_t* stage, float dt);
 /* The aircraft that was being flown goes back to its stand, and the player
  * is no longer piloting. */
 void air_stage_stop(driving_stage_t* stage);

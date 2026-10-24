@@ -27,6 +27,7 @@ typedef struct {
   float rotor_speed; /* 0 stopped .. 1 flying speed */
   float yaw_rate;
   bool on_ground;
+  bool doomed; /* left with nobody at the controls: it dives and crashes */
 } aircraft_t;
 
 /* What the pilot asks for, each -1 to 1: pitch positive is nose up, roll

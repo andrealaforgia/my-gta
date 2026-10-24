@@ -536,6 +536,94 @@ static void a_wrecked_car_burns_then_blows_up_and_the_player_starts_again(
   stop(&run);
 }
 
+/* Puts the player in a plane in the air over the airport. */
+static aircraft_t* take_to_the_air(city_run_t* run) {
+  driving_stage_t* stage = &run->stage;
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(run, stand, 1.0f);
+  driving_stage_interact(stage); /* out of the car */
+  const city_airport_t* airport = &stage->scene.package->airport;
+  vec3_t axis = vec3(-sinf(airport->yaw), 0, -cosf(airport->yaw));
+  aircraft_t* plane = &stage->aircraft[0];
+  vec3_t start =
+      vec3(airport->x - axis.x * 380.0f, 5.0f, airport->z - axis.z * 380.0f);
+  scene_stream(&stage->scene, start, 1 << 20);
+  ray_t down = {vec3(start.x, 100.0f, start.z), vec3(0, -1, 0)};
+  ray_cast_result_t hit;
+  assert(physics_ray_cast(stage->physics, down, 300.0f, COLLISION_LAYER_GROUND,
+                          &hit));
+  plane->position = vec3(start.x, hit.hit.point.y, start.z);
+  plane->yaw = airport->yaw;
+  stage->walker.position = vec3(start.x + 3.0f, plane->position.y, start.z);
+  driving_stage_interact(stage);
+  assert(stage->piloting == 1);
+  for (int i = 0; i < 120 * 22 && plane->on_ground; i++) {
+    float t = (float)i / 120.0f;
+    driving_input_t fly = {0, t > 8.0f ? 1.0f : 0.0f, 0, true, false};
+    driving_stage_step(stage, fly, 1.0f / 120.0f);
+  }
+  assert(!plane->on_ground);
+  return plane;
+}
+
+/* F in the air is a jump: a parachute for the player, a dive and a crash for
+ * the plane, which goes back to its stand; the player lands and lives. */
+static void f_in_the_air_bails_out_and_the_plane_crashes(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  aircraft_t* plane = take_to_the_air(&run);
+  driving_input_t level = {0, 0, 0, true, false};
+  for (int i = 0; i < 120 * 6; i++)
+    driving_stage_step(stage, level, 1.0f / 120.0f);
+  float height_at_jump = plane->position.y;
+  assert(height_at_jump > 20.0f);
+  driving_stage_interact(stage);
+  assert(stage->piloting == 0 && stage->chute.active && plane->doomed);
+  /* Down on the parachute, slowly, while the plane dives and blows up. */
+  driving_input_t drift = {0, 0, 0, false, false};
+  bool blew = false;
+  float fastest_fall = 0;
+  for (int i = 0; i < 120 * 90 && stage->chute.active; i++) {
+    driving_stage_step(stage, drift, 1.0f / 120.0f);
+    if (stage->blast > 0) blew = true;
+    fastest_fall = fmaxf(fastest_fall, -stage->chute.velocity.y);
+  }
+  assert(!stage->chute.active && stage->on_foot);
+  assert(fastest_fall < 12.0f); /* a canopy, not a plunge */
+  /* Let the plane finish if it has not. */
+  for (int i = 0; i < 120 * 30 && plane->doomed; i++) {
+    driving_stage_step(stage, drift, 1.0f / 120.0f);
+    if (stage->blast > 0) blew = true;
+  }
+  assert(blew && !plane->doomed);
+  /* Back on its stand, and the player's car is not wrecked by a plane. */
+  assert(near_to(plane->position.x, stage->aircraft_home[0].position.x, 0.01f));
+  for (int i = 0; i < 120 * 4; i++)
+    driving_stage_step(stage, drift, 1.0f / 120.0f);
+  assert(stage->on_foot && !stage->wrecked && stage->blast == 0);
+  stop(&run);
+}
+
+/* The engine is heard from the aircraft, not from the car left behind. */
+static void the_engine_note_stays_with_the_aircraft_that_is_flown(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  aircraft_t* plane = take_to_the_air(&run);
+  driving_input_t level = {0, 0, 0, true, false};
+  for (int i = 0; i < 60 * 8; i++) {
+    driving_stage_advance(stage, level, 1.0 / 60.0);
+  }
+  /* Far from the car by now, yet the engine is close and running. */
+  const rigid_body_t* body = car(&run);
+  assert(vec3_distance(plane->position, body->position) > 100.0f);
+  audio_state_t sound = driving_stage_audio_state(stage);
+  assert(sound.engine_running && sound.listener_distance < 40.0f);
+  assert(sound.rpm > 2000.0f);
+  stop(&run);
+}
+
 /* Every vehicle in the fleet, lorries and buses included, can be taken. */
 static void every_fleet_vehicle_can_be_stolen_and_driven(void) {
   city_run_t run;
@@ -1020,6 +1108,8 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(a_player_who_got_out_survives_the_car_blowing_up_unless_close);
   RUN(every_fleet_vehicle_can_be_stolen_and_driven);
+  RUN(f_in_the_air_bails_out_and_the_plane_crashes);
+  RUN(the_engine_note_stays_with_the_aircraft_that_is_flown);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
   RUN(the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it);

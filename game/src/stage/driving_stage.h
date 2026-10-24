@@ -67,6 +67,7 @@ typedef struct {
   float blast;   /* seconds since it blew up; 0 while it has not */
   vec3_t blast_at;
   bool blast_kills;    /* whether the player is close enough to die in it */
+  bool blast_car;      /* the player's car blew up, not an aircraft */
   bool wrecked;        /* the car has blown up and is no use any more */
   float entering;      /* seconds into getting into a car; 0 when not */
   vec3_t entry_start;  /* where the walker set off from */
@@ -103,6 +104,11 @@ typedef struct {
   aircraft_t aircraft_home[CITY_PACKAGE_MAX_AIRCRAFT]; /* where it stands */
   size_t aircraft_count;
   int piloting; /* 0 on the ground, else the aircraft flown, from 1 */
+  struct {
+    bool active;     /* the player is coming down on a parachute */
+    float time;      /* seconds since they jumped */
+    vec3_t velocity; /* metres a second */
+  } chute;
   chase_camera_params_t saved_camera_params; /* kept while flying */
   walker_t walker;
   int walker_outfit;

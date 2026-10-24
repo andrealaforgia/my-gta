@@ -1,5 +1,7 @@
 #include "aircraft_visual.h"
 
+#include <math.h>
+
 #include "mesh_data.h"
 
 static void build_plane(mesh_data_t* paint, mesh_data_t* trim,
@@ -88,13 +90,18 @@ aircraft_visual_t aircraft_visual_create(renderer_t* renderer) {
   v.heli_glass = upload(renderer, &c);
   v.heli_rotor = upload(renderer, &d);
   v.heli_tail_rotor = upload(renderer, &e);
+  mesh_data_t canopy = mesh_data_create();
+  mesh_data_add_ellipsoid(&canopy, vec3(0, 0, 0), vec3(3.4f, 1.1f, 3.4f), 8,
+                          16);
+  v.canopy = upload(renderer, &canopy);
   return v;
 }
 
 void aircraft_visual_destroy(aircraft_visual_t* v, renderer_t* renderer) {
   mesh_handle_t all[] = {v->plane_paint, v->plane_trim, v->plane_glass,
                          v->plane_prop,  v->heli_paint, v->heli_trim,
-                         v->heli_glass,  v->heli_rotor, v->heli_tail_rotor};
+                         v->heli_glass,  v->heli_rotor, v->heli_tail_rotor,
+                         v->canopy};
   for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++)
     renderer_release_mesh(renderer, all[i]);
 }
@@ -141,4 +148,27 @@ void aircraft_visual_draw(const aircraft_visual_t* v, renderer_t* renderer,
   renderer_draw_mesh(
       renderer, v->heli_tail_rotor, trim,
       turned(base, vec3(0.12f, 2.3f, 5.7f), vec3(1, 0, 0), a->rotor * 2.5f));
+}
+
+void aircraft_visual_draw_canopy(const aircraft_visual_t* visual,
+                                 renderer_t* renderer, vec3_t feet, float yaw,
+                                 float open) {
+  if (open <= 0.01f) return;
+  /* It fills out sideways and rises as it opens. */
+  float size = 0.25f + 0.75f * open;
+  vec3_t top = vec3_add(feet, vec3(0, 2.0f + 2.9f * open, 0));
+  material_t cloth = material_rough(vec3(0.9f, 0.3f, 0.12f), 0.9f);
+  mat4_t at = mat4_multiply(
+      mat4_translation(top),
+      mat4_multiply(mat4_from_quat(quat_from_yaw(yaw)),
+                    mat4_scaling(vec3(size, 0.6f + 0.4f * open, size))));
+  renderer_draw_mesh(renderer, visual->canopy, cloth, at);
+  /* Lines from the rim to the shoulders. */
+  vec3_t shoulders = vec3_add(feet, vec3(0, 1.4f, 0));
+  for (int i = 0; i < 6; i++) {
+    float angle = yaw + 6.2831853f * (float)i / 6.0f;
+    vec3_t rim = vec3_add(top, vec3(cosf(angle) * 3.2f * size, -0.7f * open,
+                                    sinf(angle) * 3.2f * size));
+    renderer_draw_line(renderer, rim, shoulders, vec3(0.9f, 0.9f, 0.9f));
+  }
 }

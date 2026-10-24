@@ -96,6 +96,37 @@ static void a_helicopter_hovers_flies_forward_and_lands(void) {
   assert(status == AIRCRAFT_FLYING && heli.on_ground);
 }
 
+/* With nobody flying it, a plane in the air noses over and hits the ground. */
+static void a_plane_left_without_a_pilot_dives_and_crashes(void) {
+  aircraft_t plane = plane_taking_off(40.0f);
+  assert(!plane.on_ground);
+  plane.position.y = 150.0f; /* well up */
+  plane.doomed = true;
+  aircraft_status_t status = AIRCRAFT_FLYING;
+  float t = 0;
+  while (status == AIRCRAFT_FLYING && t < 30.0f) {
+    status = aircraft_step(&plane, controls(0, 0, 0), 0, DT);
+    t += DT;
+  }
+  assert(status == AIRCRAFT_CRASHED && t < 20.0f);
+}
+
+/* A helicopter loses its lift and falls hard. */
+static void a_helicopter_left_without_a_pilot_falls_and_crashes(void) {
+  aircraft_t heli = aircraft_create(AIRCRAFT_HELICOPTER, vec3(0, 0, 0), 0);
+  for (float t = 0; t < 14.0f; t += DT)
+    aircraft_step(&heli, controls(0, 0, 1), 0, DT);
+  assert(heli.position.y > 40.0f);
+  heli.doomed = true;
+  aircraft_status_t status = AIRCRAFT_FLYING;
+  float t = 0;
+  while (status == AIRCRAFT_FLYING && t < 30.0f) {
+    status = aircraft_step(&heli, controls(0, 0, 0), 0, DT);
+    t += DT;
+  }
+  assert(status == AIRCRAFT_CRASHED);
+}
+
 static void keys_become_flying_controls(void) {
   driving_input_t forward = {1, 0, -1, true, false};
   aircraft_controls_t c = aircraft_controls_from_input(forward);
@@ -113,5 +144,7 @@ void run_aircraft_tests(void) {
   RUN(a_hard_landing_is_a_crash_and_a_gentle_one_is_not);
   RUN(a_helicopter_needs_the_rotor_to_spin_up_before_it_lifts);
   RUN(a_helicopter_hovers_flies_forward_and_lands);
+  RUN(a_plane_left_without_a_pilot_dives_and_crashes);
+  RUN(a_helicopter_left_without_a_pilot_falls_and_crashes);
   RUN(keys_become_flying_controls);
 }
