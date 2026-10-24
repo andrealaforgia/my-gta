@@ -70,6 +70,7 @@ typedef struct {
   bool blast_car;      /* the player's car blew up, not an aircraft */
   bool wrecked;        /* the car has blown up and is no use any more */
   float entering;      /* seconds into getting into a car; 0 when not */
+  float door_clock;    /* seconds the door has left of swinging out and shut */
   vec3_t entry_start;  /* where the walker set off from */
   float shot_cooldown; /* seconds until the pistol can fire again */
   float shot_flash;    /* seconds the last shot's tracer is shown */

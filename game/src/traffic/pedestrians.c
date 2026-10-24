@@ -437,6 +437,59 @@ int pedestrians_punch(pedestrians_t* p, vec3_t from, vec3_t direction,
   return 1;
 }
 
+bool pedestrians_eject_driver(pedestrians_t* p, vec3_t car) {
+  if (p->count == 0 || p->path_count == 0) return false;
+  /* The walkable street nearest the car, and how far along it. */
+  int route = -1;
+  float along = 0, best = 25.0f;
+  for (size_t r = 0; r < p->path_count; r++) {
+    const city_route_t* road = p->paths[r].route;
+    if (!walkable(road) || p->paths[r].length <= 12.0f) continue;
+    float walked = 0;
+    for (size_t i = 1; i < road->point_count; i++) {
+      float ax = road->points[2 * i - 2], az = road->points[2 * i - 1];
+      float bx = road->points[2 * i], bz = road->points[2 * i + 1];
+      float dx = bx - ax, dz = bz - az;
+      float seg = hypotf(dx, dz);
+      if (seg < 1e-3f) continue;
+      float t = ((car.x - ax) * dx + (car.z - az) * dz) / (seg * seg);
+      t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      float d = hypotf(ax + dx * t - car.x, az + dz * t - car.z);
+      if (d < best) best = d, route = (int)r, along = walked + seg * t;
+      walked += seg;
+    }
+  }
+  if (route < 0) return false;
+  /* The person furthest from the car, who will not be missed. */
+  person_t* who = NULL;
+  float far = -1;
+  for (size_t i = 0; i < p->count; i++) {
+    person_t* person = &p->people[i];
+    if (person->down > 0) continue;
+    float d = hypotf(person->position.x - car.x, person->position.z - car.z);
+    if (d > far) who = person, far = d;
+  }
+  if (!who) return false;
+  who->route = route;
+  who->side = 1;
+  who->direction = 1;
+  float margin = p->margin_start[route];
+  float last = p->paths[route].length - p->margin_end[route] - 1.0f;
+  who->u =
+      along < margin + 1.0f ? margin + 1.0f : (along > last ? last : along);
+  who->cross = 0;
+  pose(p, who);
+  /* Hauled out and flung down on the pavement: reeling, then off. */
+  who->stagger = 0.7f;
+  who->panic = 10.0f;
+  who->speed = 0;
+  float ax = who->position.x - car.x, az = who->position.z - car.z;
+  float run = who->heading_x * ax + who->heading_z * az;
+  who->direction = run >= 0 ? 1 : -1;
+  pose(p, who);
+  return true;
+}
+
 void pedestrians_alarm(pedestrians_t* p, vec3_t at, float radius) {
   for (size_t i = 0; i < p->count; i++) {
     person_t* person = &p->people[i];

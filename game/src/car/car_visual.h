@@ -44,6 +44,10 @@ typedef struct {
   int extra_wheel_count;
   bool emergency; /* has beacons: police, ambulance, fire engine */
   mesh_handle_t indicator_left, indicator_right; /* amber corner lamps */
+  /* The driver's door, hinged at its front edge on the left flank: the panel
+   * and window in the door's own frame, and the dark opening behind it. */
+  mesh_handle_t door_panel, door_window, door_opening;
+  vec3_t door_hinge;
   material_t indicator_material;
 } car_visual_t;
 
@@ -72,6 +76,11 @@ void car_visual_draw_cockpit(const car_visual_t* visual, renderer_t* renderer,
 /* How much of its paint colour survives at a damage level: 1 when sound,
  * duller as it is battered. */
 float car_visual_damage_tint(float damage);
+/* The driver's door swung out by `open` (0 shut, 1 wide), with the opening it
+ * leaves; nothing is drawn when it is shut, as the body has its own panel. */
+void car_visual_draw_door(const car_visual_t* visual, renderer_t* renderer,
+                          transform_t chassis, float open);
+
 /* Puffs of smoke rising from the bonnet once damage passes 0.6, thicker as
  * it worsens; `time` in seconds moves them. */
 void car_visual_draw_smoke(const car_visual_t* visual, renderer_t* renderer,

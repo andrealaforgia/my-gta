@@ -292,6 +292,34 @@ car_visual_t car_visual_create(renderer_t* renderer,
   visual.wheel_rim = upload(renderer, &rim_mesh);
   visual.wheel_hub = upload(renderer, &hub_mesh);
   visual.dash_material = material_rough(vec3(0.1f, 0.1f, 0.11f), 0.8f);
+  /* The driver's door: on a car, the flank under the side glass; on a lorry,
+   * the cab's. It is hinged at the front edge, on the left (-x). */
+  bool cab_door = style != BODY_CAR && style != BODY_POLICE &&
+                  style != BODY_TAXI && style != BODY_PICKUP;
+  float door_front = cab_door ? -L + 0.45f : -L * 0.22f;
+  float door_length = cab_door ? 1.25f : L * 0.62f;
+  float door_low = cab_door ? floor + 0.25f : floor + 0.3f * h.y;
+  float door_belt = cab_door ? floor + (h.y * 0.55f - floor) * 0.45f : sill;
+  float door_high = cab_door ? h.y * 0.55f - 0.12f : roof - 0.08f;
+  visual.door_hinge = vec3(-w - 0.02f, 0, door_front);
+  mesh_data_t door_panel = mesh_data_create(), door_window = mesh_data_create(),
+              door_opening = mesh_data_create();
+  mesh_data_add_box(
+      &door_panel,
+      vec3(-0.03f, (door_low + door_belt) * 0.5f, door_length * 0.5f),
+      vec3(0.03f, (door_belt - door_low) * 0.5f, door_length * 0.5f));
+  mesh_data_add_box(
+      &door_window,
+      vec3(-0.025f, (door_belt + door_high) * 0.5f, door_length * 0.5f),
+      vec3(0.025f, (door_high - door_belt) * 0.5f, door_length * 0.46f));
+  /* The dark inside seen through the doorway, set a little out of the flank. */
+  mesh_data_add_box(
+      &door_opening,
+      vec3(0.0f, (door_low + door_high) * 0.5f, door_length * 0.5f),
+      vec3(0.012f, (door_high - door_low) * 0.5f, door_length * 0.5f));
+  visual.door_panel = upload_optional(renderer, &door_panel);
+  visual.door_window = upload_optional(renderer, &door_window);
+  visual.door_opening = upload_optional(renderer, &door_opening);
   visual.chassis = upload_optional(renderer, &body_mesh);
   visual.cabin = upload_optional(renderer, &cabin_mesh);
   visual.glass = upload_optional(renderer, &glass_mesh);
@@ -349,9 +377,10 @@ car_visual_t car_visual_create(renderer_t* renderer,
 
 void car_visual_destroy(car_visual_t* visual, renderer_t* renderer) {
   mesh_handle_t optional[] = {
-      visual->chassis, visual->cabin,       visual->glass,
-      visual->lights,  visual->rear_lights, visual->trim,
-      visual->accent,  visual->beacon_a,    visual->beacon_b};
+      visual->chassis,    visual->cabin,       visual->glass,
+      visual->lights,     visual->rear_lights, visual->trim,
+      visual->accent,     visual->beacon_a,    visual->beacon_b,
+      visual->door_panel, visual->door_window, visual->door_opening};
   for (size_t i = 0; i < sizeof(optional) / sizeof(optional[0]); i++)
     if (optional[i].id != 0) renderer_release_mesh(renderer, optional[i]);
   renderer_release_mesh(renderer, visual->wheel);
@@ -540,4 +569,19 @@ void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
 void car_visual_set_paint(car_visual_t* visual, vec3_t colour) {
   if (visual->own_paint) return;
   visual->paint.base_color = colour;
+}
+
+void car_visual_draw_door(const car_visual_t* visual, renderer_t* renderer,
+                          transform_t chassis, float open) {
+  if (open <= 0.01f || visual->door_panel.id == 0) return;
+  mat4_t base = mat4_multiply(transform_to_matrix(chassis),
+                              mat4_translation(visual->door_hinge));
+  /* Out about the hinge: the rear edge swings away from the car. */
+  mat4_t swung = mat4_multiply(
+      base, mat4_from_quat(quat_from_axis_angle(vec3(0, 1, 0), -open * 1.15f)));
+  material_t inside = visual->dash_material;
+  inside.base_color = vec3_scale(inside.base_color, 0.6f);
+  draw_optional(renderer, visual->door_opening, inside, base);
+  draw_optional(renderer, visual->door_panel, visual->paint, swung);
+  draw_optional(renderer, visual->door_window, visual->glass_material, swung);
 }

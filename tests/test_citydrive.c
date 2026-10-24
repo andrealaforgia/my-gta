@@ -648,6 +648,36 @@ static void on_foot_the_player_can_punch_but_not_twice_at_once(void) {
   test_pedestrians = 0;
 }
 
+/* Getting out, and getting in, the driver's door swings open and shuts. */
+static void the_driver_door_swings_open_to_get_out_and_in(void) {
+  city_run_t run;
+  start(&run);
+  driving_stage_t* stage = &run.stage;
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(&run, stand, 1.0f);
+  assert(stage->door_clock == 0);
+  driving_stage_interact(stage); /* out */
+  assert(stage->on_foot && stage->door_clock > 1.0f);
+  drive(&run, stand, 0.5f);
+  driving_stage_render(stage);
+  int open_draws = renderer_stats(run.renderer).draw_calls;
+  drive(&run, stand, 1.5f); /* shut by now */
+  assert(stage->door_clock == 0);
+  driving_stage_render(stage);
+  int shut_draws = renderer_stats(run.renderer).draw_calls;
+  /* The panel, its window and the dark doorway: three more. */
+  assert(open_draws >= shut_draws + 3);
+  /* And in again: open as they reach it, shut once they are in. */
+  driving_stage_interact(stage);
+  assert(stage->entering > 0);
+  drive(&run, stand, 0.45f);
+  driving_stage_render(stage);
+  assert(renderer_stats(run.renderer).draw_calls >= shut_draws + 2);
+  drive(&run, stand, 1.2f);
+  assert(!stage->on_foot);
+  stop(&run);
+}
+
 /* Every vehicle in the fleet, lorries and buses included, can be taken. */
 static void every_fleet_vehicle_can_be_stolen_and_driven(void) {
   city_run_t run;
@@ -1132,6 +1162,7 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(a_player_who_got_out_survives_the_car_blowing_up_unless_close);
   RUN(every_fleet_vehicle_can_be_stolen_and_driven);
+  RUN(the_driver_door_swings_open_to_get_out_and_in);
   RUN(on_foot_the_player_can_punch_but_not_twice_at_once);
   RUN(f_in_the_air_bails_out_and_the_plane_crashes);
   RUN(the_engine_note_stays_with_the_aircraft_that_is_flown);

@@ -114,6 +114,12 @@ void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
 int pedestrians_punch(pedestrians_t* pedestrians, vec3_t from, vec3_t direction,
                       float reach);
 
+/* The driver of a car that has just been taken: the person furthest from the
+ * car (so nobody vanishes from sight) turns up on the pavement beside it,
+ * reels from being hauled out and runs. Returns false if no street with a
+ * pavement is near. */
+bool pedestrians_eject_driver(pedestrians_t* pedestrians, vec3_t car);
+
 /* People are drawn within this many metres, and never put down nearer than
  * it, so nobody appears in front of the player. */
 #define PEDESTRIAN_DRAW_RANGE 200.0f

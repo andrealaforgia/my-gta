@@ -406,6 +406,36 @@ static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
   physics_world_destroy(world);
 }
 
+/* The driver of a stolen car is hauled out onto the pavement beside it and
+ * runs; the person who is used is one from far away, not one in sight. */
+static void the_driver_of_a_stolen_car_is_hauled_out_and_runs(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 3, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 10.0f);
+  pedestrians_place(people, 1, 0, 1, 1, 14.0f);
+  pedestrians_place(people, 2, 0, 1, 1, 90.0f); /* far down the street */
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  vec3_t car = vec3(-50.0f, 0.4f, 2.0f);
+  assert(pedestrians_eject_driver(people, car));
+  /* The far one has come to the car, and reels. */
+  pedestrian_t driver = pedestrians_get(people, 2);
+  assert(hypotf(driver.position.x - car.x, driver.position.z - car.z) < 9.0f);
+  assert(driver.fall > 0 && driver.speed == 0);
+  /* Then runs, away from the car. */
+  float before = hypotf(driver.position.x - car.x, driver.position.z - car.z);
+  for (int i = 0; i < 120 * 3; i++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  driver = pedestrians_get(people, 2);
+  assert(driver.speed > 2.0f);
+  assert(hypotf(driver.position.x - car.x, driver.position.z - car.z) >
+         before + 3.0f);
+  /* No street with a pavement near, nobody to eject. */
+  assert(!pedestrians_eject_driver(people, vec3(0, 0, 500.0f)));
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
 /* A punch in the face: the person reels, then turns and runs from whoever
  * threw it, and the people about take fright. */
 static void a_punched_person_reels_and_then_runs_away_from_the_puncher(void) {
@@ -1326,6 +1356,7 @@ void run_traffic_tests(void) {
   RUN(a_person_hit_fast_is_thrown_up_and_somersaults_before_landing);
   RUN(a_person_who_is_hit_thrashes_their_limbs_then_lies_still);
   RUN(a_punched_person_reels_and_then_runs_away_from_the_puncher);
+  RUN(the_driver_of_a_stolen_car_is_hauled_out_and_runs);
   RUN(a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it);
   RUN(people_near_trouble_run_and_then_calm_down);
   RUN(a_car_stops_short_of_the_player_in_its_way);

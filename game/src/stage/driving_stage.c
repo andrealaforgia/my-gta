@@ -381,6 +381,7 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   stage->shot_cooldown = fmaxf(0.0f, stage->shot_cooldown - dt);
   stage->shot_flash = fmaxf(0.0f, stage->shot_flash - dt);
   stage->punch_clock = fmaxf(0.0f, stage->punch_clock - dt);
+  stage->door_clock = fmaxf(0.0f, stage->door_clock - dt);
   stage->punch_rest = fmaxf(0.0f, stage->punch_rest - dt);
   if (stage->traffic) {
     traffic_set_signal_time(stage->traffic, stage->signal_clock);
@@ -1097,6 +1098,7 @@ static float distance_to_own_car(const driving_stage_t* stage) {
 /* The walker gets in: a walk to the driver's door, then down into the seat. */
 static void begin_entry(driving_stage_t* stage) {
   stage->entering = 0.001f;
+  stage->door_clock = 0;
   stage->entry_start = stage->walker.position;
 }
 
@@ -1114,7 +1116,30 @@ static vec3_t driver_door(const driving_stage_t* stage, float* yaw_out) {
 #define ENTRY_WALK 0.7f
 #define ENTRY_SEAT 0.45f
 
-/* The pillar over the airport gate and the way to it laid on the road. */
+#define DOOR_EXIT_TIME 1.3f
+
+static float smooth_step(float t) {
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return t * t * (3.0f - 2.0f * t);
+}
+
+/* How far the driver's door is open, 0 to 1: it swings out as the person
+ * reaches it, stays while they get in, and shuts behind them; on the way out
+ * it swings open, holds, and shuts. */
+static float door_open_amount(const driving_stage_t* stage) {
+  if (stage->entering > 0) {
+    float t = stage->entering;
+    float out = smooth_step((t - 0.2f) / 0.4f);
+    float in = smooth_step((t - (ENTRY_WALK + 0.1f)) / (ENTRY_SEAT - 0.1f));
+    return out * (1.0f - in);
+  }
+  if (stage->door_clock > 0) {
+    float t = DOOR_EXIT_TIME - stage->door_clock;
+    return smooth_step(t / 0.3f) * (1.0f - smooth_step((t - 0.9f) / 0.35f));
+  }
+  return 0.0f;
+}
+
 static void step_entry(driving_stage_t* stage, float dt) {
   stage->entering += dt;
   walker_t* w = &stage->walker;
@@ -1174,6 +1199,8 @@ void driving_stage_interact(driving_stage_t* stage) {
       feet.y = hit.hit.point.y;
     walker_init(&stage->walker, feet, atan2f(-nose.x, -nose.z));
     stage->on_foot = true;
+    stage->door_clock = DOOR_EXIT_TIME; /* the door swings open */
+    if (stage->audio) audio_device_trigger_impact(stage->audio, 0.05f);
     stage->car_camera_params = stage->camera.params;
     stage->camera.params = walking_camera_params();
     chase_camera_reset(&stage->camera,
@@ -1196,10 +1223,13 @@ void driving_stage_interact(driving_stage_t* stage) {
       stage->has_fleet &&
       parked_cars_take(&stage->parked, stage->physics, stage->walker.position,
                        GET_IN_REACH + 1.0f, &variant, &position, &yaw, &paint);
-  if (!got && stage->traffic)
+  bool from_traffic = false;
+  if (!got && stage->traffic) {
     got = traffic_take_car(stage->traffic, stage->walker.position,
                            GET_IN_REACH + 1.0f, &variant, &position, &yaw,
                            &paint);
+    from_traffic = got;
+  }
   if (!got) return;
   if (!driving_stage_set_vehicle(stage, variant,
                                  vec3_add(position, vec3(0, 0.3f, 0)),
@@ -1211,6 +1241,9 @@ void driving_stage_interact(driving_stage_t* stage) {
   stage->camera.params = walking_camera_params();
   begin_entry(stage);
   say(stage, "CAR STOLEN");
+  /* Somebody was at the wheel of a car on the road: out they come. */
+  if (from_traffic && stage->people)
+    pedestrians_eject_driver(stage->people, position);
   if (stage->city_rules && stage->traffic &&
       wanted_crime(&stage->wanted) == WANTED_STARTED)
     say(stage, "WANTED");
@@ -1387,9 +1420,12 @@ void driving_stage_render(driving_stage_t* stage) {
   }
   renderer_begin_frame(r, driving_stage_camera(stage), environment);
   stage->last_drawn = world_render(&stage->world, r);
-  if (stage->blast < 0.15f || !stage->blast_car)
+  if (stage->blast < 0.15f || !stage->blast_car) {
     car_visual_draw(&stage->car_visual, r, &stage->vehicle, chassis, night,
                     stage->rain_clock);
+    car_visual_draw_door(&stage->car_visual, r, chassis,
+                         door_open_amount(stage));
+  }
   if (stage->blast > 0) {
     car_visual_draw_blast(&stage->car_visual, r, stage->blast_at, stage->blast);
   } else {
