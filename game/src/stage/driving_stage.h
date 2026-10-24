@@ -7,6 +7,7 @@
 #define GAME_SRC_STAGE_DRIVING_STAGE_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "aircraft.h"
 #include "aircraft_visual.h"
@@ -49,6 +50,8 @@ typedef struct {
 } stage_options_t;
 
 typedef struct {
+  uint32_t seed;
+  scene_kind_t scene_kind;
   window_t* window;
   renderer_t* renderer;
   audio_device_t* audio;
@@ -160,6 +163,12 @@ typedef struct {
 bool driving_stage_init(driving_stage_t* stage, window_t* window,
                         renderer_t* renderer, audio_device_t* audio,
                         stage_options_t options);
+bool driving_stage_init_seeded(driving_stage_t* stage, window_t* window,
+                               renderer_t* renderer, audio_device_t* audio,
+                               stage_options_t options, uint32_t seed);
+void driving_stage_apply_frame(driving_stage_t* stage, window_events_t events,
+                               driving_input_t input, bool horn,
+                               double seconds);
 void driving_stage_destroy(driving_stage_t* stage);
 /* What the car should sound like now: silent while paused or on the map. */
 audio_state_t driving_stage_audio_state(const driving_stage_t* stage);

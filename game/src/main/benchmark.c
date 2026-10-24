@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "session_log.h"
 
 #define ROUTE_VERSION 2
 #define ROUTE_SECONDS 30.0f
@@ -214,55 +215,7 @@ static uint64_t hash_bytes(uint64_t hash, const void* bytes, size_t count) {
   return hash;
 }
 
-static uint64_t hash_vehicle(uint64_t hash, const vehicle_params_t* p) {
-  const float values[] = {p->mass,
-                          p->chassis_half_extents.x,
-                          p->chassis_half_extents.y,
-                          p->chassis_half_extents.z,
-                          p->track_width,
-                          p->wheelbase,
-                          p->wheel_attach_height,
-                          p->wheel_radius,
-                          p->wheel_width,
-                          p->suspension_rest_length,
-                          p->spring_stiffness,
-                          p->damper_compression,
-                          p->damper_rebound,
-                          p->tyre_friction,
-                          p->tyre_lateral_stiffness,
-                          p->rolling_resistance,
-                          p->roll_centre_lift,
-                          p->drag_coefficient,
-                          p->max_steer_angle,
-                          p->steering_rate,
-                          p->steering_half_lock_speed,
-                          p->brake_force,
-                          p->handbrake_force,
-                          p->handbrake_grip_factor,
-                          p->engine_idle_rpm,
-                          p->engine_max_rpm,
-                          p->engine_braking,
-                          p->reverse_ratio,
-                          p->final_drive,
-                          p->drivetrain_efficiency,
-                          p->shift_up_rpm,
-                          p->shift_down_rpm,
-                          p->shift_time};
-  const int integers[] = {p->torque_point_count, p->gear_count, (int)p->drive};
-  hash = hash_bytes(hash, p->name, strlen(p->name));
-  hash = hash_bytes(hash, p->body, strlen(p->body));
-  hash = hash_bytes(hash, values, sizeof(values));
-  hash = hash_bytes(hash, integers, sizeof(integers));
-  hash = hash_bytes(hash, p->gear_ratios, sizeof(p->gear_ratios));
-  for (int i = 0; i < VEHICLE_MAX_TORQUE_POINTS; i++) {
-    const float point[] = {p->torque_curve[i].rpm, p->torque_curve[i].torque};
-    hash = hash_bytes(hash, point, sizeof(point));
-  }
-  return hash;
-}
-
 static uint64_t workload_hash(const driving_stage_t* stage) {
-  const city_package_t* package = stage->scene.package;
   uint64_t hash = 14695981039346656037ull;
   char settings[256];
   int size =
@@ -272,45 +225,11 @@ static uint64_t workload_hash(const driving_stage_t* stage) {
                getenv("GTA_DEBUG_SHADOWS") != NULL,
                renderer_post_enabled(stage->renderer));
   hash = hash_bytes(hash, settings, (size_t)size);
-  hash = hash_vehicle(hash, &stage->vehicle.params);
-  hash = hash_bytes(hash, &package->spawn_position,
-                    sizeof(package->spawn_position));
-  hash = hash_bytes(hash, &package->spawn_yaw, sizeof(package->spawn_yaw));
-  hash = hash_bytes(hash, package->signals,
-                    package->signal_count * sizeof(city_signal_t));
-  hash = hash_bytes(hash, package->parked,
-                    package->parked_count * sizeof(city_parking_t));
-  hash = hash_bytes(hash, package->crossings,
-                    package->crossing_count * 2 * sizeof(float));
-  hash = hash_bytes(hash, package->bus_stops,
-                    package->bus_stop_count * 2 * sizeof(float));
-  for (size_t i = 0; i < package->route_count; i++) {
-    const city_route_t* route = &package->routes[i];
-    hash = hash_bytes(hash, &route->drivable, sizeof(route->drivable));
-    hash = hash_bytes(hash, &route->oneway, sizeof(route->oneway));
-    hash = hash_bytes(hash, &route->width, sizeof(route->width));
-    hash = hash_bytes(hash, &route->pavement, sizeof(route->pavement));
-    hash = hash_bytes(hash, &route->start_node, sizeof(route->start_node));
-    hash = hash_bytes(hash, &route->end_node, sizeof(route->end_node));
-    hash =
-        hash_bytes(hash, route->points, route->point_count * 2 * sizeof(float));
-  }
-  for (size_t i = 0; i < package->chunk_count; i++) {
-    const city_chunk_t* chunk = &package->chunks[i];
-    hash = hash_bytes(hash, &chunk->bounds, sizeof(chunk->bounds));
-    for (size_t j = 0; j < chunk->part_count; j++) {
-      const city_part_t* part = &chunk->parts[j];
-      hash = hash_bytes(hash, part->material, strlen(part->material));
-      hash = hash_bytes(hash, &part->collider, sizeof(part->collider));
-      hash = hash_bytes(hash, &part->layer, sizeof(part->layer));
-      hash = hash_bytes(hash, &part->friction, sizeof(part->friction));
-      hash = hash_bytes(hash, &part->source_id, sizeof(part->source_id));
-      hash = hash_bytes(hash, part->mesh.vertices,
-                        part->mesh.vertex_count * sizeof(vertex_t));
-      hash = hash_bytes(hash, part->mesh.indices,
-                        part->mesh.index_count * sizeof(uint32_t));
-    }
-  }
+  uint64_t vehicle = session_vehicle_hash(&stage->vehicle.params);
+  hash = hash_bytes(hash, &vehicle, sizeof(vehicle));
+  hash = hash_bytes(hash, &stage->seed, sizeof(stage->seed));
+  uint64_t content = session_content_hash(stage);
+  hash = hash_bytes(hash, &content, sizeof(content));
   return hash;
 }
 

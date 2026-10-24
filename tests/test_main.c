@@ -30,6 +30,7 @@ static const test_group_t groups[] = {
     {"lidar", run_lidar_tests},
     {"aircraft", run_aircraft_tests},
     {"benchmark", run_benchmark_tests},
+    {"replay", run_replay_tests},
 };
 
 int main(int argc, char* argv[]) {

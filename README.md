@@ -42,6 +42,23 @@ the baseline fails the command. Compare on the same machine with the same
 city and settings; incompatible workloads are refused. See `docs/testing.md`
 for the measured reference and validation details.
 
+Record a reproducible session with
+`./gta-like --city=pordenone --seed=42 --record=/tmp/city-bug.replay`, then
+play it back with
+`./gta-like --city=pordenone --replay=/tmp/city-bug.replay`.
+The log restores its initial seed, time, weather and actor counts. Playback
+checks each frame's gameplay state and reports the first divergence. Use the
+same build, platform and city data; a custom vehicle also needs its matching
+`--vehicle` file. Explicit settings that conflict with the log are rejected.
+
+Recording ends when the session quits or returns to the menu. For a short
+automated check, add `--record-frames=120`. Logs contain controls, actions and
+exact frame durations; they preserve the existing fixed-step physics and
+frame-driven weather behaviour. Existing recording files are never
+overwritten. Inputs are flushed before simulation so an interrupted log can
+reproduce its last complete input; a missing checksum/footer is still
+reported as an incomplete session. Logs contain no audio or video.
+
 ## Generate and drive a real city
 
 ```

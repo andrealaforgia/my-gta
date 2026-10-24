@@ -36,6 +36,7 @@ GROUPS = (
     "lidar",
     "aircraft",
     "benchmark",
+    "replay",
 )
 
 

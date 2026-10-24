@@ -213,6 +213,13 @@ static void a_short_benchmark_exercises_the_stage_and_writes_its_report(void) {
     assert(near_to(rendered.m[i], expected_projection.m[i], 0.00001));
   assert(benchmark_read(report_path, &loaded));
   assert(near_to(loaded.frame_average_ms, report.frame_average_ms, 0.000001));
+  stage.seed++;
+  float before_seed_check = stage.simulated_seconds;
+  file = tmpfile();
+  assert(file && !benchmark_run(&stage, 3, 2, report_path, file, &loaded));
+  assert(stage.simulated_seconds == before_seed_check);
+  fclose(file);
+  stage.seed--;
   report.frame_average_ms = 1e-6;
   file = fopen(report_path, "w");
   assert(file && benchmark_write(file, &report));

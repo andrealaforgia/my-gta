@@ -1,10 +1,14 @@
 #include <errno.h>
+#include <fcntl.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "audio_device.h"
 #include "benchmark.h"
@@ -13,6 +17,7 @@
 #include "driving_stage.h"
 #include "log.h"
 #include "renderer.h"
+#include "session_log.h"
 #include "window.h"
 
 typedef struct {
@@ -22,12 +27,75 @@ typedef struct {
   bool no_audio;
   bool scene_chosen; /* on the command line, so no menu */
   bool benchmark;
+  uint32_t seed;
+  bool seed_chosen;
+  const char* record_path;
+  const char* replay_path;
+  size_t record_frames;
+  unsigned overrides;
   const char* benchmark_baseline;
   const char* benchmark_output;
   char city_path[256]; /* the package for --city=NAME */
 } options_t;
 
 #define CITIES_DIRECTORY "assets_cooked/cities"
+
+enum {
+  OVERRIDE_HOUR = 1,
+  OVERRIDE_RATE = 2,
+  OVERRIDE_RAIN = 4,
+  OVERRIDE_TRAFFIC = 8,
+  OVERRIDE_PEDESTRIANS = 16
+};
+
+static bool parse_unsigned(const char* value, uint32_t* result) {
+  if (!value[0] || value[0] == '-' || value[0] == '+') return false;
+  char* end;
+  errno = 0;
+  unsigned long long parsed = strtoull(value, &end, 10);
+  if (end == value || *end || errno || parsed > UINT32_MAX) return false;
+  *result = (uint32_t)parsed;
+  return true;
+}
+
+static bool configure_replay(options_t* options) {
+  FILE* file = fopen(options->replay_path, "r");
+  session_header_t header;
+  bool valid = file && session_read_header(file, &header);
+  if (file) fclose(file);
+  if (!valid) {
+    fprintf(stderr, "invalid or unreadable replay header\n");
+    return false;
+  }
+  if (header.scene == SCENE_CITY && !options->scene_chosen) {
+    fprintf(stderr, "replay requires a matching city: %s\n", header.scene_name);
+    return false;
+  }
+  if ((options->scene_chosen && options->stage.scene != header.scene) ||
+      (options->seed_chosen && options->seed != header.seed) ||
+      ((options->overrides & OVERRIDE_HOUR) &&
+       options->stage.start_hour != header.hour) ||
+      ((options->overrides & OVERRIDE_RATE) &&
+       options->stage.hour_seconds != header.hour_seconds) ||
+      ((options->overrides & OVERRIDE_RAIN) &&
+       options->stage.rain != header.rain) ||
+      ((options->overrides & OVERRIDE_TRAFFIC) &&
+       options->stage.traffic_cars != header.traffic) ||
+      ((options->overrides & OVERRIDE_PEDESTRIANS) &&
+       options->stage.pedestrians != header.pedestrians)) {
+    fprintf(stderr, "command line conflicts with replay settings\n");
+    return false;
+  }
+  options->seed = header.seed;
+  options->stage.scene = header.scene;
+  options->stage.start_hour = header.hour;
+  options->stage.hour_seconds = header.hour_seconds;
+  options->stage.rain = header.rain;
+  options->stage.traffic_cars = header.traffic;
+  options->stage.pedestrians = header.pedestrians;
+  options->scene_chosen = true;
+  return true;
+}
 
 static bool valid_benchmark_numbers(int argc, char* argv[]) {
   const char* integers[] = {
@@ -51,7 +119,9 @@ static bool valid_benchmark_numbers(int argc, char* argv[]) {
       char* end;
       errno = 0;
       double parsed = strtod(value, &end);
-      if (end == value || *end || errno || !isfinite(parsed)) return false;
+      if (end == value || *end || errno || !isfinite(parsed) ||
+          fabs(parsed) > FLT_MAX)
+        return false;
     }
   }
   return true;
@@ -76,6 +146,10 @@ static void print_help(void) {
       "vsync\n"
       "  --bench-baseline=<file>   fail above a 25%% performance regression\n"
       "  --bench-output=<file>     save the report as a reusable baseline\n"
+      "  --record=<file>          record one session to a new log file\n"
+      "  --replay=<file>          replay a log and verify every frame\n"
+      "  --record-frames=N        stop recording after N frames\n"
+      "  --seed=N                 simulation seed (default 2026)\n"
       "  --mute                   open audio but start muted\n"
       "  --time=H                 start at hour H (0-24), default 10\n"
       "  --traffic=N              moving cars in the city (default 120, 0 for "
@@ -98,13 +172,16 @@ static void print_help(void) {
 
 static bool parse_options(int argc, char* argv[], options_t* options) {
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--bench") == 0 &&
+    if ((strcmp(argv[i], "--bench") == 0 ||
+         strncmp(argv[i], "--record=", 9) == 0 ||
+         strncmp(argv[i], "--replay=", 9) == 0) &&
         !valid_benchmark_numbers(argc, argv)) {
       fprintf(stderr, "--bench requires a city and valid workload options\n");
       return false;
     }
   }
   memset(options, 0, sizeof(*options));
+  options->seed = 2026;
   options->window = window_default_options("gta-like");
   options->stage.scene = SCENE_TEST_TRACK;
   options->stage.start_hour = 10.0f;
@@ -116,6 +193,23 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
     const char* argument = argv[i];
     if (strcmp(argument, "--help") == 0) {
       options->help = true;
+    } else if (strncmp(argument, "--seed=", 7) == 0) {
+      if (!parse_unsigned(argument + 7, &options->seed)) {
+        fprintf(stderr, "invalid seed\n");
+        return false;
+      }
+      options->seed_chosen = true;
+    } else if (strncmp(argument, "--record=", 9) == 0) {
+      options->record_path = argument + 9;
+    } else if (strncmp(argument, "--replay=", 9) == 0) {
+      options->replay_path = argument + 9;
+    } else if (strncmp(argument, "--record-frames=", 16) == 0) {
+      uint32_t frames;
+      if (!parse_unsigned(argument + 16, &frames) || frames == 0) {
+        fprintf(stderr, "invalid record-frames\n");
+        return false;
+      }
+      options->record_frames = frames;
     } else if (strcmp(argument, "--bench") == 0) {
       options->benchmark = true;
     } else if (strncmp(argument, "--bench-baseline=", 17) == 0) {
@@ -133,14 +227,19 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
     } else if (strcmp(argument, "--debug") == 0) {
       options->stage.show_debug = true;
     } else if (strncmp(argument, "--time=", 7) == 0) {
+      options->overrides |= OVERRIDE_HOUR;
       options->stage.start_hour = (float)atof(argument + 7);
     } else if (strncmp(argument, "--hour-seconds=", 15) == 0) {
+      options->overrides |= OVERRIDE_RATE;
       options->stage.hour_seconds = (float)atof(argument + 15);
     } else if (strncmp(argument, "--traffic=", 10) == 0) {
+      options->overrides |= OVERRIDE_TRAFFIC;
       options->stage.traffic_cars = atoi(argument + 10);
     } else if (strncmp(argument, "--pedestrians=", 14) == 0) {
+      options->overrides |= OVERRIDE_PEDESTRIANS;
       options->stage.pedestrians = atoi(argument + 14);
     } else if (strcmp(argument, "--rain") == 0) {
+      options->overrides |= OVERRIDE_RAIN;
       options->stage.rain = 1.0f;
     } else if (strncmp(argument, "--width=", 8) == 0) {
       options->window.width = atoi(argument + 8);
@@ -170,6 +269,41 @@ static bool parse_options(int argc, char* argv[], options_t* options) {
     fprintf(stderr, "window size must be at least 320x200\n");
     return false;
   }
+  if (options->record_path && options->replay_path) {
+    fprintf(stderr, "choose record and replay separately\n");
+    return false;
+  }
+  if (options->benchmark && (options->record_path || options->replay_path)) {
+    fprintf(stderr, "benchmark cannot be combined with a session log\n");
+    return false;
+  }
+  if (options->record_frames && !options->record_path) {
+    fprintf(stderr, "record-frames requires --record\n");
+    return false;
+  }
+  if ((options->record_path && !options->record_path[0]) ||
+      (options->replay_path && !options->replay_path[0])) {
+    fprintf(stderr, "session path must not be empty\n");
+    return false;
+  }
+  if (options->record_path) {
+    struct stat existing;
+    if (stat(options->record_path, &existing) == 0) {
+      fprintf(stderr, "recording path already exists\n");
+      return false;
+    }
+    options->scene_chosen = true;
+  }
+  if ((options->record_path || options->replay_path) &&
+      (!isfinite(options->stage.start_hour) || options->stage.start_hour < 0 ||
+       options->stage.start_hour >= 24 ||
+       !isfinite(options->stage.hour_seconds) ||
+       options->stage.hour_seconds < 0 || options->stage.traffic_cars < 0 ||
+       options->stage.pedestrians < 0)) {
+    fprintf(stderr, "invalid session workload options\n");
+    return false;
+  }
+  if (options->replay_path && !configure_replay(options)) return false;
   if ((options->benchmark_baseline || options->benchmark_output) &&
       !options->benchmark) {
     fprintf(stderr, "benchmark file options require --bench\n");
@@ -216,8 +350,8 @@ static int run_benchmark(const options_t* options, window_t* window,
     return EXIT_FAILURE;
   }
   driving_stage_t stage;
-  bool success =
-      driving_stage_init(&stage, window, renderer, NULL, options->stage);
+  bool success = driving_stage_init_seeded(&stage, window, renderer, NULL,
+                                           options->stage, options->seed);
   benchmark_report_t report = {0};
   if (success) {
     success = benchmark_run(&stage, BENCHMARK_FRAMES, BENCHMARK_WARMUP_FRAMES,
@@ -228,6 +362,42 @@ static int run_benchmark(const options_t* options, window_t* window,
   if (output != stdout && fclose(output) != 0) success = false;
   driving_stage_destroy(&stage);
   return success ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static bool run_session(driving_stage_t* stage, const options_t* options) {
+  if (options->replay_path) {
+    FILE* file = fopen(options->replay_path, "r");
+    session_result_t result = {0};
+    bool success = file && session_replay(file, stage, &result);
+    if (file) fclose(file);
+    if (!success) {
+      fprintf(stderr, "replay failed: %s\n", result.error);
+      return false;
+    }
+    printf("replayed %zu frames, state %llx\n", result.frames,
+           (unsigned long long)result.state_hash);
+    return true;
+  }
+  if (options->record_path) {
+    int descriptor =
+        open(options->record_path, O_WRONLY | O_CREAT | O_EXCL, 0600);
+    FILE* file = descriptor >= 0 ? fdopen(descriptor, "w") : NULL;
+    if (!file) {
+      if (descriptor >= 0) close(descriptor);
+      perror("cannot create recording");
+      return false;
+    }
+    bool success = session_run_live(stage, file, options->record_frames);
+    if (fclose(file) != 0) success = false;
+    if (success)
+      printf("recorded state %llx\n",
+             (unsigned long long)session_state_hash(stage));
+    else
+      fprintf(stderr, "recording failed\n");
+    return success;
+  }
+  driving_stage_run(stage);
+  return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -274,10 +444,12 @@ int main(int argc, char* argv[]) {
       if (choice >= 0) options.stage.city_package = cities[choice].path;
     }
     driving_stage_t stage;
-    if (driving_stage_init(&stage, &window, renderer, has_audio ? &audio : NULL,
-                           options.stage)) {
-      driving_stage_run(&stage);
-      again = stage.back_to_menu;
+    if (driving_stage_init_seeded(&stage, &window, renderer,
+                                  has_audio ? &audio : NULL, options.stage,
+                                  options.seed)) {
+      if (!run_session(&stage, &options)) status = EXIT_FAILURE;
+      again =
+          stage.back_to_menu && !options.record_path && !options.replay_path;
     } else {
       LOG_ERROR("main", "could not start the driving stage");
       status = EXIT_FAILURE;

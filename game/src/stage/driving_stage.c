@@ -9,6 +9,7 @@
 #include "daylight.h"
 #include "log.h"
 #include "poles.h"
+#include "session_log.h"
 #include "street_name.h"
 
 #define PHYSICS_STEP (1.0 / 120.0)
@@ -29,10 +30,12 @@ static chase_camera_params_t chase_camera_params_for(
   return camera;
 }
 
-bool driving_stage_init(driving_stage_t* stage, window_t* window,
-                        renderer_t* renderer, audio_device_t* audio,
-                        stage_options_t options) {
+bool driving_stage_init_seeded(driving_stage_t* stage, window_t* window,
+                               renderer_t* renderer, audio_device_t* audio,
+                               stage_options_t options, uint32_t seed) {
   memset(stage, 0, sizeof(*stage));
+  stage->seed = seed;
+  stage->scene_kind = options.scene;
   stage->window = window;
   stage->renderer = renderer;
   stage->audio = audio;
@@ -71,13 +74,13 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
     if (options.traffic_cars > 0 && stage->scene.route_count > 0)
       stage->traffic = traffic_create(
           stage->scene.routes, stage->scene.route_count, stage->physics,
-          &stage->fleet, options.traffic_cars, 2026);
+          &stage->fleet, options.traffic_cars, seed);
   }
   if (stage->has_fleet && options.pedestrians > 0 &&
       stage->scene.route_count > 0) {
     stage->people =
         pedestrians_create(stage->scene.routes, stage->scene.route_count,
-                           stage->physics, options.pedestrians, 2027);
+                           stage->physics, options.pedestrians, seed + 1u);
     if (stage->people) {
       pedestrians_set_crossings(stage->people, stage->scene.crossings,
                                 stage->scene.crossing_count);
@@ -1606,25 +1609,21 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   }
 }
 
+void driving_stage_apply_frame(driving_stage_t* stage, window_events_t events,
+                               driving_input_t input, bool horn,
+                               double seconds) {
+  handle_events(stage, events);
+  stage->horn = horn;
+  driving_stage_advance(stage, input, seconds);
+}
+
 void driving_stage_run(driving_stage_t* stage) {
-  double previous = platform_seconds();
-  while (!stage->quit) {
-    double now = platform_seconds();
-    double frame_seconds = now - previous;
-    previous = now;
-    handle_events(stage, window_poll(stage->window));
-    driving_input_t input = window_driving_input(stage->window);
-    stage->horn = window_horn_held(stage->window);
-    driving_stage_advance(stage, input, frame_seconds);
-    driving_stage_render(stage);
-    window_swap(stage->window);
-    stage->frame_ms = (platform_seconds() - now) * 1000.0;
-    stage->fps_accumulator += frame_seconds;
-    stage->fps_frames++;
-    if (stage->fps_accumulator >= 0.5) {
-      stage->fps = stage->fps_frames / stage->fps_accumulator;
-      stage->fps_accumulator = 0;
-      stage->fps_frames = 0;
-    }
-  }
+  session_run_live(stage, NULL, 0);
+}
+
+bool driving_stage_init(driving_stage_t* stage, window_t* window,
+                        renderer_t* renderer, audio_device_t* audio,
+                        stage_options_t options) {
+  return driving_stage_init_seeded(stage, window, renderer, audio, options,
+                                   2026);
 }

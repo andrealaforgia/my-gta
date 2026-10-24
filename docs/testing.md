@@ -37,6 +37,7 @@ ordinary push workflow continues to run this group in both full test suites.
 | generator | ear clipping, every feature becomes geometry, widths and heights, corridor fitting, lamp posts, winding, spawn on a road, package round trip and validation, determinism, settings hash |
 | citydrive | the fixture city loads from a cooked package, the car drives its spawn road and through a junction, a building stops it |
 | benchmark | average and nearest-rank p99, the 25% budget boundary, baseline validation and workload compatibility, repeatable camera motion, and the real benchmark runner with a stub renderer |
+| replay | checked frame-log round trips through the actual stage, seeded actors, pause/map and long-frame semantics, meaningful state-hash coverage, malformed logs and first-divergence reporting |
 
 The GPU performance check is `./gta-like --bench --city=pordenone`. It renders
 1800 frames with two fixed 1/120 s simulation steps per frame, after an
@@ -55,6 +56,23 @@ samples. After building the game, `python3 tests/test_benchmark_cli.py` checks
 CLI validation and protects the baseline from being overwritten through
 path aliases; the push workflow runs these checks too. The recorded Pordenone
 machine reference is under `docs/baselines/`.
+
+Replay tests run the actual shared frame dispatcher through pause/map,
+long-frame catch-up, driving and player actions. Independent state-delta
+checks prevent recording and replay from agreeing on the same broken
+behaviour. The observable checksum covers player/vehicle, law, time/weather,
+traffic/people, aircraft/projectiles/parachute and persistent world state;
+renderer handles and measured timings are excluded. Future gameplay actions
+and state must extend the action mapping/checksum and their replay tests.
+
+Each log has initial settings/content identity, complete `input` records,
+separate `state` checksums and a final `end` record. Input is flushed before
+simulation and state before rendering. A valid pending input is executed to
+reproduce a possible crash, then rejected as unverified if its state record
+is absent. Malformed inputs never reach simulation. Tests distinguish that
+case from a verified prefix missing its footer and report third-frame
+tampering after two valid frames. The CLI checks run together with
+`python3 -m unittest discover -s tests -p '*_cli.py'` after the game is built.
 
 `make sound` renders ten seconds of a standing start (idle, a skid at
 launch, full throttle through the gears with wind rising, an impact,

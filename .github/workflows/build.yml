@@ -31,8 +31,8 @@ jobs:
         run: make -j4
       - name: Tests
         run: make test
-      - name: Benchmark command-line tests
-        run: python3 tests/test_benchmark_cli.py
+      - name: Command-line tests
+        run: python3 -m unittest discover -s tests -p '*_cli.py'
       - name: Sanitizers
         run: make sanitize
       - name: Cook and validate the fixture city

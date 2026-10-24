@@ -30,10 +30,10 @@ protection against overwriting the baseline through aliases.
 Measured on Apple M4 Pro, 24 GB, macOS 26.5.2, OpenGL 4.1 Metal 90.5 at
 1280 by 720, dry daylight, post-processing enabled, 120 cars and 250 people.
 The current Pordenone package has 1368 chunks and 7,157,082 triangles;
-config hash `fc89e80665356d89`. The reference is
+config hash `fc89e80665356d89`. The initial reference was saved to
 `docs/baselines/pordenone-m4-pro.cfg`.
 
-| Metric | Reference |
+| Metric | Initial reference |
 |---|---:|
 | Mean completed frame | 12.980 ms |
 | 99th-percentile completed frame | 19.275 ms |
@@ -413,3 +413,60 @@ name, and an arrow and distance under the airport's, which points straight at it
 by road or by air. The only one so far is Corso Europa 22 in Pessano con
 Bornago (there is no number 22 in the map data, so it sits between 18 and 26);
 it is temporary: delete the file to remove it.
+
+## Checked input recording and replay (2026-10-24)
+
+`--record=<file>` records one live session; `--replay=<file>` replays its
+frames and checks the resulting state after each one. `--seed=N` controls
+traffic and pedestrians (default 2026, with the pedestrian seed one higher).
+The original stage initialisation API keeps that default; main uses the
+explicit seeded form. `--record-frames=N` ends a bounded recording without
+manual input. Existing recordings are protected with exclusive creation.
+
+`game/src/stage/session_log.c` owns the version-1 text protocol, session loop
+and replay. Live input and replay both call `driving_stage_apply_frame`, so
+actions and time advancement have one implementation. Each input includes
+the exact frame duration, driving controls, horn and action bits, using
+lossless hexadecimal floating-point text. Physics retains its fixed steps;
+weather, game time and camera retain their frame-duration semantics. Playback
+wall-clock speed does not change those inputs.
+
+The header stores the seed, initial time/rate/rain, actor counts, public
+scene/vehicle labels and content/handling/initial-state fingerprints. Replay
+restores these settings and rejects explicit conflicting overrides. City
+packages and custom vehicle configuration remain external matching assets;
+logs store no paths to them. This is a same-build/data/platform contract,
+not a cross-architecture floating-point promise or a save-game format.
+
+Inputs are written and flushed before simulation, and their state checksums
+are written and flushed before rendering. A crash therefore leaves its last
+complete input available. Replay applies that pending input before requiring
+the state record; if it returns, the missing checksum is an explicit failure
+and that frame is not counted as verified. A missing footer also fails.
+Malformed/nonfinite/out-of-range inputs are rejected before simulation.
+Mismatch errors report the first divergent frame; live quit and resizing
+remain responsive during replay without admitting live gameplay controls.
+
+`session_hash.c` fingerprints observable player/vehicle state (including
+stolen paint), law, time/weather, traffic, pedestrians, aircraft, missiles,
+parachute and persistent collider/pole/chunk state. It excludes pointers,
+padding, GPU handles, audio phases and measured timings. Benchmark and replay
+share vehicle/content fingerprints, and benchmark identity now includes the
+effective seed. The refreshed M4 Pro reference is 13.052 ms mean frame,
+17.925 ms p99 and 0.841 ms simulation, with unchanged draw/triangle counts.
+Every metric was checked against the previous 25% budget before adopting
+the new identity; the older measurements above remain the initial baseline.
+
+Validation: all 21 native C groups, full ASan/UBSan, eight CLI test methods,
+lint/build and fixture validation passed. Ubuntu GCC lint/build, CLI and the
+replay/benchmark groups passed locally; hosted CI remains the Linux sanitizer
+gate because of the documented local Docker stage-init slowdown. Actual GPU
+recording/replay passed on the track with non-default settings and changed
+resolution, and in Pordenone with seed 71, rain at 19:00, 12 cars and 20
+people restored from the log. Tampering was reported at frame 3. A pending
+third input was executed and reported unverified. Independent review passed.
+
+Viewed a rainy evening snapshot on Airport Road: traffic, lamps, headlights,
+wet road and HUD remain visible. The verges are very dark and the lower
+control hint has low contrast; neither is changed by recording. Handling and
+camera feel still need manual play-testing. Next is roadmap 0.4, save/load.
