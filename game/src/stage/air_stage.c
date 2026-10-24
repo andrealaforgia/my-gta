@@ -373,7 +373,7 @@ void air_stage_draw(driving_stage_t* stage, float night) {
           &stage->people_meshes, stage->renderer,
           vec3_add(stage->walker.position, vec3(0, -lift, 0)),
           stage->walker.yaw, 0.0f, phase, stage->walker_outfit, fall, lift,
-          flail);
+          flail, 0.0f);
     }
     /* The canopy sways like a pendulum and leans into a turn. */
     float sway = 0.07f * sinf(stage->chute.time * 2.1f) * open;

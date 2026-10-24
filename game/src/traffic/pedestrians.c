@@ -29,6 +29,7 @@ typedef struct {
   float lift, rise;       /* height off the ground, and its speed, in the air */
   float flight;           /* seconds the throw lasts, 0 for a plain fall */
   float turns;            /* quarter turns the body makes before it lies */
+  float stagger;          /* seconds of reeling from a punch */
 } person_t;
 
 struct pedestrians {
@@ -270,7 +271,10 @@ static void launch(person_t* person, float rise, int flips) {
 
 /* How far over the body is, in quarter turns: 1 is lying flat. */
 static float body_fall(const person_t* person) {
-  if (person->down <= 0) return 0.0f;
+  /* Reeling from a punch: a lean back, not a fall. */
+  if (person->down <= 0)
+    return person->stagger > 0 ? 0.3f * fminf(1.0f, person->stagger / 0.3f)
+                               : 0.0f;
   if (person->flight <= 0) return fminf(1.0f, person->down * 4.0f);
   if (person->down >= person->flight) return 1.0f;
   return person->turns * person->down / person->flight;
@@ -279,7 +283,7 @@ static float body_fall(const person_t* person) {
 /* Arms and legs thrash while the body is in the air and for a moment after
  * it lands, then it lies still. */
 static float body_flail(const person_t* person) {
-  if (person->down <= 0) return 0.0f;
+  if (person->down <= 0) return person->stagger > 0 ? 0.8f : 0.0f;
   float landed = person->down - person->flight;
   if (landed <= 0) return 1.0f;
   return fmaxf(0.0f, 1.0f - landed / 2.5f);
@@ -398,6 +402,41 @@ int pedestrians_hit(pedestrians_t* p, vec3_t centre, float yaw,
   return hit;
 }
 
+int pedestrians_punch(pedestrians_t* p, vec3_t from, vec3_t direction,
+                      float reach) {
+  person_t* best = NULL;
+  float best_distance = reach;
+  for (size_t i = 0; i < p->count; i++) {
+    person_t* person = &p->people[i];
+    if (person->down > 0 || person->stagger > 0) continue;
+    float dx = person->position.x - from.x, dz = person->position.z - from.z;
+    float d = hypotf(dx, dz);
+    if (d > best_distance || fabsf(person->position.y - from.y) > 1.5f)
+      continue;
+    /* Within sixty degrees of where the fist goes. */
+    if (d > 0.05f && (dx * direction.x + dz * direction.z) / d < 0.5f) continue;
+    best = person, best_distance = d;
+  }
+  if (!best) return 0;
+  best->stagger = 0.45f;
+  best->panic = 9.0f;
+  best->cross = 0;
+  best->speed = 0;
+  /* Away from the puncher, along whichever way the pavement runs. */
+  float ax = best->position.x - from.x, az = best->position.z - from.z;
+  float along = best->heading_x * ax + best->heading_z * az;
+  if ((along < 0) == (best->direction > 0)) best->direction = -best->direction;
+  pose(p, best);
+  /* The rest of the street takes fright. */
+  for (size_t i = 0; i < p->count; i++) {
+    person_t* person = &p->people[i];
+    float dx = person->position.x - from.x, dz = person->position.z - from.z;
+    if (person != best && person->down <= 0 && dx * dx + dz * dz < 9.0f * 9.0f)
+      person->panic = fmaxf(person->panic, 6.0f);
+  }
+  return 1;
+}
+
 void pedestrians_alarm(pedestrians_t* p, vec3_t at, float radius) {
   for (size_t i = 0; i < p->count; i++) {
     person_t* person = &p->people[i];
@@ -475,6 +514,15 @@ void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
         recycle_person(p, person);
         pose(p, person);
       }
+      continue;
+    }
+    if (person->stagger > 0) {
+      /* Reeling: nothing else until it passes. */
+      person->stagger -= dt;
+      person->speed = 0;
+      person->phase += 14.0f * dt;
+      /* Off like a shot when it passes. */
+      if (person->stagger <= 0) person->speed = person->cruise * 1.8f;
       continue;
     }
     /* Hold still while a car is within a few metres. */
@@ -608,14 +656,14 @@ void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
                             renderer_t* renderer, vec3_t position, float yaw,
                             float speed, float phase, int outfit) {
   pedestrian_draw_figure_fallen(meshes, renderer, position, yaw, speed, phase,
-                                outfit, 0.0f, 0.0f, 0.0f);
+                                outfit, 0.0f, 0.0f, 0.0f, 0.0f);
 }
 
 void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
                                    renderer_t* renderer, vec3_t position,
                                    float yaw, float speed, float phase,
                                    int outfit, float fall, float lift,
-                                   float flail) {
+                                   float flail, float punch) {
   static const float shirts[8][3] = {{0.75f, 0.2f, 0.18f}, {0.2f, 0.35f, 0.65f},
                                      {0.85f, 0.85f, 0.8f}, {0.2f, 0.5f, 0.3f},
                                      {0.9f, 0.7f, 0.2f},   {0.35f, 0.3f, 0.35f},
@@ -700,6 +748,8 @@ void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
   for (int side = -1; side <= 1; side += 2) {
     float angle = side * swing;
     float arm_angle = -angle;
+    /* The right arm (+x) thrown forward in a punch. */
+    if (punch > 0 && side == 1) arm_angle = 1.55f * punch;
     if (flail > 0) {
       /* Legs kick and arms flung up and waved about, out of step. */
       angle = flail * (side * 1.0f * sinf(phase) + 0.4f * sinf(phase * 2.3f));
@@ -732,7 +782,7 @@ int pedestrians_draw(const pedestrians_t* p, const pedestrian_meshes_t* meshes,
     pedestrian_draw_figure_fallen(meshes, renderer, person->position,
                                   person->yaw, person->speed, person->phase,
                                   person->outfit, body_fall(person),
-                                  person->lift, body_flail(person));
+                                  person->lift, body_flail(person), 0.0f);
     drawn++;
   }
   return drawn;

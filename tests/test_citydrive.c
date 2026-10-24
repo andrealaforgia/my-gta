@@ -629,6 +629,25 @@ static void the_engine_note_stays_with_the_aircraft_that_is_flown(void) {
   stop(&run);
 }
 
+/* On foot the player can punch, a few times a second, and only on foot. */
+static void on_foot_the_player_can_punch_but_not_twice_at_once(void) {
+  test_pedestrians = 10;
+  city_run_t run;
+  start(&run);
+  driving_input_t stand = {0, 0, 0, false, false};
+  assert(!driving_stage_punch(&run.stage)); /* at the wheel */
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(&run.stage);
+  assert(run.stage.on_foot);
+  assert(driving_stage_punch(&run.stage));
+  assert(run.stage.punch_clock > 0);
+  assert(!driving_stage_punch(&run.stage)); /* the arm is still out */
+  drive(&run, stand, 0.6f);
+  assert(driving_stage_punch(&run.stage));
+  stop(&run);
+  test_pedestrians = 0;
+}
+
 /* Every vehicle in the fleet, lorries and buses included, can be taken. */
 static void every_fleet_vehicle_can_be_stolen_and_driven(void) {
   city_run_t run;
@@ -1113,6 +1132,7 @@ void run_citydrive_tests(void) {
   RUN(a_wrecked_car_burns_then_blows_up_and_the_player_starts_again);
   RUN(a_player_who_got_out_survives_the_car_blowing_up_unless_close);
   RUN(every_fleet_vehicle_can_be_stolen_and_driven);
+  RUN(on_foot_the_player_can_punch_but_not_twice_at_once);
   RUN(f_in_the_air_bails_out_and_the_plane_crashes);
   RUN(the_engine_note_stays_with_the_aircraft_that_is_flown);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);

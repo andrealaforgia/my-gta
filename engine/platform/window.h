@@ -35,6 +35,7 @@ typedef struct {
   bool toggle_weather;
   bool back_to_menu;
   bool fire;         /* G, the left mouse button, or the pad's X: shoot */
+  bool punch;        /* Q, the right mouse button, or the pad's B: punch */
   bool next_station; /* E: the next radio station */
   bool interact;     /* F: get out of the car, or into one */
 } window_events_t;

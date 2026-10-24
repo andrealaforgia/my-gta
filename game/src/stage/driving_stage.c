@@ -380,6 +380,8 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   stage->signal_clock += dt;
   stage->shot_cooldown = fmaxf(0.0f, stage->shot_cooldown - dt);
   stage->shot_flash = fmaxf(0.0f, stage->shot_flash - dt);
+  stage->punch_clock = fmaxf(0.0f, stage->punch_clock - dt);
+  stage->punch_rest = fmaxf(0.0f, stage->punch_rest - dt);
   if (stage->traffic) {
     traffic_set_signal_time(stage->traffic, stage->signal_clock);
     vec3_t where = player_position(stage);
@@ -766,7 +768,7 @@ static void draw_law(driving_stage_t* stage) {
             hypotf(stage->parked.cars[i].position.x - stage->walker.position.x,
                    stage->parked.cars[i].position.z -
                        stage->walker.position.z) < 4.2f;
-      hint = near_car ? "F  TAKE THE CAR" : "G  SHOOT";
+      hint = near_car ? "F  TAKE THE CAR" : "G  SHOOT   Q  PUNCH";
     }
   }
   if (hint) {
@@ -862,9 +864,11 @@ static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
   renderer_draw_text(
       r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
       stage->has_menu
-          ? "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  G SHOOT  E "
+          ? "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  G SHOOT  Q "
+            "PUNCH  E "
             "RADIO  T RAIN  M MAP  N MUTE  BKSP MENU  ESC QUIT"
-          : "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  G SHOOT  E "
+          : "WASD DRIVE  SPACE/SHIFT BRAKE OR RUN  F GET IN/OUT  G SHOOT  Q "
+            "PUNCH  E "
             "RADIO  T RAIN  M MAP  N MUTE  F11 FULLSCREEN  ESC QUIT");
 }
 
@@ -1244,6 +1248,25 @@ bool driving_stage_fire(driving_stage_t* stage) {
   return true;
 }
 
+#define PUNCH_TIME 0.32f
+#define PUNCH_REACH 1.5f
+
+bool driving_stage_punch(driving_stage_t* stage) {
+  if (stage->paused || stage->map_open || !stage->on_foot ||
+      stage->piloting > 0 || stage->chute.active || stage->entering > 0 ||
+      stage->punch_rest > 0)
+    return false;
+  stage->punch_clock = PUNCH_TIME;
+  stage->punch_rest = 0.45f;
+  const walker_t* w = &stage->walker;
+  int hit = stage->people ? pedestrians_punch(stage->people, w->position,
+                                              walker_forward(w), PUNCH_REACH)
+                          : 0;
+  /* A thud when it lands. */
+  if (hit && stage->audio) audio_device_trigger_impact(stage->audio, 0.12f);
+  return true;
+}
+
 static bool is_a_road_surface(const char* label) {
   static const char* names[] = {"road", "junction", "pavement", "paving",
                                 "parking"};
@@ -1411,9 +1434,14 @@ void driving_stage_render(driving_stage_t* stage) {
   if (stage->on_foot && stage->piloting == 0 && !stage->chute.active &&
       (stage->blast == 0 || !stage->blast_kills)) {
     /* The person who got out, in the clothes of an adult from the crowd. */
-    pedestrian_draw_figure(&stage->people_meshes, r, stage->walker.position,
-                           stage->walker.yaw, stage->walker.speed,
-                           stage->walker.phase, stage->walker_outfit);
+    float punch =
+        stage->punch_clock > 0
+            ? sinf(3.14159f * (1.0f - stage->punch_clock / PUNCH_TIME))
+            : 0.0f;
+    pedestrian_draw_figure_fallen(
+        &stage->people_meshes, r, stage->walker.position, stage->walker.yaw,
+        stage->walker.speed, stage->walker.phase, stage->walker_outfit, 0.0f,
+        0.0f, 0.0f, punch);
   }
   if (stage->shot_flash > 0) {
     /* The bullet's trail, and a flash at the muzzle. */
@@ -1470,6 +1498,7 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   }
   if (events.interact) driving_stage_interact(stage);
   if (events.fire) driving_stage_fire(stage);
+  if (events.punch) driving_stage_punch(stage);
   if (events.toggle_pause) stage->paused = !stage->paused;
   if (events.toggle_map) stage->map_open = !stage->map_open;
   if (events.toggle_debug) stage->show_debug = !stage->show_debug;

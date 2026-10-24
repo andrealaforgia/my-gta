@@ -73,6 +73,9 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | H | horn (hold) |
 | V | swap to the next vehicle: four cars, police car, ambulance, fire engine, bus and six lorries |
 | F | get out of the car, walk (space to run), and get back in or steal any car you stand beside |
+| G, click | on foot: fire the pistol |
+| Q, right click | on foot: punch whoever is in front; they reel and run |
+| F in the air | bail out on a parachute (A/D turn, W drift, S flare) |
 | M | the city map over a paused game, with street names and your position |
 | P | pause |
 | T | rain on or off |
@@ -118,7 +121,7 @@ windows and street lamps, parked and moving cars that follow the roads and
 give way (buses, lorries, police cars, ambulances and fire engines with sirens among them), people walking the pavements and crossing at zebras, lamp posts, signals and signs that fall when hit, shop fronts, porticoes with arches and
 painted facades along the Corso, a brick town hall with a clock tower,
 campanili, parks, water and trees, benches, bus stops, traffic lights at busy junctions that cars
-obey, a minimap in the corner and the name of the street you are on, getting out of the car to walk and steal other cars, a road to the airport (a pillar of light over its gate, a satnav line on the minimap and map, an arrow and the distance), police who chase you after a hard crash (stars, busted if they catch you standing, a getaway if you lose them), the sea along a coast, drivers who sound their horns when you hold them up, rain with wet roads, and the church bell on the hour.
+obey, a minimap in the corner and the name of the street you are on, getting out of the car to walk and steal other cars, a road to the airport (a satnav line on the minimap and map, an arrow and the distance), police who chase you after a hard crash (stars, busted if they catch you standing, a getaway if you lose them), the sea along a coast, drivers who sound their horns when you hold them up, rain with wet roads, and the church bell on the hour.
 `docs/testing.md` lists what the tests cover and
 `docs/vehicle-physics.md` the handling model and its limits. Not done:
 glTF import, bridges for cars. See the end of

@@ -73,6 +73,8 @@ typedef struct {
   vec3_t entry_start;  /* where the walker set off from */
   float shot_cooldown; /* seconds until the pistol can fire again */
   float shot_flash;    /* seconds the last shot's tracer is shown */
+  float punch_clock;   /* seconds since a punch was thrown; 0 when none is */
+  float punch_rest;    /* seconds until the next punch can be thrown */
   vec3_t shot_from, shot_to;
   int people_struck;  /* people the car ran into this step */
   int radio_station;  /* 0 off .. RADIO_STATIONS */
@@ -157,6 +159,9 @@ void driving_stage_interact(driving_stage_t* stage);
 /* Fires the pistol, when on foot: the first thing in the way is hit. A
  * person who goes down makes it a crime. Returns true if a shot was fired. */
 bool driving_stage_fire(driving_stage_t* stage);
+/* Punches whoever is in front, on foot: they reel and run. Returns true if a
+ * punch was thrown. */
+bool driving_stage_punch(driving_stage_t* stage);
 /* A line across the screen for a moment. */
 void driving_stage_say(driving_stage_t* stage, const char* text);
 /* The player did something the law minds (stealing an aircraft). */

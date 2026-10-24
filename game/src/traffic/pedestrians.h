@@ -100,12 +100,20 @@ void pedestrian_draw_figure(const pedestrian_meshes_t* meshes,
                             renderer_t* renderer, vec3_t position, float yaw,
                             float speed, float phase, int outfit);
 /* The same, tipped over backwards by `fall` quarter turns (1 is lying) and
- * `lift` metres in the air, arms and legs thrashing by `flail` (0 to 1). */
+ * `lift` metres in the air, arms and legs thrashing by `flail` (0 to 1), the
+ * right arm thrown forward in a punch by `punch` (0 to 1). */
 void pedestrian_draw_figure_fallen(const pedestrian_meshes_t* meshes,
                                    renderer_t* renderer, vec3_t position,
                                    float yaw, float speed, float phase,
                                    int outfit, float fall, float lift,
-                                   float flail);
+                                   float flail, float punch);
+/* A punch from `from` (feet) towards `direction` (flat, a unit vector): the
+ * nearest person standing within `reach` metres and about sixty degrees of it
+ * staggers and then runs away from the puncher; people close by take fright
+ * too. Returns how many were hit. */
+int pedestrians_punch(pedestrians_t* pedestrians, vec3_t from, vec3_t direction,
+                      float reach);
+
 /* People are drawn within this many metres, and never put down nearer than
  * it, so nobody appears in front of the player. */
 #define PEDESTRIAN_DRAW_RANGE 200.0f

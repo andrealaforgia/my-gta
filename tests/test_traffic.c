@@ -406,6 +406,46 @@ static void a_car_at_speed_knocks_a_person_down_and_they_lie_still(void) {
   physics_world_destroy(world);
 }
 
+/* A punch in the face: the person reels, then turns and runs from whoever
+ * threw it, and the people about take fright. */
+static void a_punched_person_reels_and_then_runs_away_from_the_puncher(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 2, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  pedestrians_place(people, 1, 0, 1, 1, 26.0f); /* a few metres behind */
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  pedestrian_t victim = pedestrians_get(people, 0);
+  vec3_t heading = vec3(-sinf(victim.yaw), 0, -cosf(victim.yaw));
+  /* The puncher stands in front of them, a metre off, facing them. */
+  vec3_t from = vec3_add(victim.position, vec3_scale(heading, 1.0f));
+  vec3_t toward = vec3_scale(heading, -1.0f);
+  /* Too far, or the wrong way: a miss. */
+  assert(pedestrians_punch(people,
+                           vec3_add(victim.position, vec3_scale(heading, 4.0f)),
+                           toward, 1.5f) == 0);
+  assert(pedestrians_punch(people, from, heading, 1.5f) == 0);
+  assert(pedestrians_punch(people, from, toward, 1.5f) == 1);
+  /* Reeling: stood still and leaning back. */
+  for (int i = 0; i < 20; i++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  pedestrian_t reeling = pedestrians_get(people, 0);
+  assert(reeling.speed == 0 && reeling.fall > 0 && reeling.fall < 0.5f);
+  /* Then away, fast, and not back towards the puncher. */
+  float before =
+      hypotf(reeling.position.x - from.x, reeling.position.z - from.z);
+  for (int i = 0; i < 120 * 2; i++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  pedestrian_t fled = pedestrians_get(people, 0);
+  float after = hypotf(fled.position.x - from.x, fled.position.z - from.z);
+  assert(fled.fall == 0 && fled.speed > 2.0f);
+  assert(after > before + 3.0f);
+  /* The other one, a few metres off, ran too, and quicker than they walk. */
+  assert(pedestrians_get(people, 1).speed > 2.0f);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
 static void a_person_who_is_hit_thrashes_their_limbs_then_lies_still(void) {
   physics_world_t* world = ground_world();
   city_route_t routes[1] = {route(west, 1, 2, 0)};
@@ -1285,6 +1325,7 @@ void run_traffic_tests(void) {
   RUN(a_car_at_speed_knocks_a_person_down_and_they_lie_still);
   RUN(a_person_hit_fast_is_thrown_up_and_somersaults_before_landing);
   RUN(a_person_who_is_hit_thrashes_their_limbs_then_lies_still);
+  RUN(a_punched_person_reels_and_then_runs_away_from_the_puncher);
   RUN(a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it);
   RUN(people_near_trouble_run_and_then_calm_down);
   RUN(a_car_stops_short_of_the_player_in_its_way);
