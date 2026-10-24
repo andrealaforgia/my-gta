@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
     if (fly >= 0 && (size_t)fly < stage.aircraft_count) {
       aircraft_t* craft = &stage.aircraft[fly];
       const city_airport_t* airport = &stage.scene.package->airport;
-      if (craft->kind == AIRCRAFT_PLANE && airport->present) {
+      if (aircraft_is_fixed_wing(craft->kind) && airport->present) {
         /* A plane starts at the end of the runway, nose along it. */
         vec3_t axis = vec3(-sinf(airport->yaw), 0, -cosf(airport->yaw));
         float x = airport->x - axis.x * 420.0f,
@@ -178,7 +178,8 @@ int main(int argc, char* argv[]) {
     }
     if (fly >= 0 && stage.piloting > 0) {
       float t = (float)i / 120.0f;
-      bool plane = stage.aircraft[stage.piloting - 1].kind == AIRCRAFT_PLANE;
+      bool plane =
+          aircraft_is_fixed_wing(stage.aircraft[stage.piloting - 1].kind);
       input.throttle = 0, input.brake = 0, input.handbrake = true;
       input.steering = steering;
       if (plane && t > 9.0f) input.brake = t < 16.0f ? 1.0f : 0.0f;
@@ -326,6 +327,8 @@ int main(int argc, char* argv[]) {
         stage.blast);
   stage.fps = 60;
   stage.view_mode = getenv("SNAPSHOT_VIEW") ? atoi(getenv("SNAPSHOT_VIEW")) : 0;
+  /* In an aircraft the same variable picks the cockpit (1). */
+  stage.air_view = stage.piloting > 0 ? stage.view_mode : 0;
   stage.map_open = getenv("SNAPSHOT_MAP") != NULL;
   if (overhead > 0) {
     const rigid_body_t* body = physics_body(stage.physics, stage.vehicle.body);

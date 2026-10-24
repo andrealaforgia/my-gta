@@ -39,6 +39,10 @@ typedef struct {
 
 typedef enum { AIRCRAFT_FLYING, AIRCRAFT_CRASHED } aircraft_status_t;
 
+/* Aeroplanes of every size run on wings; helicopters and the gunship on
+ * rotors. The jet and the gunship carry missiles. */
+bool aircraft_is_fixed_wing(aircraft_kind_t kind);
+bool aircraft_has_missiles(aircraft_kind_t kind);
 aircraft_t aircraft_create(aircraft_kind_t kind, vec3_t position, float yaw);
 /* The keys and pad as controls: W pushes the nose down and S pulls it up,
  * A and D bank, Shift or Space add power, Ctrl takes it off. */

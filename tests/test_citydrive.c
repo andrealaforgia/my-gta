@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "aircraft_cockpit.h"
 #include "city_generator.h"
 #include "city_import.h"
 #include "city_list.h"
@@ -566,6 +567,100 @@ static aircraft_t* take_to_the_air(city_run_t* run) {
   return plane;
 }
 
+/* Puts the player in aircraft `index` at the airport, on the ground. */
+static aircraft_t* board_aircraft(city_run_t* run, int index) {
+  driving_stage_t* stage = &run->stage;
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(run, stand, 1.0f);
+  if (!stage->on_foot) driving_stage_interact(stage); /* out of the car */
+  aircraft_t* craft = &stage->aircraft[index];
+  scene_stream(&stage->scene, craft->position, 1 << 20);
+  stage->walker.position = vec3_add(craft->position, vec3(3.0f, 0, 0));
+  driving_stage_interact(stage);
+  return craft;
+}
+
+/* The horn sounds in the cockpit of an aircraft as it does in a car, and not
+ * from someone walking. */
+static void the_horn_sounds_from_an_aircraft_and_not_from_a_walker(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  stage->horn = true;
+  assert(driving_stage_audio_state(stage).horn);
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(stage); /* out on foot */
+  assert(!driving_stage_audio_state(stage).horn);
+  board_aircraft(&run, 6);
+  assert(driving_stage_audio_state(stage).horn);
+  stop(&run);
+}
+
+/* C while flying looks from the pilot's seat: the eye is inside the aircraft,
+ * at the place its kind puts it, and the world is drawn from there. */
+static void the_cockpit_view_looks_from_the_pilots_seat(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  for (int index = 5; index < 8; index++) {
+    aircraft_t* craft = board_aircraft(&run, index);
+    stage->air_view = 0;
+    render_camera_t behind = driving_stage_camera(stage);
+    stage->air_view = 1;
+    render_camera_t seat = driving_stage_camera(stage);
+    vec3_t eye = transform_point(aircraft_transform(craft),
+                                 aircraft_cockpit_eye(craft->kind));
+    assert(vec3_distance(seat.eye, eye) < 0.01f);
+    assert(vec3_distance(behind.eye, craft->position) >
+           2.0f * vec3_distance(seat.eye, craft->position));
+    /* Looking where the nose points. */
+    vec3_t ahead = vec3_normalize(vec3_sub(seat.target, seat.eye));
+    vec3_t nose = aircraft_heading(craft);
+    assert(vec3_dot(ahead, nose) > 0.99f);
+    driving_stage_interact(stage); /* out again, so the next can be boarded */
+    stage->on_foot = true;
+    stage->piloting = 0;
+  }
+  stop(&run);
+}
+
+/* G in the jet or the gunship launches a missile, one at a time, that flies
+ * out and goes off where it strikes; in a plane or an airliner it does
+ * nothing. */
+static void a_missile_leaves_the_jet_flies_and_goes_off_where_it_strikes(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  board_aircraft(&run, 6);
+  assert(driving_stage_fire(stage));
+  assert(!driving_stage_fire(stage)); /* the rail is still hot */
+  assert(stage->missiles[0].active);
+  vec3_t velocity = stage->missiles[0].velocity;
+  assert(vec3_length(velocity) > 150.0f);
+  driving_input_t idle = {0, 0, 0, false, false};
+  bool struck = false;
+  for (int i = 0; i < 120 * 8; i++) {
+    driving_stage_step(stage, idle, 1.0f / 120.0f);
+    struck |= stage->strikes[0].age > 0;
+  }
+  assert(struck && !stage->missiles[0].active);
+  /* The fireball dies away. */
+  assert(stage->strikes[0].age == 0);
+  /* A second can follow once the cooldown is over. */
+  assert(driving_stage_fire(stage));
+  stop(&run);
+}
+
+static void a_plane_has_no_missiles_to_fire(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  board_aircraft(&run, 0);
+  assert(!driving_stage_fire(stage) && !stage->missiles[0].active);
+  stop(&run);
+}
+
 /* F in the air is a jump: a parachute for the player, a dive and a crash for
  * the plane, which goes back to its stand; the player lands and lives. */
 static void f_in_the_air_bails_out_and_the_plane_crashes(void) {
@@ -814,7 +909,7 @@ static void a_plane_can_be_stolen_and_flown_off_the_runway(void) {
   city_run_t run;
   start_in(&run, airport_directory);
   driving_stage_t* stage = &run.stage;
-  assert(stage->has_air && stage->aircraft_count == 5);
+  assert(stage->has_air && stage->aircraft_count == 8);
   driving_input_t stand = {0, 0, 0, false, false};
   drive(&run, stand, 1.0f);
   driving_stage_interact(stage); /* out of the car */
@@ -1166,6 +1261,10 @@ void run_citydrive_tests(void) {
   RUN(on_foot_the_player_can_punch_but_not_twice_at_once);
   RUN(f_in_the_air_bails_out_and_the_plane_crashes);
   RUN(the_engine_note_stays_with_the_aircraft_that_is_flown);
+  RUN(the_horn_sounds_from_an_aircraft_and_not_from_a_walker);
+  RUN(the_cockpit_view_looks_from_the_pilots_seat);
+  RUN(a_missile_leaves_the_jet_flies_and_goes_off_where_it_strikes);
+  RUN(a_plane_has_no_missiles_to_fire);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
   RUN(the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it);

@@ -96,7 +96,15 @@ typedef struct {
 
 #define CITY_PACKAGE_MAX_AIRCRAFT 12
 
-typedef enum { AIRCRAFT_PLANE, AIRCRAFT_HELICOPTER } aircraft_kind_t;
+/* New kinds are only ever added at the end: packages store the number. */
+typedef enum {
+  AIRCRAFT_PLANE,
+  AIRCRAFT_HELICOPTER,
+  AIRCRAFT_AIRLINER,
+  AIRCRAFT_JET,
+  AIRCRAFT_GUNSHIP,
+  AIRCRAFT_KIND_COUNT
+} aircraft_kind_t;
 
 /* An aeroplane or helicopter standing at the airport, and which way it faces
  * (yaw as for the spawn). */

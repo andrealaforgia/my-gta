@@ -38,6 +38,17 @@ void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt);
 /* The chase camera follows the aircraft. */
 void air_stage_follow(driving_stage_t* stage, float frame_seconds);
 void air_stage_draw(driving_stage_t* stage, float night);
+/* Fires a missile from the jet or the gunship, when that is what is being
+ * flown. True if one left its rail. */
+bool air_stage_fire(driving_stage_t* stage);
+/* Missiles in flight and the blasts they leave behind. */
+void air_stage_step_missiles(driving_stage_t* stage, float dt);
+/* The missiles in flight and the fireballs, drawn in the world. */
+void air_stage_draw_missiles(driving_stage_t* stage);
+/* The view from the pilot's seat. */
+render_camera_t air_stage_cockpit_camera(const driving_stage_t* stage);
+/* The flight deck, drawn over the world when looking from the cockpit. */
+void air_stage_draw_cockpit(driving_stage_t* stage);
 /* Speed, height and power in place of the car's dial. */
 void air_stage_draw_gauge(driving_stage_t* stage);
 /* The aircraft the player is in, or NULL. */

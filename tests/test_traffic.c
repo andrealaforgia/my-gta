@@ -436,6 +436,27 @@ static void the_driver_of_a_stolen_car_is_hauled_out_and_runs(void) {
   physics_world_destroy(world);
 }
 
+/* An explosion throws everyone near it to the ground and frightens the rest;
+ * someone far off is not hurt. */
+static void a_blast_floors_the_people_near_it_and_no_one_far_off(void) {
+  physics_world_t* world = ground_world();
+  city_route_t routes[1] = {route(west, 1, 2, 0)};
+  pedestrians_t* people = pedestrians_create(routes, 1, world, 3, 4);
+  pedestrians_place(people, 0, 0, 1, 1, 30.0f);
+  pedestrians_place(people, 1, 0, 1, 1, 33.0f);
+  pedestrians_place(people, 2, 0, 1, 1, 90.0f);
+  pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  vec3_t at = pedestrians_get(people, 0).position;
+  assert(pedestrians_blast(people, at, 12.0f) == 2);
+  assert(pedestrians_blast(people, at, 12.0f) == 0); /* already down */
+  for (int i = 0; i < 120; i++)
+    pedestrians_step(people, vec3(1000, 0, 1000), 1.0f / 120.0f);
+  assert(pedestrians_get(people, 0).fall > 0);
+  assert(pedestrians_get(people, 2).fall == 0);
+  pedestrians_destroy(people);
+  physics_world_destroy(world);
+}
+
 /* A punch in the face: the person reels, then turns and runs from whoever
  * threw it, and the people about take fright. */
 static void a_punched_person_reels_and_then_runs_away_from_the_puncher(void) {
@@ -1356,6 +1377,7 @@ void run_traffic_tests(void) {
   RUN(a_person_hit_fast_is_thrown_up_and_somersaults_before_landing);
   RUN(a_person_who_is_hit_thrashes_their_limbs_then_lies_still);
   RUN(a_punched_person_reels_and_then_runs_away_from_the_puncher);
+  RUN(a_blast_floors_the_people_near_it_and_no_one_far_off);
   RUN(the_driver_of_a_stolen_car_is_hauled_out_and_runs);
   RUN(a_bullet_hits_the_first_person_in_its_line_and_no_one_beside_it);
   RUN(people_near_trouble_run_and_then_calm_down);

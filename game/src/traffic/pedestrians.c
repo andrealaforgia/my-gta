@@ -530,6 +530,29 @@ bool pedestrians_shoot(pedestrians_t* p, vec3_t origin, vec3_t direction,
   return true;
 }
 
+int pedestrians_blast(pedestrians_t* p, vec3_t at, float radius) {
+  int downed = 0;
+  for (size_t i = 0; i < p->count; i++) {
+    person_t* person = &p->people[i];
+    if (person->down > 0) continue;
+    float dx = person->position.x - at.x, dz = person->position.z - at.z;
+    float d = sqrtf(dx * dx + dz * dz);
+    if (d > radius || fabsf(person->position.y - at.y) > radius) continue;
+    /* Thrown away from the blast, the nearer the harder. */
+    float away = d > 0.01f ? 1.0f / d : 0.0f;
+    float push = 4.0f + 8.0f * (1.0f - d / radius);
+    person->down = 0.001f;
+    person->cross = 0;
+    person->slide_x = dx * away * push;
+    person->slide_z = dz * away * push;
+    person->yaw = atan2f(dx * away, dz * away);
+    launch(person, 3.5f, 1);
+    downed++;
+  }
+  pedestrians_alarm(p, at, radius * 4.0f);
+  return downed;
+}
+
 void pedestrians_step(pedestrians_t* p, vec3_t player, float dt) {
   for (size_t i = 0; i < p->count; i++) {
     person_t* person = &p->people[i];

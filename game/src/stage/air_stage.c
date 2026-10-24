@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "aircraft_cockpit.h"
+
 #define BOARD_REACH 9.0f
 #define AIRCRAFT_LAYERS (COLLISION_LAYER_GROUND | COLLISION_LAYER_BUILDING)
 
@@ -40,8 +42,13 @@ static void set_streaming(driving_stage_t* stage, bool wide) {
 
 static chase_camera_params_t camera_for(aircraft_kind_t kind) {
   chase_camera_params_t p = chase_camera_default_params();
-  p.distance = kind == AIRCRAFT_PLANE ? 17.0f : 19.0f;
-  p.height = kind == AIRCRAFT_PLANE ? 4.5f : 6.0f;
+  /* Further back and higher behind the bigger aircraft. */
+  static const float distances[AIRCRAFT_KIND_COUNT] = {17.0f, 19.0f, 75.0f,
+                                                       26.0f, 30.0f};
+  static const float heights[AIRCRAFT_KIND_COUNT] = {4.5f, 6.0f, 20.0f, 6.5f,
+                                                     9.0f};
+  p.distance = distances[kind];
+  p.height = heights[kind];
   p.look_height = 1.5f;
   p.look_ahead = 0.0f;
   p.max_look_ahead = 0.0f;
@@ -81,14 +88,16 @@ bool air_stage_board(driving_stage_t* stage) {
   int best = nearest_index(stage);
   if (best < 0) return false;
   stage->piloting = best + 1;
+  stage->air_view = 0;
   set_streaming(stage, true);
   stage->saved_camera_params = stage->camera.params;
   stage->camera.params = camera_for(stage->aircraft[best].kind);
   chase_camera_reset(&stage->camera, camera_target(&stage->aircraft[best]));
   stage->walker.speed = 0;
-  driving_stage_say(stage, stage->aircraft[best].kind == AIRCRAFT_PLANE
-                               ? "PLANE STOLEN"
-                               : "HELICOPTER STOLEN");
+  static const char* stolen[AIRCRAFT_KIND_COUNT] = {
+      "PLANE STOLEN", "HELICOPTER STOLEN", "BOEING 747 STOLEN",
+      "JET FIGHTER STOLEN", "GUNSHIP STOLEN"};
+  driving_stage_say(stage, stolen[stage->aircraft[best].kind]);
   driving_stage_commit_crime(stage);
   return true;
 }
@@ -238,7 +247,8 @@ static bool fly(driving_stage_t* stage, aircraft_t* a,
 
 void air_stage_step(driving_stage_t* stage, driving_input_t input, float dt) {
   aircraft_t* a = &stage->aircraft[stage->piloting - 1];
-  bool crashed = fly(stage, a, aircraft_controls_from_input(input), true, dt);
+  stage->air_stick = aircraft_controls_from_input(input);
+  bool crashed = fly(stage, a, stage->air_stick, true, dt);
   /* The walker rides along, so what follows the player follows the aircraft. */
   stage->walker.position = a->position;
   stage->walker.speed = 0;
@@ -359,8 +369,14 @@ void air_stage_draw(driving_stage_t* stage, float night) {
     float dx = a->position.x - stage->camera.position.x;
     float dz = a->position.z - stage->camera.position.z;
     if (dx * dx + dz * dz > 700.0f * 700.0f) continue;
-    aircraft_visual_draw(&stage->air_visual, stage->renderer, a, (int)i);
+    bool seated = (int)i == stage->piloting - 1 && stage->air_view == 1;
+    if (seated)
+      aircraft_visual_draw_spinners(&stage->air_visual, stage->renderer, a);
+    else
+      aircraft_visual_draw(&stage->air_visual, stage->renderer, a, (int)i);
   }
+  if (air_stage_piloted(stage))
+    aircraft_visual_draw_sight(stage->renderer, air_stage_piloted(stage));
   if (stage->chute.active) {
     const driving_stage_t* c = stage;
     float open = chute_open(c);
@@ -417,7 +433,7 @@ void air_stage_draw_gauge(driving_stage_t* stage) {
            ground < -999.0f ? 0.0f : a->position.y - ground);
   renderer_draw_text(r, x, y, scale * 1.6f, vec3(0.7f, 0.9f, 1.0f), line);
   y += 14.0f * scale;
-  if (a->kind == AIRCRAFT_PLANE) {
+  if (aircraft_is_fixed_wing(a->kind)) {
     float bar = 100.0f * scale;
     renderer_draw_screen_line(r, x, y + 4 * scale, x + bar, y + 4 * scale,
                               4 * scale, vec3(0.12f, 0.12f, 0.14f));
@@ -426,4 +442,137 @@ void air_stage_draw_gauge(driving_stage_t* stage) {
     renderer_draw_text(r, x, y + 8 * scale, scale, vec3(0.7f, 0.75f, 0.85f),
                        "POWER");
   }
+}
+
+render_camera_t air_stage_cockpit_camera(const driving_stage_t* stage) {
+  const aircraft_t* a = air_stage_piloted(stage);
+  transform_t t = aircraft_transform(a);
+  vec3_t eye = transform_point(t, aircraft_cockpit_eye(a->kind));
+  vec3_t forward = quat_rotate(t.rotation, vec3(0, 0, -1));
+  render_camera_t view = {eye,
+                          vec3_add(eye, vec3_scale(forward, 50.0f)),
+                          quat_rotate(t.rotation, vec3(0, 1, 0)),
+                          1.2f,
+                          0.12f,
+                          8000.0f};
+  return view;
+}
+
+void air_stage_draw_cockpit(driving_stage_t* stage) {
+  const aircraft_t* a = air_stage_piloted(stage);
+  if (!a || stage->air_view != 1) return;
+  aircraft_visual_draw_cockpit(&stage->air_visual, stage->renderer, a,
+                               stage->air_stick);
+}
+
+#define MISSILE_SPEED 190.0f
+#define MISSILE_LIFE 8.0f
+#define MISSILE_BLAST_RADIUS 12.0f
+#define STRIKE_TIME 2.2f
+
+/* Where each missile hangs under the wing, in the aircraft's frame. */
+static vec3_t rail(aircraft_kind_t kind, int index) {
+  float side = (index & 1) ? 1.0f : -1.0f;
+  float k = (float)((index >> 1) & 1);
+  return kind == AIRCRAFT_JET ? vec3(side * (1.9f + 1.3f * k), 1.2f, 1.2f)
+                              : vec3(side * (2.3f + 1.0f * k), 1.6f, -1.8f);
+}
+
+bool air_stage_fire(driving_stage_t* stage) {
+  const aircraft_t* a = air_stage_piloted(stage);
+  if (!a || !aircraft_has_missiles(a->kind) || stage->paused ||
+      stage->map_open || stage->missile_cooldown > 0)
+    return false;
+  for (size_t i = 0; i < sizeof(stage->missiles) / sizeof(stage->missiles[0]);
+       i++) {
+    if (stage->missiles[i].active) continue;
+    transform_t t = aircraft_transform(a);
+    vec3_t forward = quat_rotate(t.rotation, vec3(0, 0, -1));
+    stage->missiles[i].active = true;
+    stage->missiles[i].age = 0;
+    stage->missiles[i].position =
+        transform_point(t, rail(a->kind, stage->missile_next));
+    stage->missiles[i].velocity =
+        vec3_add(vec3_scale(forward, MISSILE_SPEED), aircraft_velocity(a));
+    stage->missile_next = (stage->missile_next + 1) & 3;
+    stage->missile_cooldown = 0.45f;
+    if (stage->audio) audio_device_trigger_shot(stage->audio);
+    driving_stage_commit_crime(stage);
+    return true;
+  }
+  return false;
+}
+
+/* A missile goes off at `at`: a fireball, and whoever is near is thrown. */
+static void strike(driving_stage_t* stage, vec3_t at) {
+  size_t count = sizeof(stage->strikes) / sizeof(stage->strikes[0]);
+  size_t slot = 0;
+  for (size_t i = 0; i < count; i++) {
+    if (stage->strikes[i].age <= 0) {
+      slot = i;
+      break;
+    }
+    if (stage->strikes[i].age > stage->strikes[slot].age) slot = i;
+  }
+  stage->strikes[slot].at = at;
+  stage->strikes[slot].age = 0.001f;
+  if (stage->audio) audio_device_trigger_impact(stage->audio, 1.0f);
+  if (stage->people) pedestrians_blast(stage->people, at, MISSILE_BLAST_RADIUS);
+  /* Cars in the blast are wrecked: they leave the road for good. */
+  if (stage->traffic) {
+    int variant;
+    vec3_t position, paint;
+    float yaw;
+    for (int i = 0; i < 6; i++)
+      if (!traffic_take_car(stage->traffic, at, MISSILE_BLAST_RADIUS, &variant,
+                            &position, &yaw, &paint))
+        break;
+  }
+}
+
+void air_stage_step_missiles(driving_stage_t* stage, float dt) {
+  if (stage->missile_cooldown > 0) stage->missile_cooldown -= dt;
+  size_t count = sizeof(stage->strikes) / sizeof(stage->strikes[0]);
+  for (size_t i = 0; i < count; i++) {
+    if (stage->strikes[i].age <= 0) continue;
+    stage->strikes[i].age += dt;
+    if (stage->strikes[i].age > STRIKE_TIME) stage->strikes[i].age = 0;
+  }
+  count = sizeof(stage->missiles) / sizeof(stage->missiles[0]);
+  for (size_t i = 0; i < count; i++) {
+    if (!stage->missiles[i].active) continue;
+    vec3_t from = stage->missiles[i].position;
+    stage->missiles[i].age += dt;
+    stage->missiles[i].velocity.y -= 2.0f * dt;
+    vec3_t step = vec3_scale(stage->missiles[i].velocity, dt);
+    float length = vec3_length(step);
+    ray_t ray = {from, vec3_scale(step, 1.0f / length)};
+    ray_cast_result_t hit;
+    if (physics_ray_cast(stage->physics, ray, length, COLLISION_LAYER_ALL,
+                         &hit)) {
+      stage->missiles[i].active = false;
+      strike(stage, hit.hit.point);
+    } else if (stage->missiles[i].age > MISSILE_LIFE) {
+      stage->missiles[i].active = false;
+    } else {
+      stage->missiles[i].position = vec3_add(from, step);
+    }
+  }
+}
+
+void air_stage_draw_missiles(driving_stage_t* stage) {
+  if (!stage->has_air) return;
+  for (size_t i = 0; i < sizeof(stage->missiles) / sizeof(stage->missiles[0]);
+       i++) {
+    if (!stage->missiles[i].active) continue;
+    vec3_t velocity = stage->missiles[i].velocity;
+    aircraft_visual_draw_missile(
+        &stage->air_visual, stage->renderer, stage->missiles[i].position,
+        vec3_scale(velocity, 1.0f / vec3_length(velocity)));
+  }
+  for (size_t i = 0; i < sizeof(stage->strikes) / sizeof(stage->strikes[0]);
+       i++)
+    if (stage->strikes[i].age > 0)
+      car_visual_draw_blast(&stage->car_visual, stage->renderer,
+                            stage->strikes[i].at, stage->strikes[i].age);
 }

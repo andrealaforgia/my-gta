@@ -106,6 +106,19 @@ typedef struct {
   aircraft_t aircraft_home[CITY_PACKAGE_MAX_AIRCRAFT]; /* where it stands */
   size_t aircraft_count;
   int piloting; /* 0 on the ground, else the aircraft flown, from 1 */
+  int air_view; /* in an aircraft: 0 behind it, 1 from the cockpit */
+  aircraft_controls_t air_stick; /* what the pilot is asking for now */
+  struct {
+    bool active;
+    vec3_t position, velocity;
+    float age; /* seconds since it left the rail */
+  } missiles[8];
+  struct {
+    vec3_t at;
+    float age; /* seconds since it went off; 0 for a free slot */
+  } strikes[6];
+  float missile_cooldown; /* seconds until the next can be fired */
+  int missile_next;       /* which rail it leaves from */
   struct {
     bool active;     /* the player is coming down on a parachute */
     bool opened;     /* the canopy has filled (its thump has sounded) */
@@ -158,7 +171,8 @@ void driving_stage_next_vehicle(driving_stage_t* stage);
 void driving_stage_reset(driving_stage_t* stage);
 void driving_stage_interact(driving_stage_t* stage);
 /* Fires the pistol, when on foot: the first thing in the way is hit. A
- * person who goes down makes it a crime. Returns true if a shot was fired. */
+ * person who goes down makes it a crime. In the jet or the gunship it
+ * launches a missile instead. Returns true if a shot was fired. */
 bool driving_stage_fire(driving_stage_t* stage);
 /* Punches whoever is in front, on foot: they reel and run. Returns true if a
  * punch was thrown. */

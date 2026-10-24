@@ -207,9 +207,9 @@ static bool stand_aircraft(layout_t* layout, const frame_t* f, int kind,
   city_aircraft_t* craft = &package->aircraft[package->aircraft_count++];
   craft->kind = kind;
   craft->x = (float)at.x;
-  craft->y = (float)gen_terrain_at(layout, at.x, at.z) +
-             layout->options->road_height +
-             (kind == AIRCRAFT_PLANE ? 0.02f : 0.1f);
+  craft->y =
+      (float)gen_terrain_at(layout, at.x, at.z) + layout->options->road_height +
+      (kind == AIRCRAFT_HELICOPTER || kind == AIRCRAFT_GUNSHIP ? 0.1f : 0.02f);
   craft->z = (float)at.z;
   craft->yaw = (float)atan2(-f->axis.x, -f->axis.z);
   return true;
@@ -246,7 +246,8 @@ static bool generate_at(layout_t* layout, const frame_t* f) {
   /* The apron, helicopter pads, then the buildings. */
   if (!paint_surface(layout, f, "paving", -140, 140, TAXIWAY_FAR, APRON_FAR,
                      road + 0.012f) ||
-      !helipad(layout, f, 75, 100) || !helipad(layout, f, 115, 100))
+      !helipad(layout, f, 75, 100) || !helipad(layout, f, 115, 100) ||
+      !helipad(layout, f, 95, 112))
     return false;
   if (!add_block(layout, f, "facade_fresco", -60, 60, 135, 153, 9.0f, 9001) ||
       !add_block(layout, f, "hangar", -180, -140, 130, 170, 12.0f, 9002) ||
@@ -256,8 +257,14 @@ static bool generate_at(layout_t* layout, const frame_t* f) {
   for (int i = 0; i < 3; i++)
     if (!stand_aircraft(layout, f, AIRCRAFT_PLANE, -100.0 + 50.0 * i, 92))
       return false;
+  /* The two helicopters, then the big and the military ones: the airliner
+   * on the taxiway, where its wings overhang the grass, the jet on the apron
+   * and the gunship on its own pad. New kinds go at the end. */
   return stand_aircraft(layout, f, AIRCRAFT_HELICOPTER, 75, 100) &&
-         stand_aircraft(layout, f, AIRCRAFT_HELICOPTER, 115, 100);
+         stand_aircraft(layout, f, AIRCRAFT_HELICOPTER, 115, 100) &&
+         stand_aircraft(layout, f, AIRCRAFT_AIRLINER, 250, 58) &&
+         stand_aircraft(layout, f, AIRCRAFT_JET, 35, 92) &&
+         stand_aircraft(layout, f, AIRCRAFT_GUNSHIP, 95, 112);
 }
 
 static bool in_water(const city_model_t* model, local_point_t p) {

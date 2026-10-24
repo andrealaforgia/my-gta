@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "aircraft_cockpit.h"
+#include "aircraft_models.h"
 #include "mesh_data.h"
 
 static void build_plane(mesh_data_t* paint, mesh_data_t* trim,
@@ -94,16 +96,48 @@ aircraft_visual_t aircraft_visual_create(renderer_t* renderer) {
   mesh_data_add_ellipsoid(&canopy, vec3(0, 0, 0), vec3(3.4f, 1.1f, 3.4f), 8,
                           16);
   v.canopy = upload(renderer, &canopy);
+  a = mesh_data_create(), b = mesh_data_create(), c = mesh_data_create(),
+  d = mesh_data_create();
+  build_airliner(&a, &b, &c, &d);
+  v.airliner_paint = upload(renderer, &a);
+  v.airliner_trim = upload(renderer, &b);
+  v.airliner_glass = upload(renderer, &c);
+  v.airliner_accent = upload(renderer, &d);
+  a = mesh_data_create(), b = mesh_data_create(), c = mesh_data_create(),
+  d = mesh_data_create();
+  build_jet(&a, &b, &c, &d);
+  v.jet_paint = upload(renderer, &a);
+  v.jet_trim = upload(renderer, &b);
+  v.jet_glass = upload(renderer, &c);
+  v.jet_flame = upload(renderer, &d);
+  a = mesh_data_create(), b = mesh_data_create(), c = mesh_data_create(),
+  d = mesh_data_create();
+  build_gunship(&a, &b, &c, &d);
+  v.gunship_paint = upload(renderer, &a);
+  v.gunship_trim = upload(renderer, &b);
+  v.gunship_glass = upload(renderer, &c);
+  v.gunship_rotor = upload(renderer, &d);
+  a = mesh_data_create(), b = mesh_data_create();
+  build_missile(&a, &b);
+  v.missile = upload(renderer, &a);
+  v.missile_flame = upload(renderer, &b);
+  aircraft_cockpit_create(&v, renderer);
   return v;
 }
 
 void aircraft_visual_destroy(aircraft_visual_t* v, renderer_t* renderer) {
-  mesh_handle_t all[] = {v->plane_paint, v->plane_trim, v->plane_glass,
-                         v->plane_prop,  v->heli_paint, v->heli_trim,
-                         v->heli_glass,  v->heli_rotor, v->heli_tail_rotor,
-                         v->canopy};
+  mesh_handle_t all[] = {
+      v->plane_paint,    v->plane_trim,      v->plane_glass,
+      v->plane_prop,     v->heli_paint,      v->heli_trim,
+      v->heli_glass,     v->heli_rotor,      v->heli_tail_rotor,
+      v->canopy,         v->airliner_paint,  v->airliner_trim,
+      v->airliner_glass, v->airliner_accent, v->jet_paint,
+      v->jet_trim,       v->jet_glass,       v->jet_flame,
+      v->gunship_paint,  v->gunship_trim,    v->gunship_glass,
+      v->gunship_rotor,  v->missile,         v->missile_flame};
   for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++)
     renderer_release_mesh(renderer, all[i]);
+  aircraft_cockpit_destroy(v, renderer);
 }
 
 /* A part hung at `local` on the aircraft and turned about an axis. */
@@ -113,6 +147,90 @@ static mat4_t turned(transform_t base, vec3_t local, vec3_t axis, float angle) {
   part.rotation =
       quat_multiply(base.rotation, quat_from_axis_angle(axis, angle));
   return transform_to_matrix(part);
+}
+
+/* A missile hung under the aircraft at `local`. */
+static void draw_hung_missile(const aircraft_visual_t* v, renderer_t* renderer,
+                              mat4_t model, vec3_t local) {
+  material_t skin = material_rough(vec3(0.82f, 0.83f, 0.8f), 0.4f);
+  renderer_draw_mesh(renderer, v->missile, skin,
+                     mat4_multiply(model, mat4_translation(local)));
+}
+
+/* The airliner, the jet and the gunship. */
+static void draw_big(const aircraft_visual_t* v, renderer_t* renderer,
+                     const aircraft_t* a, transform_t base, mat4_t model) {
+  material_t trim = material_rough(vec3(0.1f, 0.1f, 0.11f), 0.6f);
+  material_t glass = material_rough(vec3(0.1f, 0.15f, 0.22f), 0.1f);
+  glass.metallic = 0.6f;
+  if (a->kind == AIRCRAFT_AIRLINER) {
+    material_t skin = material_rough(vec3(0.93f, 0.93f, 0.92f), 0.35f);
+    skin.metallic = 0.25f;
+    material_t livery = material_rough(vec3(0.1f, 0.25f, 0.6f), 0.4f);
+    renderer_draw_mesh(renderer, v->airliner_paint, skin, model);
+    renderer_draw_mesh(renderer, v->airliner_accent, livery, model);
+    renderer_draw_mesh(renderer, v->airliner_trim, trim, model);
+    renderer_draw_mesh(renderer, v->airliner_glass, glass, model);
+    return;
+  }
+  if (a->kind == AIRCRAFT_JET) {
+    material_t skin = material_rough(vec3(0.44f, 0.47f, 0.5f), 0.4f);
+    skin.metallic = 0.4f;
+    renderer_draw_mesh(renderer, v->jet_paint, skin, model);
+    renderer_draw_mesh(renderer, v->jet_trim, trim, model);
+    renderer_draw_mesh(renderer, v->jet_glass, glass, model);
+    for (int side = -1; side <= 1; side += 2)
+      for (int k = 0; k < 2; k++)
+        draw_hung_missile(v, renderer, model,
+                          vec3(side * (1.9f + 1.3f * (float)k), 1.2f, 1.2f));
+    /* The afterburner lengthens with the power. */
+    float length = 0.15f + 0.85f * a->power;
+    material_t fire = material_plain(vec3(1.0f, 0.6f, 0.2f));
+    fire.emissive = 3.0f;
+    mat4_t pivot = mat4_multiply(
+        model,
+        mat4_multiply(mat4_translation(vec3(0, 0, 7.4f)),
+                      mat4_multiply(mat4_scaling(vec3(1, 1, length)),
+                                    mat4_translation(vec3(0, 0, -7.4f)))));
+    renderer_draw_mesh(renderer, v->jet_flame, fire, pivot);
+    return;
+  }
+  material_t skin = material_rough(vec3(0.27f, 0.32f, 0.2f), 0.6f);
+  renderer_draw_mesh(renderer, v->gunship_paint, skin, model);
+  renderer_draw_mesh(renderer, v->gunship_trim, trim, model);
+  renderer_draw_mesh(renderer, v->gunship_glass, glass, model);
+  for (int side = -1; side <= 1; side += 2)
+    for (int k = 0; k < 2; k++)
+      draw_hung_missile(v, renderer, model,
+                        vec3(side * (2.3f + 1.0f * (float)k), 1.6f, -1.8f));
+  /* Two rotors turning against each other, a quarter turn apart. */
+  renderer_draw_mesh(
+      renderer, v->gunship_rotor, trim,
+      turned(base, vec3(0, 4.75f, -4.0f), vec3(0, 1, 0), a->rotor));
+  renderer_draw_mesh(
+      renderer, v->gunship_rotor, trim,
+      turned(base, vec3(0, 5.95f, 5.6f), vec3(0, 1, 0), 0.785f - a->rotor));
+}
+
+void aircraft_visual_draw_missile(const aircraft_visual_t* v,
+                                  renderer_t* renderer, vec3_t at,
+                                  vec3_t direction) {
+  float yaw = atan2f(-direction.x, -direction.z);
+  float pitch = asinf(direction.y);
+  mat4_t model = mat4_multiply(
+      mat4_translation(at),
+      mat4_from_quat(quat_multiply(
+          quat_from_yaw(yaw), quat_from_axis_angle(vec3(1, 0, 0), pitch))));
+  material_t skin = material_rough(vec3(0.85f, 0.85f, 0.82f), 0.4f);
+  renderer_draw_mesh(renderer, v->missile, skin, model);
+  material_t fire = material_plain(vec3(1.0f, 0.7f, 0.25f));
+  fire.emissive = 3.5f;
+  renderer_draw_mesh(renderer, v->missile_flame, fire, model);
+  /* A line of smoke behind it. */
+  vec3_t tail = vec3_add(at, vec3_scale(direction, -1.4f));
+  renderer_draw_line(renderer, tail,
+                     vec3_add(tail, vec3_scale(direction, -14.0f)),
+                     vec3(0.8f, 0.8f, 0.8f));
 }
 
 void aircraft_visual_draw(const aircraft_visual_t* v, renderer_t* renderer,
@@ -130,6 +248,10 @@ void aircraft_visual_draw(const aircraft_visual_t* v, renderer_t* renderer,
   glass.metallic = 0.6f;
   transform_t base = aircraft_transform(a);
   mat4_t model = transform_to_matrix(base);
+  if (a->kind >= AIRCRAFT_AIRLINER) {
+    draw_big(v, renderer, a, base, model);
+    return;
+  }
   if (a->kind == AIRCRAFT_PLANE) {
     renderer_draw_mesh(renderer, v->plane_paint, paint, model);
     renderer_draw_mesh(renderer, v->plane_trim, trim, model);

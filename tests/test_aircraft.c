@@ -136,6 +136,68 @@ static void keys_become_flying_controls(void) {
   assert(c.pitch > 0 && c.power_change < 0 && c.brake > 0);
 }
 
+/* Metres of runway a fixed-wing aircraft uses before its wheels leave it,
+ * at full power, the nose coming up as soon as it has the speed. */
+static float run_to_lift_off(aircraft_kind_t kind) {
+  aircraft_t craft = aircraft_create(kind, vec3(0, 0, 0), 0);
+  for (int i = 0; i < 120 * 60 && craft.on_ground; i++)
+    aircraft_step(&craft, controls(craft.speed > 36.0f ? 0.6f : 0, 0, 1), 0,
+                  DT);
+  assert(!craft.on_ground);
+  return -craft.position.z;
+}
+
+static void every_aeroplane_gets_off_a_runway_and_big_ones_need_more(void) {
+  float plane = run_to_lift_off(AIRCRAFT_PLANE);
+  float jet = run_to_lift_off(AIRCRAFT_JET);
+  float airliner = run_to_lift_off(AIRCRAFT_AIRLINER);
+  assert(plane < 400.0f && jet < 400.0f && airliner < 850.0f);
+  assert(jet < plane && plane < airliner);
+}
+
+static void the_jet_outruns_the_plane_and_the_airliner_too(void) {
+  /* Climbing away at full power for a minute. */
+  float speed[3];
+  const aircraft_kind_t kinds[3] = {AIRCRAFT_PLANE, AIRCRAFT_JET,
+                                    AIRCRAFT_AIRLINER};
+  for (int k = 0; k < 3; k++) {
+    aircraft_t craft = aircraft_create(kinds[k], vec3(0, 0, 0), 0);
+    for (int i = 0; i < 120 * 60; i++) {
+      float pitch = craft.speed > 36.0f && craft.position.y < 400.0f ? 0.3f : 0;
+      aircraft_step(&craft, controls(pitch, 0, 1), 0, DT);
+    }
+    speed[k] = craft.speed;
+  }
+  assert(speed[1] > 2.0f * speed[0]);
+  assert(speed[2] > speed[0]);
+}
+
+static void only_the_jet_and_the_gunship_carry_missiles(void) {
+  assert(aircraft_has_missiles(AIRCRAFT_JET));
+  assert(aircraft_has_missiles(AIRCRAFT_GUNSHIP));
+  assert(!aircraft_has_missiles(AIRCRAFT_PLANE));
+  assert(!aircraft_has_missiles(AIRCRAFT_HELICOPTER));
+  assert(!aircraft_has_missiles(AIRCRAFT_AIRLINER));
+  assert(aircraft_is_fixed_wing(AIRCRAFT_AIRLINER) &&
+         aircraft_is_fixed_wing(AIRCRAFT_JET));
+  assert(!aircraft_is_fixed_wing(AIRCRAFT_GUNSHIP));
+}
+
+static void the_gunship_flies_faster_than_the_little_helicopter(void) {
+  float speed[2];
+  const aircraft_kind_t kinds[2] = {AIRCRAFT_HELICOPTER, AIRCRAFT_GUNSHIP};
+  for (int k = 0; k < 2; k++) {
+    aircraft_t craft = aircraft_create(kinds[k], vec3(0, 0, 0), 0);
+    for (int i = 0; i < 120 * 25; i++) {
+      bool lifting = i < 120 * 10;
+      aircraft_step(&craft, controls(lifting ? 0 : -1, 0, lifting ? 1 : 0), 0,
+                    DT);
+    }
+    speed[k] = craft.speed;
+  }
+  assert(speed[1] > speed[0] * 1.2f);
+}
+
 void run_aircraft_tests(void) {
   RUN(a_plane_waits_on_the_runway_until_given_power);
   RUN(a_plane_takes_off_climbs_and_goes_where_its_nose_points);
@@ -146,5 +208,9 @@ void run_aircraft_tests(void) {
   RUN(a_helicopter_hovers_flies_forward_and_lands);
   RUN(a_plane_left_without_a_pilot_dives_and_crashes);
   RUN(a_helicopter_left_without_a_pilot_falls_and_crashes);
+  RUN(every_aeroplane_gets_off_a_runway_and_big_ones_need_more);
+  RUN(the_jet_outruns_the_plane_and_the_airliner_too);
+  RUN(only_the_jet_and_the_gunship_carry_missiles);
+  RUN(the_gunship_flies_faster_than_the_little_helicopter);
   RUN(keys_become_flying_controls);
 }

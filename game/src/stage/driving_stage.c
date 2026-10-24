@@ -175,7 +175,8 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     return state;
   }
   state.engine_running = !stage->on_foot || stage->piloting > 0;
-  state.horn = stage->horn && !stage->on_foot;
+  /* The horn sounds in a car, and from the cockpit of an aircraft. */
+  state.horn = stage->horn && (!stage->on_foot || stage->piloting > 0);
   state.rain = stage->rain;
   /* On foot it plays on, out of earshot (negative). */
   state.radio_station =
@@ -200,7 +201,7 @@ audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
     /* The engine note follows the throttle, or the rotor's spin. */
     const aircraft_t* a = &stage->aircraft[stage->piloting - 1];
     float effort =
-        a->kind == AIRCRAFT_PLANE ? a->power : 0.75f * a->rotor_speed;
+        aircraft_is_fixed_wing(a->kind) ? a->power : 0.75f * a->rotor_speed;
     state.rpm = 1500.0f + 3500.0f * effort;
     state.throttle = effort;
     state.skid = 0;
@@ -356,6 +357,7 @@ void driving_stage_step(driving_stage_t* stage, driving_input_t input,
   vehicle_update(&stage->vehicle, stage->physics,
                  stage->on_foot ? parked_car_input : input, dt);
   air_stage_step_adrift(stage, dt);
+  air_stage_step_missiles(stage, dt);
   if (stage->on_foot && stage->piloting > 0) {
     air_stage_step(stage, input, dt);
   } else if (stage->on_foot && stage->chute.active) {
@@ -858,8 +860,8 @@ static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
     renderer_draw_text(
         r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
         "W/S PITCH  A/D BANK  SHIFT/SPACE POWER UP  CTRL POWER "
-        "DOWN OR BRAKE  F GET OUT (DOWN AND STOPPED) OR BAIL OUT "
-        "IN THE AIR  M MAP");
+        "DOWN OR BRAKE  C CAMERA  H HORN  G FIRE (JET, GUNSHIP)  F GET OUT "
+        "(DOWN AND STOPPED) OR BAIL OUT IN THE AIR  M MAP");
     return;
   }
   renderer_draw_text(
@@ -1250,6 +1252,8 @@ void driving_stage_interact(driving_stage_t* stage) {
 }
 
 bool driving_stage_fire(driving_stage_t* stage) {
+  /* In the jet or the gunship the same key launches a missile. */
+  if (stage->piloting > 0) return air_stage_fire(stage);
   if (stage->paused || stage->map_open || !stage->on_foot ||
       stage->piloting > 0 || stage->chute.active || stage->entering > 0 ||
       stage->shot_cooldown > 0)
@@ -1336,6 +1340,8 @@ render_camera_t driving_stage_camera(const driving_stage_t* stage) {
 
 static render_camera_t driving_stage_camera_steady(
     const driving_stage_t* stage) {
+  if (stage->piloting > 0 && stage->air_view == 1)
+    return air_stage_cockpit_camera(stage);
   if (stage->view_mode == 0 || stage->on_foot) {
     /* The world rushes past: the view opens up a little with speed. */
     render_camera_t view = chase_camera_render(&stage->camera);
@@ -1434,7 +1440,8 @@ void driving_stage_render(driving_stage_t* stage) {
     if (stage->burning > 0)
       car_visual_draw_fire(&stage->car_visual, r, chassis, stage->rain_clock);
   }
-  if (stage->view_mode == 2)
+  air_stage_draw_cockpit(stage);
+  if (stage->view_mode == 2 && stage->piloting == 0)
     car_visual_draw_cockpit(&stage->car_visual, r, chassis,
                             driving_stage_wheel_angle(stage));
   if (stage->rain > 0.04f) {
@@ -1467,6 +1474,7 @@ void driving_stage_render(driving_stage_t* stage) {
                    night);
   }
   air_stage_draw(stage, night);
+  air_stage_draw_missiles(stage);
   if (stage->on_foot && stage->piloting == 0 && !stage->chute.active &&
       (stage->blast == 0 || !stage->blast_kills)) {
     /* The person who got out, in the clothes of an adult from the crowd. */
@@ -1552,7 +1560,9 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   }
   if (events.toggle_weather)
     driving_stage_set_rain(stage, stage->rain_target > 0.5f ? 0.0f : 1.0f);
-  if (events.toggle_camera) {
+  if (events.toggle_camera && stage->piloting > 0) {
+    stage->air_view = !stage->air_view;
+  } else if (events.toggle_camera) {
     stage->view_mode = (stage->view_mode + 1) % 3;
     if (stage->view_mode == 0)
       chase_camera_reset(&stage->camera, car_transform(stage, 1.0f));
