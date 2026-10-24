@@ -37,6 +37,7 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
   stage->renderer = renderer;
   stage->audio = audio;
   stage->show_debug = options.show_debug;
+  if (options.autoplay) autoplay_init(&stage->autoplay);
   stage->has_menu = options.has_menu;
   stage->physics = physics_world_create();
   if (!stage->physics) return false;
@@ -296,6 +297,11 @@ void driving_stage_reset(driving_stage_t* stage) { back_to_spawn(stage); }
 
 void driving_stage_say(driving_stage_t* stage, const char* text) {
   say(stage, text);
+}
+
+void driving_stage_lose_the_law(driving_stage_t* stage) {
+  wanted_init(&stage->wanted);
+  if (stage->traffic) traffic_set_pursuit(stage->traffic, 0);
 }
 
 void driving_stage_commit_crime(driving_stage_t* stage) {
@@ -926,6 +932,15 @@ static void draw_hud(driving_stage_t* stage) {
     air_stage_draw_gauge(stage);
   else
     draw_gauge(stage);
+  if (stage->autoplay.enabled) {
+    /* What the scripted player is doing, small, in the corner. */
+    snprintf(line, sizeof(line), "AUTOPLAY  %s",
+             autoplay_label(&stage->autoplay));
+    renderer_draw_text(r, x, y + 0.5f * scale, scale * 1.1f,
+                       vec3(0.02f, 0.02f, 0.03f), line);
+    renderer_draw_text(r, x, y, scale * 1.1f, vec3(1.0f, 0.85f, 0.3f), line);
+    y += 14 * scale;
+  }
   if (!stage->show_debug) {
     if (stage->paused)
       renderer_draw_text(r,
@@ -1479,6 +1494,9 @@ void driving_stage_run(driving_stage_t* stage) {
     handle_events(stage, window_poll(stage->window));
     driving_input_t input = window_driving_input(stage->window);
     stage->horn = window_horn_held(stage->window);
+    if (stage->autoplay.enabled)
+      input = autoplay_step(&stage->autoplay, stage,
+                            (float)fminf((float)frame_seconds, 0.05f));
     driving_stage_advance(stage, input, frame_seconds);
     driving_stage_render(stage);
     window_swap(stage->window);

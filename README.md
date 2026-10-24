@@ -89,6 +89,8 @@ Command line: `--time=H` starts the clock at hour H (default 10), `--hour-second
 sets real seconds per game hour (default 30, 0 freezes it), `--traffic=N` and
 `--pedestrians=N` set how many cars and people there are (120 and 250), `--rain` starts in the rain.
 
+`--autoplay` hands the controls to a scripted player that does the lot, one act after another (the corner of the screen says which): it drives, hits a car, steals a car, runs someone over, steals a truck, drives it to the airport, steals a plane, flies it across the city, lands it, steals a helicopter and flies that across the city too. Try `./gta-like --city=pordenone --autoplay`. It starts the cars and people at 60 and 150 unless you give `--traffic` and `--pedestrians`, and Esc still quits. The drive starts on the road to the airport, a short way from it.
+
 ## Layout
 
 ```

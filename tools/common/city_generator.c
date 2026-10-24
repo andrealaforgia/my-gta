@@ -95,8 +95,32 @@ uint64_t city_generator_options_hash(const city_generator_options_t* o) {
 /* The spawn: the longest ordinary road whose midpoint lies within the
  * central part of the extract, so a drive starts in town and the first
  * junction is close. */
+/* With an airport, the drive starts on the road to it, a little way along,
+ * facing it. */
+static bool spawn_on_airport_road(city_package_t* package,
+                                  const city_model_t* model,
+                                  const city_generator_options_t* o) {
+  if (!package->airport.present || model->road_count == 0) return false;
+  const city_road_t* road = &model->roads[model->road_count - 1];
+  if (road->source_id != GEN_ACCESS_ROAD_SOURCE || road->point_count < 2)
+    return false;
+  double length = polyline_length(road->points, road->point_count);
+  double along = fmax(length * 0.25, length - 230.0);
+  size_t segment = 0;
+  local_point_t at = gen_along_polyline(road->points, road->point_count, along,
+                                        &segment);
+  local_point_t a = road->points[segment > 0 ? segment - 1 : 0],
+                b = road->points[segment > 0 ? segment : 1];
+  vec2_t direction = gen_v2_normalize(gen_v2_sub(b, a));
+  package->spawn_position =
+      vec3((float)at.x, o->road_height + 0.9f, (float)at.z);
+  package->spawn_yaw = (float)atan2(-direction.x, -direction.z);
+  return true;
+}
+
 static void choose_spawn(city_package_t* package, const city_model_t* model,
                          const city_generator_options_t* o) {
+  if (spawn_on_airport_road(package, model, o)) return;
   const city_road_t* best = NULL;
   double best_length = 0;
   double extent = 0;

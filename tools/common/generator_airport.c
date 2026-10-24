@@ -21,7 +21,6 @@
 #define GATE_U 100.0 /* where the road from the city meets the apron */
 #define GATE_W 120.0
 #define GATE_NODE 9100000001ll
-#define ACCESS_ROAD_SOURCE 9100
 
 /* The airport's own frame: u along the runway, w towards the city. */
 typedef struct {
@@ -387,8 +386,15 @@ bool gen_airport_road(const city_model_t* model, const airport_site_t* site,
       size_t i = end ? road->point_count - 1 : 0;
       double d =
           hypot(road->points[i].x - front.x, road->points[i].z - front.z);
-      if (d < best_distance && road->node_ids[i] != 0)
-        best = road, best_end = i, best_distance = d;
+      if (d >= best_distance || road->node_ids[i] == 0) continue;
+      /* Onto a crossing of streets, which the rest of the city reaches, not
+       * the end of a spur. */
+      int degree = 0;
+      for (size_t j = 0; j < model->junction_count; j++)
+        if (model->junctions[j].node_id == road->node_ids[i])
+          degree = model->junctions[j].degree;
+      if (degree < 3) continue;
+      best = road, best_end = i, best_distance = d;
     }
   }
   if (!best) return false;
@@ -419,7 +425,7 @@ bool gen_airport_road(const city_model_t* model, const airport_site_t* site,
 
   city_road_t* road = &out->roads[out->road_count++];
   memset(road, 0, sizeof(*road));
-  road->source_id = ACCESS_ROAD_SOURCE;
+  road->source_id = GEN_ACCESS_ROAD_SOURCE;
   road->class = ROAD_CLASS_SECONDARY;
   road->width = 8.0f;
   road->width_inferred = false;

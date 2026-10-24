@@ -66,7 +66,8 @@ int main(int argc, char* argv[]) {
       getenv("SNAPSHOT_TRAFFIC") ? atoi(getenv("SNAPSHOT_TRAFFIC")) : 0,
       getenv("SNAPSHOT_PEOPLE") ? atoi(getenv("SNAPSHOT_PEOPLE")) : 0,
       getenv("SNAPSHOT_RAIN") ? (float)atof(getenv("SNAPSHOT_RAIN")) : 0.0f,
-      false};
+      false,
+      getenv("SNAPSHOT_AUTOPLAY") != NULL};
   driving_stage_t stage;
   if (!driving_stage_init(&stage, &window, renderer, NULL, stage_options))
     return EXIT_FAILURE;
@@ -163,7 +164,37 @@ int main(int argc, char* argv[]) {
                     ? fopen(getenv("SNAPSHOT_TRACE"), "w")
                     : NULL;
   unsigned soak_random = 12345;
+  /* SNAPSHOT_AUTOPLAY=n starts the script at act n (0 is the beginning). */
+  if (stage.autoplay.enabled && atoi(getenv("SNAPSHOT_AUTOPLAY")) > 0)
+    stage.autoplay.act = (autoplay_act_t)atoi(getenv("SNAPSHOT_AUTOPLAY"));
+  if (stage.autoplay.enabled && stage.autoplay.act >= ACT_BOARD_PLANE) {
+    /* From the aeroplane on, begin on foot at the airport's gate. */
+    const city_airport_t* gate = &stage.scene.package->airport;
+    walker_init(&stage.walker, vec3(gate->gate_x, gate->gate_y, gate->gate_z),
+                0.0f);
+    stage.on_foot = true;
+  }
+  autoplay_act_t last_act = (autoplay_act_t)-1;
   for (int i = 0; i < steps; i++) {
+    if (stage.autoplay.enabled && i % 2 == 0) {
+      /* Once a frame, as in the game, the input held for the steps between. */
+      input = autoplay_step(&stage.autoplay, &stage, 1.0f / 60.0f);
+      vec3_t at =
+          stage.piloting > 0
+              ? stage.aircraft[stage.piloting - 1].position
+              : (stage.on_foot ? stage.walker.position
+                               : physics_body(stage.physics, stage.vehicle.body)
+                                     ->position);
+      if (stage.autoplay.act != last_act || i % 1200 == 0) {
+        printf(
+            "t=%.0f s act %s at %.0f %.0f %.0f foot %d piloting %d vehicle %d "
+            "stars %d\n",
+            (float)i / 120.0f, autoplay_label(&stage.autoplay), at.x, at.y,
+            at.z, stage.on_foot, stage.piloting, stage.vehicle_index,
+            stage.wanted.stars);
+        last_act = stage.autoplay.act;
+      }
+    }
     if (soak && i % 60 == 0) {
       soak_random = soak_random * 1664525u + 1013904223u;
       unsigned r = soak_random >> 8;

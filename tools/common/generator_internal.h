@@ -258,6 +258,9 @@ bool gen_airport_site(const city_model_t* model, const char* side, double min_x,
                       double min_z, double max_x, double max_z,
                       airport_site_t* site);
 
+/* The source id of the road from the city to the airport. */
+#define GEN_ACCESS_ROAD_SOURCE 9100
+
 /* Makes `out` a copy of `model` with a road added from the nearest drivable
  * junction to the airport's gate, so the airport can be reached. The copy
  * shares the model's roads' points: release it with gen_airport_road_free,

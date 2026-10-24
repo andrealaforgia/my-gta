@@ -12,6 +12,7 @@
 #include "aircraft_visual.h"
 #include "audio_device.h"
 #include "audio_mixer.h"
+#include "autoplay.h"
 #include "car_visual.h"
 #include "chase_camera.h"
 #include "fleet.h"
@@ -46,9 +47,10 @@ typedef struct {
   int pedestrians;    /* people on the pavements */
   float rain;         /* 0 clear to 1 pouring at the start */
   bool has_menu;      /* Backspace may go back to the start menu */
+  bool autoplay;      /* a scripted player takes the controls */
 } stage_options_t;
 
-typedef struct {
+typedef struct driving_stage {
   window_t* window;
   renderer_t* renderer;
   audio_device_t* audio;
@@ -119,6 +121,7 @@ typedef struct {
   int view_mode; /* 0 chase, 1 bonnet, 2 cockpit */
   bool map_open; /* M: the city map over a paused game */
   texture_handle_t map_texture;
+  autoplay_t autoplay;
   bool show_debug;
   bool has_menu;
   bool back_to_menu; /* the player asked for the start menu */
@@ -151,6 +154,8 @@ void driving_stage_interact(driving_stage_t* stage);
 bool driving_stage_fire(driving_stage_t* stage);
 /* A line across the screen for a moment. */
 void driving_stage_say(driving_stage_t* stage, const char* text);
+/* The law gives up the chase: no stars, no police after the player. */
+void driving_stage_lose_the_law(driving_stage_t* stage);
 /* The player did something the law minds (stealing an aircraft). */
 void driving_stage_commit_crime(driving_stage_t* stage);
 /* The player's vehicle blows up at `at`; the player wakes at the start. */
