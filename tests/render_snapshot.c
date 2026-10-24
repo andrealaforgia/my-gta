@@ -309,7 +309,16 @@ int main(int argc, char* argv[]) {
   free(longest);
   if (jerk) printf("overlap samples: %d\n", overlaps);
   free(jerk_before);
-  if (soak) printf("soak done: stars now %d\n", stage.wanted.stars);
+  if (soak) {
+    size_t loaded = 0;
+    for (size_t k = 0; k < stage.scene.package->chunk_count; k++)
+      loaded += stage.scene.chunk_states[k].loaded;
+    printf(
+        "soak done: stars now %d; chunks loaded %zu of %zu; world entities "
+        "%zu of %zu\n",
+        stage.wanted.stars, loaded, stage.scene.package->chunk_count,
+        stage.world.count, stage.world.capacity);
+  }
   if (fly >= 0) {
     size_t loaded = 0;
     for (size_t k = 0; k < stage.scene.package->chunk_count; k++)
