@@ -587,8 +587,9 @@ void air_stage_draw_missiles(driving_stage_t* stage) {
   for (size_t i = 0; i < sizeof(stage->strikes) / sizeof(stage->strikes[0]);
        i++)
     if (stage->strikes[i].age > 0)
-      car_visual_draw_blast(&stage->car_visual, stage->renderer,
-                            stage->strikes[i].at, stage->strikes[i].age);
+      car_visual_draw_blast_scaled(&stage->car_visual, stage->renderer,
+                                   stage->strikes[i].at, stage->strikes[i].age,
+                                   4.0f);
 }
 
 bool air_stage_toggle_gear(driving_stage_t* stage) {

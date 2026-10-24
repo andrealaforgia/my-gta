@@ -97,6 +97,17 @@ sets real seconds per game hour (default 30, 0 freezes it), `--traffic=N` and
 
 The drive starts on the road to the airport, a short way from it.
 
+## A scripted film
+
+`make movie CITY=pessano_con_bornago` plays a story through the real game and
+writes it as `movie.mp4` (about five minutes, 1280 by 720, no sound): the car
+drives to the airport, the player steals the gunship, flies it with the cockpit
+view to Corso Europa 22, switches to the outside view and fires missiles at the
+houses, flies back, steals the jet fighter, crosses the city and lands. It
+needs a GPU and macOS (the encoder is `scripts/rgba_to_mp4.swift`, built with
+`swiftc`). `tests/render_movie.c` is the scripted pilot; the address is a
+latitude and longitude on the command line.
+
 ## Layout
 
 ```

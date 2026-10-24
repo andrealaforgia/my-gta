@@ -50,6 +50,7 @@ CITY_IMPORT = city-import
 CITY_GENERATE = city-generate
 CITY_VALIDATE = city-validate
 SNAPSHOT = render_snapshot
+MOVIE = render_movie
 SOUND = render_sound
 
 .PHONY: all tools install dev_install clean lint format test sanitize soak snapshot sound city new-city fixture-city run run-city play
@@ -75,6 +76,15 @@ $(CITY_VALIDATE): tools/city_validate/main.o $(filter-out tools/%/main.o,$(TOOL_
 
 $(SNAPSHOT): $(filter-out game/src/main/main.o,$(GAME_OBJ)) tests/render_snapshot.c $(ENGINE_LIB)
 	$(CC) $(CFLAGS) -o $@ $^ $(LFLAGS)
+
+$(MOVIE): $(filter-out game/src/main/main.o,$(GAME_OBJ)) tests/render_movie.c tools/common/projection.o $(ENGINE_LIB)
+	$(CC) $(CFLAGS) -o $@ $^ $(LFLAGS)
+
+# A scripted story as a video, needing a GPU and the Swift encoder:
+#   make movie CITY=pessano_con_bornago
+movie: $(MOVIE)
+	swiftc -O scripts/rgba_to_mp4.swift -o rgba_to_mp4
+	./$(MOVIE) assets_cooked/cities/$(CITY) 45.54812 9.38410 | ./rgba_to_mp4 movie.mp4 1280 720 30
 
 snapshot: $(SNAPSHOT)
 	./$(SNAPSHOT) snapshot.bmp
@@ -158,4 +168,4 @@ run-city: $(TARGET)
 
 clean:
 	rm -f $(ENGINE_OBJ) $(GAME_OBJ) $(TOOL_OBJ) $(DEP) $(ENGINE_LIB) $(TARGET) \
-	      $(CITY_IMPORT) $(CITY_GENERATE) $(CITY_VALIDATE) $(SNAPSHOT) $(SOUND) snapshot.bmp engine.wav
+	      $(CITY_IMPORT) $(CITY_GENERATE) $(CITY_VALIDATE) $(SNAPSHOT) $(SOUND) $(MOVIE) rgba_to_mp4 movie.mp4 snapshot.bmp engine.wav

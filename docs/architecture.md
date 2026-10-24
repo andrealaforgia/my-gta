@@ -344,3 +344,26 @@ to 36 Hz, a noise roar that starts bright and darkens as the missile draws away
 (two one-pole filters whose coefficient falls over two seconds), and a rumble
 of three low notes, fading over about four seconds. Nothing in it is a pure
 tone above 100 Hz.
+
+## The scripted film (2026-10-24)
+
+`tests/render_movie.c` is a scripted player, not a game feature (the earlier
+`--autoplay` was removed on request and this one lives with the test tools). It
+runs the real stage headlessly at 30 frames a second and moves through phases:
+drive along the satnav line to the gate (backing out if it stands against a
+kerb), step out and run to the gunship, climb, cruise at 60 m to an open spot
+about 110 m from the address (`find_hover` checks columns of air for buildings),
+descend to rooftop height, face the houses and fire six missiles at slightly
+different headings, climb away, land on the pad, run to the jet, taxi along the
+taxiway and link to the runway, take off, fly a loop over the city by the
+cockpit, join the extended runway centre line from the east, follow a
+three-degree slope with the wheels down, flare and brake to a stop. Control is
+the same digital input a player has (roll and pitch from the keys, power up and
+down in steps), with small feedback loops: `steer_to` for headings,
+`fly_helicopter` for height, `fly_jet` for heading, flight path angle and speed.
+Frames go to standard output as RGBA and `scripts/rgba_to_mp4.swift`
+(AVFoundation) encodes them; `MOVIE_STILLS=dir` keeps stills,
+`MOVIE_RANGE=from,to` keeps more of them in a window, `--dry` runs without
+rendering, and `MOVIE_TRACE=1` prints the telemetry. The missile strike is
+drawn by `car_visual_draw_blast_scaled` (four times the size of a car blast,
+with a white-hot flash).

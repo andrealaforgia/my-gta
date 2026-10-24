@@ -97,4 +97,9 @@ void car_visual_draw_fire(const car_visual_t* visual, renderer_t* renderer,
 void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
                            vec3_t at, float age);
 
+/* The same, bigger by `scale`, with a white-hot flash to begin: a missile's. */
+void car_visual_draw_blast_scaled(const car_visual_t* visual,
+                                  renderer_t* renderer, vec3_t at, float age,
+                                  float scale);
+
 #endif  // GAME_SRC_CAR_CAR_VISUAL_H_

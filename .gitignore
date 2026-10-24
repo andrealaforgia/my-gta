@@ -1,5 +1,8 @@
 gta-like
 render_snapshot
+render_movie
+rgba_to_mp4
+movie.mp4
 render_sound
 city-import
 city-generate

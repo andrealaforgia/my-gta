@@ -541,29 +541,47 @@ void car_visual_draw_fire(const car_visual_t* visual, renderer_t* renderer,
   }
 }
 
-void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
-                           vec3_t at, float age) {
+void car_visual_draw_blast_scaled(const car_visual_t* visual,
+                                  renderer_t* renderer, vec3_t at, float age,
+                                  float scale) {
   float swell = 1.0f - expf(-age * 4.0f);
   float cool = fminf(age / 2.0f, 1.0f);
   for (int i = 0; i < 16; i++) {
     float a = (float)i * 2.4f;
-    float reach = 0.6f + 1.8f * fmodf((float)i * 0.37f, 1.0f);
+    float reach = (0.6f + 1.8f * fmodf((float)i * 0.37f, 1.0f)) * scale;
     float rise =
-        (0.3f + 2.4f * fmodf((float)i * 0.61f, 1.0f)) * swell + 1.2f * cool;
+        ((0.3f + 2.4f * fmodf((float)i * 0.61f, 1.0f)) * swell + 1.2f * cool) *
+        scale;
     vec3_t where = vec3(at.x + cosf(a) * reach * swell, at.y + rise,
                         at.z + sinf(a) * reach * swell);
     float size = (0.5f + 0.5f * fmodf((float)i * 0.53f, 1.0f)) * swell *
-                 (1.0f + 0.6f * cool);
+                 (1.0f + 0.6f * cool) * scale;
     /* Orange fire at first, going to sooty smoke. */
     float heat = 1.0f - cool;
     material_t fire = material_rough(
         vec3(0.12f + 0.88f * heat, 0.1f + 0.2f * heat, 0.09f - 0.05f * heat),
         1.0f);
-    fire.emissive = 0.8f * heat * heat;
+    fire.emissive = 0.8f * heat * heat * (scale > 1.0f ? 2.0f : 1.0f);
     mat4_t model = mat4_multiply(mat4_translation(where),
                                  mat4_scaling(vec3(size, size, size)));
     renderer_draw_mesh(renderer, visual->smoke_puff, fire, model);
   }
+  /* A big blast starts with a white-hot flash. */
+  if (scale > 1.0f && age < 0.35f) {
+    float f = 1.0f - age / 0.35f;
+    material_t flash = material_plain(vec3(1.0f, 0.85f, 0.5f));
+    flash.emissive = 4.0f * f;
+    float size = scale * (0.8f + 1.4f * (1.0f - f));
+    renderer_draw_mesh(
+        renderer, visual->smoke_puff, flash,
+        mat4_multiply(mat4_translation(vec3_add(at, vec3(0, scale * 0.8f, 0))),
+                      mat4_scaling(vec3(size, size, size))));
+  }
+}
+
+void car_visual_draw_blast(const car_visual_t* visual, renderer_t* renderer,
+                           vec3_t at, float age) {
+  car_visual_draw_blast_scaled(visual, renderer, at, age, 1.0f);
 }
 
 void car_visual_set_paint(car_visual_t* visual, vec3_t colour) {
