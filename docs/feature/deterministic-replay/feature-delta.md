@@ -61,7 +61,7 @@ Use the actual stage initialisation and preserve the normal test timeout.
 
 | Slice | Value | Status |
 |---|---|---|
-| slice-01 | Reproduce an interactive session from seed and checked frame log | implemented; hosted CI gate pending |
+| slice-01 | Reproduce an interactive session from seed and checked frame log | shipped |
 
 ## DEVOPS
 
@@ -112,3 +112,12 @@ Viewed `/tmp/gta-like-replay-rain.png` on Airport Road: traffic, rain, lamps,
 headlights, wet road and HUD remain visible. Dark verges and the low-contrast
 bottom control hint remain. Handling/camera feel and Intel GPU performance
 still require separate checks. Next is roadmap 0.4, save and load.
+
+The integrated commit `fee16f9` passed the complete
+[macOS and Linux workflow](https://github.com/andrealaforgia/my-gta/actions/runs/40110960810),
+including both full sanitizer suites and all CLI checks. Concurrent map/HUD
+changes were preserved and the integrated native suites were rerun. The
+rebuilt main executable replayed the pre-merge Pordenone log and passed its
+GPU baseline (12.984 ms mean, 18.193 ms p99, 0.797 ms simulation; unchanged
+draw and triangle counts). Temporary implementation worktrees and the test
+container were removed. The working tree was clean after integration.
