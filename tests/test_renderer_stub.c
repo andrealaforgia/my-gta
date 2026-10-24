@@ -9,6 +9,7 @@ struct renderer {
   render_stats_t stats;
   uint32_t next_mesh;
   uint32_t next_texture;
+  int triangles[16384];
 };
 
 renderer_t* renderer_create(int drawable_width, int drawable_height) {
@@ -30,6 +31,7 @@ void renderer_resize(renderer_t* r, int w, int h) {
 mesh_handle_t renderer_upload_mesh(renderer_t* r, const mesh_data_t* mesh) {
   mesh_handle_t handle = {mesh->vertex_count ? r->next_mesh++ : 0};
   r->stats.meshes_uploaded++;
+  if (handle.id < 16384) r->triangles[handle.id] = (int)(mesh->index_count / 3);
   return handle;
 }
 
@@ -73,7 +75,10 @@ void renderer_draw_mesh(renderer_t* r, mesh_handle_t mesh, material_t material,
                         mat4_t model) {
   (void)material;
   (void)model;
-  if (mesh.id) r->stats.draw_calls++;
+  if (mesh.id) {
+    r->stats.draw_calls++;
+    if (mesh.id < 16384) r->stats.triangles += r->triangles[mesh.id];
+  }
 }
 
 void renderer_draw_line(renderer_t* r, vec3_t a, vec3_t b, vec3_t c) {
@@ -142,6 +147,11 @@ void renderer_draw_screen_line(renderer_t* r, float x0, float y0, float x1,
   (void)c;
 }
 void renderer_end_frame(renderer_t* r) { (void)r; }
+void renderer_wait_idle(renderer_t* r) { (void)r; }
+bool renderer_post_enabled(const renderer_t* r) {
+  (void)r;
+  return false;
+}
 mat4_t renderer_view_projection(const renderer_t* r) {
   return r->view_projection;
 }

@@ -1,5 +1,57 @@
 # Architecture
 
+## Repeatable frame benchmark (2026-10-24)
+
+`./gta-like --bench --city=pordenone` runs a fixed 1800-frame camera route
+after 60 warm-up frames, with two 1/120 s simulation steps per frame. These
+are 30 measured simulated seconds. Loading and warm-up are excluded. Vsync
+and audio are disabled. The camera orbits the city centre, at most 750 m out
+and 80 m above the highest chunk, looking down towards nearby ground; the
+walking player's focus follows it so streaming and street life follow too.
+
+`game/src/main/benchmark.c` owns measurement, nearest-rank p99, strict report
+I/O and the 25% regression gate. The renderer's `renderer_wait_idle` waits
+for completed drawing with `glFinish`, used only by the benchmark; ordinary
+game frames retain their usual pipeline. Frame time includes simulation,
+rendering, GPU completion and swap. Simulation time includes stage systems
+and streaming, a deliberate superset of physics-solver time. Draw calls and
+triangles include both the shadow and main passes.
+
+`--bench-output=<file>` saves a config-format report. Supplying
+`--bench-baseline=<file>` refuses incompatible workloads, then fails when any
+reported metric exceeds 125% of the reference. Identity covers resolution,
+sample/warm-up counts, actor counts, city/config/geometry and simulation
+metadata, effective vehicle parameters, time/weather and active rendering
+modes. Native geometry representations make these same-machine references.
+No universal GPU timing gate runs on hosted CI; controlled unit and runner
+tests verify the comparison, with CLI tests covering option validation and
+protection against overwriting the baseline through aliases.
+
+Measured on Apple M4 Pro, 24 GB, macOS 26.5.2, OpenGL 4.1 Metal 90.5 at
+1280 by 720, dry daylight, post-processing enabled, 120 cars and 250 people.
+The current Pordenone package has 1368 chunks and 7,157,082 triangles;
+config hash `fc89e80665356d89`. The reference is
+`docs/baselines/pordenone-m4-pro.cfg`.
+
+| Metric | Reference |
+|---|---:|
+| Mean completed frame | 12.980 ms |
+| 99th-percentile completed frame | 19.275 ms |
+| Mean simulation per frame | 0.775 ms |
+| Mean draw calls | 8121.93 |
+| Mean triangles | 909576.88 |
+
+The mean is about 77 frames/s; the p99 exceeds the 16.67 ms budget for a
+consistently smooth 60 frames/s. Intel integrated graphics remain unmeasured.
+These are observations, not an assurance about every street or machine.
+Route clearance, radius and look direction are named tuning constants.
+
+Viewed the route at its start and after a quarter orbit. Streets, buildings,
+parks, the river and traffic are visible; aiming at nearby ground replaced
+the initial view's excess sky and fog. Distant fog remains strong and the
+HUD still describes the parked car near the airport; those are unchanged
+game behaviours. Next is roadmap 0.3, input recording and deterministic replay.
+
 A real-time engine, an offline content pipeline and a thin prototype
 layer, in C99 with SDL2 for the platform and OpenGL 4.1 for drawing.
 

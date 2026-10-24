@@ -30,6 +30,18 @@ make sound          # render an engine run to engine.wav to judge by ear
 ./gta-like --help
 ```
 
+Run `./gta-like --bench --city=pordenone` for a repeatable performance check
+over 30 simulated seconds. It uses a fixed camera route, disables vsync and
+audio, and reports completed-frame average and 99th-percentile time, draw
+calls, triangles and simulation time. The simulation time includes streaming
+and game systems as well as physics.
+
+Save a report with `--bench-output=/tmp/pordenone.cfg`, then compare another
+run with `--bench-baseline=/tmp/pordenone.cfg`. A metric more than 25% above
+the baseline fails the command. Compare on the same machine with the same
+city and settings; incompatible workloads are refused. See `docs/testing.md`
+for the measured reference and validation details.
+
 ## Generate and drive a real city
 
 ```

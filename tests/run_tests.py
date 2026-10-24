@@ -35,6 +35,7 @@ GROUPS = (
     "textures",
     "lidar",
     "aircraft",
+    "benchmark",
 )
 
 

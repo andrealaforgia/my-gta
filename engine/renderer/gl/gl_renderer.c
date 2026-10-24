@@ -24,6 +24,11 @@
 #define MAX_DRAWS (1 << 15)
 #define SHADOW_MAP_SIZE 2048
 
+void renderer_wait_idle(renderer_t* renderer) {
+  (void)renderer;
+  glFinish();
+}
+
 typedef struct {
   GLuint vao, vbo, ebo;
   GLsizei index_count;
@@ -984,6 +989,7 @@ mat4_t renderer_view_projection(const renderer_t* r) {
 }
 
 render_stats_t renderer_stats(const renderer_t* r) { return r->last_stats; }
+bool renderer_post_enabled(const renderer_t* r) { return r->post != NULL; }
 
 int renderer_read_shadow_map(renderer_t* r, float* depths, size_t count) {
   if (!r->shadow_fbo || count < (size_t)SHADOW_MAP_SIZE * SHADOW_MAP_SIZE)

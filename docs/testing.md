@@ -36,6 +36,25 @@ ordinary push workflow continues to run this group in both full test suites.
 | junction | corner intersections, cuts, exact patches, bevels, forks, pavement corners, polyline cutting |
 | generator | ear clipping, every feature becomes geometry, widths and heights, corridor fitting, lamp posts, winding, spawn on a road, package round trip and validation, determinism, settings hash |
 | citydrive | the fixture city loads from a cooked package, the car drives its spawn road and through a junction, a building stops it |
+| benchmark | average and nearest-rank p99, the 25% budget boundary, baseline validation and workload compatibility, repeatable camera motion, and the real benchmark runner with a stub renderer |
+
+The GPU performance check is `./gta-like --bench --city=pordenone`. It renders
+1800 frames with two fixed 1/120 s simulation steps per frame, after an
+excluded warm-up. Thirty simulated seconds can take more or less than thirty
+wall-clock seconds. GPU completion is included in each frame sample; loading
+the city is excluded. `simulation_average_ms` measures both stage steps per
+frame, including traffic, pedestrians, streaming and physics.
+
+`--bench-output=<file>` saves a report in the existing config format.
+`--bench-baseline=<file>` checks it against a previous run and returns failure
+when any tracked metric exceeds 125% of that baseline. The C tests check the
+exact boundary and reject malformed files and different workloads. GPU timing
+checks are opt-in and require the same hardware; the ordinary GPU-free CI
+suite verifies the measurement and comparison behaviour with controlled
+samples. After building the game, `python3 tests/test_benchmark_cli.py` checks
+CLI validation and protects the baseline from being overwritten through
+path aliases; the push workflow runs these checks too. The recorded Pordenone
+machine reference is under `docs/baselines/`.
 
 `make sound` renders ten seconds of a standing start (idle, a skid at
 launch, full throttle through the gears with wind rising, an impact,

@@ -133,6 +133,10 @@ void renderer_draw_screen_line(renderer_t* renderer, float x0, float y0,
                                float x1, float y1, float thickness,
                                vec3_t color);
 void renderer_end_frame(renderer_t* renderer);
+/* Wait for submitted drawing to finish, for benchmark measurements. */
+void renderer_wait_idle(renderer_t* renderer);
+/* False when the renderer fell back to drawing without post-processing. */
+bool renderer_post_enabled(const renderer_t* renderer);
 
 mat4_t renderer_view_projection(const renderer_t* renderer);
 render_stats_t renderer_stats(const renderer_t* renderer);

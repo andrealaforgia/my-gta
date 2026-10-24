@@ -19,4 +19,5 @@ void run_traffic_tests(void);
 void run_textures_tests(void);
 void run_lidar_tests(void);
 void run_aircraft_tests(void);
+void run_benchmark_tests(void);
 #endif  // TESTS_TEST_GROUPS_H_
