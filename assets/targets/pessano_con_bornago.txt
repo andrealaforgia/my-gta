@@ -1,0 +1,9 @@
+# A place picked out for the player in Pessano con Bornago: a red diamond on
+# the minimap and the map, with its name, and an arrow and the distance on the
+# screen. Temporary: delete this file to take it away.
+#
+# The map data has no number 22 in Corso Europa (it has 18 and 26 on the same
+# side), so this is the point between them.
+#
+# latitude longitude NAME
+45.54812 9.38410 CORSO EUROPA 22

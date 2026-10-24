@@ -98,6 +98,7 @@ typedef struct {
   pedestrian_meshes_t people_meshes;
   bool city_rules;  /* police, satnav and fines, in a city */
   guide_t guide;    /* the way to the airport */
+  guide_t target;   /* a place picked out on the map, if the city has one */
   bool has_figures; /* meshes for drawing people, so the player can walk */
   bool on_foot;     /* out of the car, walking (or flying: see piloting) */
   aircraft_visual_t air_visual;
@@ -177,6 +178,8 @@ bool driving_stage_fire(driving_stage_t* stage);
 /* Punches whoever is in front, on foot: they reel and run. Returns true if a
  * punch was thrown. */
 bool driving_stage_punch(driving_stage_t* stage);
+/* Where the player is: on foot, in the aircraft they fly, or in the car. */
+vec3_t driving_stage_player_position(const driving_stage_t* stage);
 /* A line across the screen for a moment. */
 void driving_stage_say(driving_stage_t* stage, const char* text);
 /* The player did something the law minds (stealing an aircraft). */

@@ -747,6 +747,50 @@ static void every_cockpit_draws_its_dials(void) {
   stop(&run);
 }
 
+/* A place to go is read from a one-line file and put on the city's ground:
+ * metres east and south of the package's origin, as the generator does. */
+static void a_target_file_puts_a_named_place_on_the_ground(void) {
+  const char* path = "/tmp/gta-like-test-target.txt";
+  FILE* file = fopen(path, "w");
+  assert(file);
+  fprintf(file, "# a note\n\n45.5500 9.3900 CORSO EUROPA 22\n");
+  fclose(file);
+  guide_t guide;
+  memset(&guide, 0, sizeof(guide));
+  /* 0.001 degree north and 0.002 east of the origin. */
+  assert(guide_target_load(&guide, path, 45.5490, 9.3880));
+  assert(guide.active && strcmp(guide.label, "CORSO EUROPA 22") == 0);
+  assert(near_to(guide.z, -111.19f, 0.2f)); /* north is -z */
+  assert(near_to(guide.x, 2.0f * 111.19f * cosf(45.549f * 3.14159265f / 180.0f),
+                 0.3f));
+  remove(path);
+  /* No file, no target. */
+  guide_t none;
+  memset(&none, 0, sizeof(none));
+  assert(!guide_target_load(&none, "/tmp/gta-like-no-such-target.txt", 0, 0));
+  assert(!none.active);
+}
+
+/* The map and the minimap show the player, not the car left behind: in an
+ * aircraft that is where the aircraft is. */
+static void the_player_is_where_they_are_even_in_an_aircraft(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  vec3_t in_car = driving_stage_player_position(stage);
+  assert(near_to(in_car.x,
+                 physics_body(stage->physics, stage->vehicle.body)->position.x,
+                 0.01f));
+  aircraft_t* jet = board_aircraft(&run, 6);
+  jet->position = vec3_add(jet->position, vec3(500.0f, 80.0f, -300.0f));
+  stage->walker.position = jet->position;
+  vec3_t flying = driving_stage_player_position(stage);
+  assert(near_to(flying.x, jet->position.x, 0.01f) &&
+         near_to(flying.z, jet->position.z, 0.01f));
+  assert(hypotf(flying.x - in_car.x, flying.z - in_car.z) > 300.0f);
+  stop(&run);
+}
+
 static void a_plane_has_no_missiles_to_fire(void) {
   city_run_t run;
   start_in(&run, airport_directory);
@@ -1360,6 +1404,8 @@ void run_citydrive_tests(void) {
   RUN(the_cockpit_view_looks_from_the_pilots_seat);
   RUN(a_missile_leaves_the_jet_flies_and_goes_off_where_it_strikes);
   RUN(a_plane_has_no_missiles_to_fire);
+  RUN(a_target_file_puts_a_named_place_on_the_ground);
+  RUN(the_player_is_where_they_are_even_in_an_aircraft);
   RUN(every_cockpit_draws_its_dials);
   RUN(the_747_can_be_flown_off_from_its_stand);
   RUN(the_747_can_be_boarded_at_its_nose_and_its_tail);

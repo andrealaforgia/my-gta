@@ -14,23 +14,23 @@ static void shadowed(renderer_t* renderer, float x, float y, float scale,
 
 void guide_hud_draw(const guide_t* guide, renderer_t* renderer,
                     float screen_width, float screen_height, float x, float z,
-                    float fx, float fz, float aim_x, float aim_z) {
+                    float fx, float fz, float aim_x, float aim_z, int row) {
   (void)screen_height;
   if (!guide->active) return;
   float scale = screen_width / 640.0f;
   if (scale < 2) scale = 2;
   texture_handle_t none = {0};
   char line[64];
-  vec3_t white = vec3(1, 1, 1), gold = vec3(1.0f, 0.82f, 0.2f);
+  vec3_t white = vec3(1, 1, 1), gold = guide->colour;
   float right = screen_width - 8.0f * scale;
-  float top =
-      8.0f * scale + 62.0f * scale + 10.0f * scale; /* under the minimap */
+  float top = 8.0f * scale + 62.0f * scale + 10.0f * scale +
+              (float)row * 52.0f * scale; /* under the minimap */
   float text_scale = scale * 1.1f;
   float d = hypotf(guide->x - x, guide->z - z);
   if (d >= 1000.0f)
-    snprintf(line, sizeof(line), "AIRPORT %.1f KM", d / 1000.0f);
+    snprintf(line, sizeof(line), "%s %.1f KM", guide->label, d / 1000.0f);
   else
-    snprintf(line, sizeof(line), "AIRPORT %d M", (int)d);
+    snprintf(line, sizeof(line), "%s %d M", guide->label, (int)d);
   shadowed(renderer, right - (float)strlen(line) * 6 * text_scale, top,
            text_scale, white, line);
   /* The arrow: up is the way the player faces. */
@@ -64,6 +64,35 @@ void guide_hud_draw(const guide_t* guide, renderer_t* renderer,
   }
 }
 
+bool guide_target_load(guide_t* guide, const char* path, double origin_lat,
+                       double origin_lon) {
+  FILE* file = fopen(path, "r");
+  if (!file) return false;
+  char line[160];
+  bool found = false;
+  while (!found && fgets(line, sizeof(line), file)) {
+    if (line[0] == '#' || line[0] == '\n') continue;
+    double lat, lon;
+    int used = 0;
+    if (sscanf(line, "%lf %lf %n", &lat, &lon, &used) < 2 || used == 0)
+      continue;
+    line[strcspn(line, "\n")] = '\0';
+    /* The same flat projection the generator used: metres east and south of
+     * the origin. */
+    double metres_per_degree = 6371008.8 * 3.14159265358979 / 180.0;
+    guide->x = (float)((lon - origin_lon) * metres_per_degree *
+                       cos(origin_lat * 3.14159265358979 / 180.0));
+    guide->z = (float)(-(lat - origin_lat) * metres_per_degree);
+    guide->y = 0;
+    snprintf(guide->label, sizeof(guide->label), "%s", line + used);
+    guide->colour = vec3(1.0f, 0.25f, 0.2f);
+    guide->active = true;
+    found = true;
+  }
+  fclose(file);
+  return found;
+}
+
 /* A diamond of four strokes, flashing. */
 static void diamond(renderer_t* renderer, float cx, float cy, float r,
                     float width, vec3_t colour) {
@@ -88,8 +117,7 @@ void guide_minimap_mark(const guide_t* guide, renderer_t* renderer,
   float pulse = 0.8f + 0.25f * sinf(clock * 6.0f);
   diamond(renderer, px, py, 3.2f * scale * pulse, 1.8f * scale,
           vec3(0.1f, 0.1f, 0.1f));
-  diamond(renderer, px, py, 2.6f * scale * pulse, 1.2f * scale,
-          vec3(1.0f, 0.85f, 0.1f));
+  diamond(renderer, px, py, 2.6f * scale * pulse, 1.2f * scale, guide->colour);
 }
 
 void guide_map_mark(const guide_t* guide, renderer_t* renderer,
@@ -102,8 +130,10 @@ void guide_map_mark(const guide_t* guide, renderer_t* renderer,
   float pulse = 0.85f + 0.2f * sinf(clock * 6.0f);
   diamond(renderer, px, py, 8.0f * scale * pulse, 3.0f * scale,
           vec3(0.1f, 0.1f, 0.1f));
-  diamond(renderer, px, py, 7.0f * scale * pulse, 1.8f * scale,
-          vec3(1.0f, 0.85f, 0.1f));
+  diamond(renderer, px, py, 7.0f * scale * pulse, 1.8f * scale, guide->colour);
+  /* Its name, beside the mark. */
+  shadowed(renderer, px + 10.0f * scale, py - 4.0f * scale, scale * 1.2f,
+           guide->colour, guide->label);
 }
 
 static void route_segment(renderer_t* renderer, float x0, float y0, float x1,

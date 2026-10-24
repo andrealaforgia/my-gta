@@ -111,7 +111,18 @@ bool driving_stage_init(driving_stage_t* stage, window_t* window,
       stage->guide.x = airport->gate_x;
       stage->guide.y = airport->gate_y;
       stage->guide.z = airport->gate_z;
+      snprintf(stage->guide.label, sizeof(stage->guide.label), "AIRPORT");
+      stage->guide.colour = vec3(1.0f, 0.82f, 0.2f);
     }
+    /* A place picked out for the player, if the city has a file for it. */
+    char target_path[200];
+    const char* folder = options.city_package ? options.city_package : "";
+    const char* slash = strrchr(folder, '/');
+    snprintf(target_path, sizeof(target_path), "assets/targets/%s.txt",
+             slash ? slash + 1 : folder);
+    guide_target_load(&stage->target, target_path,
+                      stage->scene.package->origin_lat,
+                      stage->scene.package->origin_lon);
     stage->city_rules = true;
   }
   skid_marks_reset(&stage->skid_marks);
@@ -155,14 +166,36 @@ void driving_stage_destroy(driving_stage_t* stage) {
 
 /* Where the player is: the car, or the person who has got out of it. */
 static vec3_t player_position(const driving_stage_t* stage) {
+  /* In an aircraft or on a parachute the walker is pinned to the player. */
   if (stage->on_foot) return stage->walker.position;
   return physics_body(stage->physics, stage->vehicle.body)->position;
+}
+
+vec3_t driving_stage_player_position(const driving_stage_t* stage) {
+  return player_position(stage);
 }
 
 static vec3_t player_velocity(const driving_stage_t* stage) {
   if (stage->on_foot)
     return vec3_scale(walker_forward(&stage->walker), stage->walker.speed);
   return physics_body(stage->physics, stage->vehicle.body)->velocity;
+}
+
+/* The way the player is facing, flat, as a unit vector: the aircraft's nose,
+ * the walker's, or the car's. */
+static void player_heading(const driving_stage_t* stage, float* x, float* z) {
+  vec3_t forward;
+  if (stage->piloting > 0)
+    forward = aircraft_heading(&stage->aircraft[stage->piloting - 1]);
+  else if (stage->on_foot)
+    forward = walker_forward(&stage->walker);
+  else
+    forward =
+        quat_rotate(physics_body(stage->physics, stage->vehicle.body)->rotation,
+                    vec3(0, 0, -1));
+  float length = hypotf(forward.x, forward.z);
+  *x = length > 1e-4f ? forward.x / length : 0.0f;
+  *z = length > 1e-4f ? forward.z / length : -1.0f;
 }
 
 audio_state_t driving_stage_audio_state(const driving_stage_t* stage) {
@@ -606,14 +639,12 @@ static void draw_map(driving_stage_t* stage) {
   renderer_draw_screen_image(r, stage->map_texture, left, top, side, side,
                              vec3(1, 1, 1), 0.92f);
   /* The car: a dot with a nose pointing the way it faces. */
-  transform_t chassis = car_transform(stage, 1.0f);
-  vec3_t forward = quat_rotate(chassis.rotation, vec3(0, 0, -1));
+  vec3_t me = player_position(stage);
+  float dx, dz;
+  player_heading(stage, &dx, &dz);
   float pixels_per_metre = side / map->extent;
-  float cx = left + (chassis.position.x - map->min_x) * pixels_per_metre;
-  float cy = top + (chassis.position.z - map->min_z) * pixels_per_metre;
-  float length = sqrtf(forward.x * forward.x + forward.z * forward.z);
-  float dx = length > 1e-4f ? forward.x / length : 0;
-  float dz = length > 1e-4f ? forward.z / length : -1;
+  float cx = left + (me.x - map->min_x) * pixels_per_metre;
+  float cy = top + (me.z - map->min_z) * pixels_per_metre;
   float arm = 7 * scale;
   vec3_t red = vec3(1.0f, 0.15f, 0.1f), white = vec3(1, 1, 1);
   renderer_draw_screen_line(r, cx - dx * arm, cy - dz * arm,
@@ -672,6 +703,8 @@ static void draw_map(driving_stage_t* stage) {
     guide_route_on_map(r, map, stage->satnav, stage->satnav_count, left, top,
                        side, scale);
     guide_map_mark(&stage->guide, r, map, left, top, side, scale,
+                   stage->rain_clock);
+    guide_map_mark(&stage->target, r, map, left, top, side, scale,
                    stage->rain_clock);
     float police[2 * 16];
     police_map_marks(r, map, police, police_positions(stage, police, 16), left,
@@ -805,10 +838,9 @@ static void draw_minimap(driving_stage_t* stage) {
   float side = 62.0f * scale;
   float x = (float)stage->window->drawable_width - side - 8.0f * scale;
   float y = 8.0f * scale;
-  const rigid_body_t* body = physics_body(stage->physics, stage->vehicle.body);
+  vec3_t me = player_position(stage);
   float u0, v0, u1, v1;
-  city_map_window(map, body->position.x, body->position.z, 140.0f, &u0, &v0,
-                  &u1, &v1);
+  city_map_window(map, me.x, me.z, 140.0f, &u0, &v0, &u1, &v1);
   texture_handle_t none = {0};
   renderer_draw_screen_image(r, none, x - 2 * scale, y - 2 * scale,
                              side + 4 * scale, side + 4 * scale,
@@ -817,14 +849,10 @@ static void draw_minimap(driving_stage_t* stage) {
                                 u1, v1, vec3(1, 1, 1), 0.92f);
   /* The car: an arrow at the window's middle, or where it falls when the
    * window has been held at an edge. */
-  float cx = x + ((body->position.x - map->min_x) / map->extent - u0) /
-                     (u1 - u0) * side;
-  float cy = y + ((body->position.z - map->min_z) / map->extent - v0) /
-                     (v1 - v0) * side;
-  vec3_t forward = quat_rotate(body->rotation, vec3(0, 0, -1));
-  float len = sqrtf(forward.x * forward.x + forward.z * forward.z);
-  float dx = len > 1e-4f ? forward.x / len : 0,
-        dz = len > 1e-4f ? forward.z / len : -1;
+  float cx = x + ((me.x - map->min_x) / map->extent - u0) / (u1 - u0) * side;
+  float cy = y + ((me.z - map->min_z) / map->extent - v0) / (v1 - v0) * side;
+  float dx, dz;
+  player_heading(stage, &dx, &dz);
   float arm = 4.5f * scale;
   vec3_t red = vec3(1.0f, 0.2f, 0.12f);
   renderer_draw_screen_line(r, cx - dx * arm, cy - dz * arm,
@@ -840,6 +868,8 @@ static void draw_minimap(driving_stage_t* stage) {
                            side, u0, v0, u1, v1, scale);
     guide_minimap_mark(&stage->guide, r, map, x, y, side, u0, v0, u1, v1, scale,
                        stage->rain_clock);
+    guide_minimap_mark(&stage->target, r, map, x, y, side, u0, v0, u1, v1,
+                       scale, stage->rain_clock);
     float police[2 * 16];
     police_minimap_marks(r, map, police, police_positions(stage, police, 16), x,
                          y, side, u0, v0, u1, v1, scale, stage->rain_clock);
@@ -1502,25 +1532,31 @@ void driving_stage_render(driving_stage_t* stage) {
     draw_map(stage);
   } else {
     draw_hud(stage);
-    if (stage->city_rules && stage->piloting == 0) {
-      const rigid_body_t* me =
-          physics_body(stage->physics, stage->vehicle.body);
-      vec3_t heading = quat_rotate(me->rotation, vec3(0, 0, -1));
-      float length = hypotf(heading.x, heading.z);
-      /* The arrow follows the satnav: the first point of the way that is
-       * a little ahead, else straight at the destination. */
-      float aim_x = stage->guide.x, aim_z = stage->guide.z;
-      for (size_t i = 0; i < stage->satnav_count; i++) {
-        float ax = stage->satnav[2 * i], az = stage->satnav[2 * i + 1];
-        if (hypotf(ax - me->position.x, az - me->position.z) > 35.0f) {
-          aim_x = ax, aim_z = az;
-          break;
+    if (stage->city_rules) {
+      vec3_t me = player_position(stage);
+      float heading_x, heading_z;
+      player_heading(stage, &heading_x, &heading_z);
+      float width = (float)stage->window->drawable_width;
+      float height = (float)stage->window->drawable_height;
+      int row = 0;
+      if (stage->piloting == 0 && !stage->chute.active) {
+        /* The arrow follows the satnav: the first point of the way that is
+         * a little ahead, else straight at the destination. */
+        float aim_x = stage->guide.x, aim_z = stage->guide.z;
+        for (size_t i = 0; i < stage->satnav_count; i++) {
+          float ax = stage->satnav[2 * i], az = stage->satnav[2 * i + 1];
+          if (hypotf(ax - me.x, az - me.z) > 35.0f) {
+            aim_x = ax, aim_z = az;
+            break;
+          }
         }
+        guide_hud_draw(&stage->guide, r, width, height, me.x, me.z, heading_x,
+                       heading_z, aim_x, aim_z, row);
+        if (stage->guide.active) row++;
       }
-      guide_hud_draw(&stage->guide, r, (float)stage->window->drawable_width,
-                     (float)stage->window->drawable_height, me->position.x,
-                     me->position.z, length > 1e-4f ? heading.x / length : 0,
-                     length > 1e-4f ? heading.z / length : -1, aim_x, aim_z);
+      /* A picked-out place is pointed at straight, by road or by air. */
+      guide_hud_draw(&stage->target, r, width, height, me.x, me.z, heading_x,
+                     heading_z, stage->target.x, stage->target.z, row);
     }
     draw_minimap(stage);
     draw_street_name(stage);

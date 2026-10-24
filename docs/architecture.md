@@ -396,3 +396,20 @@ to 36 Hz, a noise roar that starts bright and darkens as the missile draws away
 (two one-pole filters whose coefficient falls over two seconds), and a rumble
 of three low notes, fading over about four seconds. Nothing in it is a pure
 tone above 100 Hz.
+
+## The player on the map, and a picked-out place (2026-10-24)
+
+The map, the minimap and the on-screen arrows follow `player_position` and
+`player_heading` in `driving_stage.c`: the aircraft's nose while flying, the
+walker on foot or on a parachute, the car otherwise. (They used the car's body
+before, so they showed the car left at the airport while the player flew a
+helicopter, and the walker's car while on foot.)
+
+`guide_t` now has a label and a colour. A city may have a file
+`assets/targets/<package folder>.txt` with one line `latitude longitude NAME`;
+the game puts the place on the ground using the package's origin
+(`guide_target_load`), shows a red diamond on the minimap and the map with its
+name, and an arrow and distance under the airport's, which points straight at it
+by road or by air. The only one so far is Corso Europa 22 in Pessano con
+Bornago (there is no number 22 in the map data, so it sits between 18 and 26);
+it is temporary: delete the file to remove it.

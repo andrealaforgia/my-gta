@@ -16,13 +16,23 @@
 typedef struct {
   bool active;
   float x, y, z;
+  char label[32]; /* shown beside the distance, and on the map */
+  vec3_t colour;  /* of its marks and arrow */
 } guide_t;
 
-/* The compass arrow towards (aim_x, aim_z) and the distance to the airport.
- * The player is at (x, z) heading (fx, fz), a unit vector. */
+/* A place worth going to, read from a one-line file of the form
+ *   latitude longitude LABEL IN CAPITALS
+ * (lines starting with # are notes). The place is put on the city's ground
+ * using the package's origin. False if the file is not there. */
+bool guide_target_load(guide_t* guide, const char* path, double origin_lat,
+                       double origin_lon);
+
+/* The compass arrow towards (aim_x, aim_z) and the distance to the place.
+ * The player is at (x, z) heading (fx, fz), a unit vector. `row` stacks
+ * several under the minimap, from 0. */
 void guide_hud_draw(const guide_t* guide, renderer_t* renderer,
                     float screen_width, float screen_height, float x, float z,
-                    float fx, float fz, float aim_x, float aim_z);
+                    float fx, float fz, float aim_x, float aim_z, int row);
 
 /* The satnav line, x, z pairs, on the minimap window as for
  * guide_minimap_mark, cut to the window. */
