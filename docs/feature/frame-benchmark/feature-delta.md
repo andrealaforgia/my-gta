@@ -45,7 +45,7 @@ and returns failure for an intentionally strict baseline.
 
 | Slice | Value | Status |
 |---|---|---|
-| slice-01 | Measure the same city route and detect a 25% regression | implemented; hosted CI gate pending |
+| slice-01 | Measure the same city route and detect a 25% regression | shipped |
 
 ## DEVOPS
 
@@ -84,3 +84,10 @@ the built CLI return exit 1 after all 1800 measured frames, proving CLI
 budget wiring. Actual camera captures at the start and quarter orbit were
 inspected; the route now looks down at the city rather than mostly sky.
 See the dated architecture section for the measured reference and limits.
+
+The integrated commit `cd2f19c` passed the complete
+[macOS and Linux workflow](https://github.com/andrealaforgia/my-gta/actions/runs/40107267787),
+including both full sanitizer suites and the CLI checks. The rebuilt main
+checkout also passed the recorded GPU budget (14.072 ms mean, 18.311 ms p99,
+0.790 ms simulation), with the same draw and triangle counts. The working
+tree was clean after integration. Proceed to roadmap 0.3.
