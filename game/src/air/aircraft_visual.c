@@ -7,7 +7,8 @@
 #include "mesh_data.h"
 
 static void build_plane(mesh_data_t* paint, mesh_data_t* trim,
-                        mesh_data_t* glass, mesh_data_t* prop) {
+                        mesh_data_t* glass, mesh_data_t* prop,
+                        mesh_data_t* gear) {
   /* Fuselage and tail cone, high wing, tail plane and fin. */
   mesh_data_add_ellipsoid(paint, vec3(0, 1.3f, 0), vec3(0.85f, 0.8f, 3.4f), 10,
                           16);
@@ -24,13 +25,13 @@ static void build_plane(mesh_data_t* paint, mesh_data_t* trim,
   for (int side = -1; side <= 1; side += 2) {
     mesh_data_add_box(trim, vec3(side * 0.855f, 1.2f, 0.2f),
                       vec3(0.012f, 0.09f, 2.6f));
-    mesh_data_add_cylinder_x(trim, vec3(side * 1.05f, 0.3f, -0.8f), 0.3f, 0.16f,
+    mesh_data_add_cylinder_x(gear, vec3(side * 1.05f, 0.3f, -0.8f), 0.3f, 0.16f,
                              10);
-    mesh_data_add_box(trim, vec3(side * 0.95f, 0.75f, -0.8f),
+    mesh_data_add_box(gear, vec3(side * 0.95f, 0.75f, -0.8f),
                       vec3(0.03f, 0.5f, 0.04f));
   }
-  mesh_data_add_cylinder_x(trim, vec3(0, 0.26f, -2.3f), 0.26f, 0.14f, 10);
-  mesh_data_add_box(trim, vec3(0, 0.7f, -2.3f), vec3(0.03f, 0.5f, 0.04f));
+  mesh_data_add_cylinder_x(gear, vec3(0, 0.26f, -2.3f), 0.26f, 0.14f, 10);
+  mesh_data_add_box(gear, vec3(0, 0.7f, -2.3f), vec3(0.03f, 0.5f, 0.04f));
   mesh_data_add_ellipsoid(trim, vec3(0, 1.3f, -3.75f), vec3(0.2f, 0.2f, 0.3f),
                           6, 10);
   /* The canopy, and the propeller: two blades, drawn turned. */
@@ -78,7 +79,9 @@ aircraft_visual_t aircraft_visual_create(renderer_t* renderer) {
   aircraft_visual_t v;
   mesh_data_t a = mesh_data_create(), b = mesh_data_create(),
               c = mesh_data_create(), d = mesh_data_create();
-  build_plane(&a, &b, &c, &d);
+  mesh_data_t gear = mesh_data_create();
+  build_plane(&a, &b, &c, &d, &gear);
+  v.plane_gear = upload(renderer, &gear);
   v.plane_paint = upload(renderer, &a);
   v.plane_trim = upload(renderer, &b);
   v.plane_glass = upload(renderer, &c);
@@ -98,14 +101,18 @@ aircraft_visual_t aircraft_visual_create(renderer_t* renderer) {
   v.canopy = upload(renderer, &canopy);
   a = mesh_data_create(), b = mesh_data_create(), c = mesh_data_create(),
   d = mesh_data_create();
-  build_airliner(&a, &b, &c, &d);
+  gear = mesh_data_create();
+  build_airliner(&a, &b, &c, &d, &gear);
+  v.airliner_gear = upload(renderer, &gear);
   v.airliner_paint = upload(renderer, &a);
   v.airliner_trim = upload(renderer, &b);
   v.airliner_glass = upload(renderer, &c);
   v.airliner_accent = upload(renderer, &d);
   a = mesh_data_create(), b = mesh_data_create(), c = mesh_data_create(),
   d = mesh_data_create();
-  build_jet(&a, &b, &c, &d);
+  gear = mesh_data_create();
+  build_jet(&a, &b, &c, &d, &gear);
+  v.jet_gear = upload(renderer, &gear);
   v.jet_paint = upload(renderer, &a);
   v.jet_trim = upload(renderer, &b);
   v.jet_glass = upload(renderer, &c);
@@ -149,6 +156,18 @@ static mat4_t turned(transform_t base, vec3_t local, vec3_t axis, float angle) {
   return transform_to_matrix(part);
 }
 
+/* The wheels and legs, folded up into the belly as `gear` falls to 0. */
+static void draw_gear(const aircraft_visual_t* v, renderer_t* renderer,
+                      mesh_handle_t mesh, const aircraft_t* a, mat4_t model,
+                      float lift) {
+  if (a->gear < 0.02f) return;
+  material_t trim = material_rough(vec3(0.1f, 0.1f, 0.11f), 0.6f);
+  (void)v;
+  mat4_t folded = mat4_multiply(
+      model, mat4_translation(vec3(0, (1.0f - a->gear) * lift, 0)));
+  renderer_draw_mesh(renderer, mesh, trim, folded);
+}
+
 /* A missile hung under the aircraft at `local`. */
 static void draw_hung_missile(const aircraft_visual_t* v, renderer_t* renderer,
                               mat4_t model, vec3_t local) {
@@ -171,6 +190,7 @@ static void draw_big(const aircraft_visual_t* v, renderer_t* renderer,
     renderer_draw_mesh(renderer, v->airliner_accent, livery, model);
     renderer_draw_mesh(renderer, v->airliner_trim, trim, model);
     renderer_draw_mesh(renderer, v->airliner_glass, glass, model);
+    draw_gear(v, renderer, v->airliner_gear, a, model, 3.2f);
     return;
   }
   if (a->kind == AIRCRAFT_JET) {
@@ -179,6 +199,7 @@ static void draw_big(const aircraft_visual_t* v, renderer_t* renderer,
     renderer_draw_mesh(renderer, v->jet_paint, skin, model);
     renderer_draw_mesh(renderer, v->jet_trim, trim, model);
     renderer_draw_mesh(renderer, v->jet_glass, glass, model);
+    draw_gear(v, renderer, v->jet_gear, a, model, 1.4f);
     for (int side = -1; side <= 1; side += 2)
       for (int k = 0; k < 2; k++)
         draw_hung_missile(v, renderer, model,
@@ -256,6 +277,7 @@ void aircraft_visual_draw(const aircraft_visual_t* v, renderer_t* renderer,
     renderer_draw_mesh(renderer, v->plane_paint, paint, model);
     renderer_draw_mesh(renderer, v->plane_trim, trim, model);
     renderer_draw_mesh(renderer, v->plane_glass, glass, model);
+    draw_gear(v, renderer, v->plane_gear, a, model, 1.2f);
     renderer_draw_mesh(
         renderer, v->plane_prop, trim,
         turned(base, vec3(0, 1.3f, -3.95f), vec3(0, 0, 1), a->rotor));

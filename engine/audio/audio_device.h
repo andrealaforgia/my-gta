@@ -23,6 +23,8 @@ void audio_device_close(audio_device_t* audio);
 void audio_device_set_state(audio_device_t* audio, audio_state_t state);
 void audio_device_trigger_impact(audio_device_t* audio, float strength);
 void audio_device_trigger_shot(audio_device_t* audio);
+/* A missile launch: a thump, a roar and a rumble over about four seconds. */
+void audio_device_trigger_missile(audio_device_t* audio);
 void audio_device_trigger_bell(audio_device_t* audio, int strikes);
 void audio_device_toggle_mute(audio_device_t* audio);
 

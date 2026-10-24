@@ -718,6 +718,35 @@ static void the_747_can_be_boarded_at_its_nose_and_its_tail(void) {
   stop(&run);
 }
 
+/* From the seat every aircraft draws its panel, round dials, horizon ball,
+ * compass, throttle and stick: many more parts than the outside of the
+ * aircraft, and the aeroplanes add their landing-gear lights. */
+static void every_cockpit_draws_its_dials(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  int outside[AIRCRAFT_KIND_COUNT], inside[AIRCRAFT_KIND_COUNT];
+  const int index_of[AIRCRAFT_KIND_COUNT] = {0, 3, 5, 6, 7};
+  for (int k = 0; k < AIRCRAFT_KIND_COUNT; k++) {
+    board_aircraft(&run, index_of[k]);
+    assert(stage->aircraft[index_of[k]].kind == (aircraft_kind_t)k);
+    stage->air_view = 0;
+    driving_stage_render(stage);
+    outside[k] = renderer_stats(run.renderer).draw_calls;
+    stage->air_view = 1;
+    driving_stage_render(stage);
+    inside[k] = renderer_stats(run.renderer).draw_calls;
+    driving_stage_interact(stage);
+    stage->on_foot = true;
+    stage->piloting = 0;
+  }
+  for (int k = 0; k < AIRCRAFT_KIND_COUNT; k++) {
+    /* The hull is left out from the seat, yet the deck adds more. */
+    assert(inside[k] >= outside[k] + 3);
+  }
+  stop(&run);
+}
+
 static void a_plane_has_no_missiles_to_fire(void) {
   city_run_t run;
   start_in(&run, airport_directory);
@@ -1331,6 +1360,7 @@ void run_citydrive_tests(void) {
   RUN(the_cockpit_view_looks_from_the_pilots_seat);
   RUN(a_missile_leaves_the_jet_flies_and_goes_off_where_it_strikes);
   RUN(a_plane_has_no_missiles_to_fire);
+  RUN(every_cockpit_draws_its_dials);
   RUN(the_747_can_be_flown_off_from_its_stand);
   RUN(the_747_can_be_boarded_at_its_nose_and_its_tail);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);

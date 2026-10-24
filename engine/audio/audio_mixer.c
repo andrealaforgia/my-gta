@@ -44,6 +44,7 @@ audio_mixer_t audio_mixer_create(int sample_rate) {
   mixer.noise = 0x9e3779b9u;
   mixer.rpm_smoothed = 900;
   mixer.bell_age = 99.0f;
+  mixer.missile_age = 99.0f;
   radio_init(&mixer.radio, sample_rate);
   bandpass_set(&mixer.pipe_low, 150, 1.4f, sample_rate);
   bandpass_set(&mixer.pipe_high, 420, 2.5f, sample_rate);
@@ -65,6 +66,11 @@ void audio_mixer_trigger_impact(audio_mixer_t* mixer, float strength) {
 void audio_mixer_trigger_shot(audio_mixer_t* mixer) {
   mixer->shot = 1.0f;
   mixer->shot_phase = 0;
+}
+
+void audio_mixer_trigger_missile(audio_mixer_t* mixer) {
+  mixer->missile_age = 0;
+  memset(mixer->missile_phase, 0, sizeof(mixer->missile_phase));
 }
 
 void audio_mixer_trigger_bell(audio_mixer_t* mixer, int strikes) {
@@ -293,6 +299,38 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
       }
       bell *= 0.16f;
     }
+    float missile = 0;
+    if (mixer->missile_age < 4.2f) {
+      float t = mixer->missile_age;
+      mixer->missile_age += dt;
+      /* The motor lights with a thump that falls in pitch... */
+      mixer->missile_phase[0] += (36.0f + 70.0f * expf(-t * 8.0f)) * dt;
+      mixer->missile_phase[0] -= floorf(mixer->missile_phase[0]);
+      float thump = sinf(2.0f * (float)M_PI * mixer->missile_phase[0]) *
+                    expf(-t * 6.0f) * 2.2f;
+      /* ...a hiss of noise that starts bright and darkens as the missile
+       * draws away, swelling at once and fading slowly... */
+      float coefficient = 0.05f + 0.3f * expf(-t * 1.1f);
+      mixer->missile_lowpass[0] =
+          smooth(mixer->missile_lowpass[0], noise(mixer), coefficient);
+      mixer->missile_lowpass[1] = smooth(
+          mixer->missile_lowpass[1], mixer->missile_lowpass[0], coefficient);
+      float swell =
+          (1.0f - expf(-t * 30.0f)) * expf(-fmaxf(0.0f, t - 0.7f) / 1.3f);
+      float fade = fminf(1.0f, (4.2f - t) / 1.2f);
+      float roar = mixer->missile_lowpass[1] * 9.0f * swell;
+      /* ...over a rumble of three low, slowly beating notes. */
+      float rumble = 0;
+      static const float base[3] = {41.0f, 54.0f, 73.0f};
+      for (int k = 0; k < 3; k++) {
+        mixer->missile_phase[k + 1] += base[k] * dt;
+        mixer->missile_phase[k + 1] -= floorf(mixer->missile_phase[k + 1]);
+        rumble += sinf(2.0f * (float)M_PI * mixer->missile_phase[k + 1]) *
+                  (1.0f - 0.25f * (float)k);
+      }
+      rumble *= 0.35f * swell;
+      missile = (thump + roar + rumble) * fade;
+    }
     float shot = 0;
     if (mixer->shot > 1e-4f) {
       /* A crack of noise, rounded a little, over a thump that falls in
@@ -309,7 +347,7 @@ void audio_mixer_render(audio_mixer_t* mixer, float* out, int frames) {
         soft_clip((engine * 0.55f + skid * 0.5f + impact + wind + town + bell +
                    rain + horn + other_horn + siren +
                    radio_next(&mixer->radio) * (radio_audible ? 0.5f : 0.0f) +
-                   shot * 0.8f) *
+                   shot * 0.8f + missile * 0.9f) *
                   gain);
   }
 }

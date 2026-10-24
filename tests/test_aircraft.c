@@ -198,6 +198,65 @@ static void the_gunship_flies_faster_than_the_little_helicopter(void) {
   assert(speed[1] > speed[0] * 1.2f);
 }
 
+/* The wheels start down, cannot be raised on the runway, take a few seconds
+ * to fold away in the air, and come down again. */
+static void the_landing_gear_folds_up_in_the_air_and_not_on_the_ground(void) {
+  aircraft_t plane = aircraft_create(AIRCRAFT_PLANE, vec3(0, 0, 0), 0);
+  assert(plane.gear_down && plane.gear == 1.0f);
+  assert(!aircraft_toggle_gear(&plane)); /* not while on the wheels */
+  assert(plane.gear_down);
+  plane = plane_taking_off(40.0f);
+  assert(!plane.on_ground && plane.gear == 1.0f);
+  assert(aircraft_toggle_gear(&plane) && !plane.gear_down);
+  for (float t = 0; t < 1.0f; t += DT)
+    aircraft_step(&plane, controls(0, 0, 1), 0, DT);
+  assert(plane.gear > 0.5f && plane.gear < 1.0f); /* still folding */
+  for (float t = 0; t < 4.0f; t += DT)
+    aircraft_step(&plane, controls(0, 0, 1), 0, DT);
+  assert(plane.gear == 0.0f);
+  assert(aircraft_toggle_gear(&plane) && plane.gear_down);
+  for (float t = 0; t < 5.0f; t += DT)
+    aircraft_step(&plane, controls(0, 0, 1), 0, DT);
+  assert(plane.gear == 1.0f);
+  /* A helicopter has skids, and nothing to raise. */
+  aircraft_t heli = aircraft_create(AIRCRAFT_HELICOPTER, vec3(0, 0, 0), 0);
+  heli.on_ground = false;
+  assert(!aircraft_toggle_gear(&heli));
+}
+
+static void a_plane_with_its_wheels_up_goes_faster(void) {
+  float speed[2];
+  for (int up = 0; up < 2; up++) {
+    aircraft_t plane = plane_taking_off(40.0f);
+    if (up) aircraft_toggle_gear(&plane);
+    for (float t = 0; t < 40.0f; t += DT)
+      aircraft_step(&plane, controls(0, 0, 1), 0, DT);
+    speed[up] = plane.speed;
+  }
+  assert(speed[1] > speed[0]);
+}
+
+/* Down on its belly it is a wreck; on its wheels it is not. */
+static void landing_with_the_gear_up_is_a_crash(void) {
+  for (int up = 0; up < 2; up++) {
+    aircraft_t plane = plane_taking_off(40.0f);
+    plane.position.y = 300.0f;
+    if (up) {
+      aircraft_toggle_gear(&plane);
+      for (float t = 0; t < 5.0f; t += DT)
+        aircraft_step(&plane, controls(0, 0, -0.3f), 0, DT);
+      assert(plane.gear == 0.0f);
+    }
+    plane.position.y = 25.0f;
+    aircraft_status_t status = AIRCRAFT_FLYING;
+    for (float t = 0;
+         t < 120.0f && !plane.on_ground && status == AIRCRAFT_FLYING; t += DT)
+      status = aircraft_step(&plane, controls(0, 0, -0.3f), 0, DT);
+    assert(up ? status == AIRCRAFT_CRASHED
+              : (status == AIRCRAFT_FLYING && plane.on_ground));
+  }
+}
+
 void run_aircraft_tests(void) {
   RUN(a_plane_waits_on_the_runway_until_given_power);
   RUN(a_plane_takes_off_climbs_and_goes_where_its_nose_points);
@@ -212,5 +271,8 @@ void run_aircraft_tests(void) {
   RUN(the_jet_outruns_the_plane_and_the_airliner_too);
   RUN(only_the_jet_and_the_gunship_carry_missiles);
   RUN(the_gunship_flies_faster_than_the_little_helicopter);
+  RUN(the_landing_gear_folds_up_in_the_air_and_not_on_the_ground);
+  RUN(a_plane_with_its_wheels_up_goes_faster);
+  RUN(landing_with_the_gear_up_is_a_crash);
   RUN(keys_become_flying_controls);
 }

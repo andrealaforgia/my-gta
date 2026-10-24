@@ -41,6 +41,9 @@ void air_stage_draw(driving_stage_t* stage, float night);
 /* Fires a missile from the jet or the gunship, when that is what is being
  * flown. True if one left its rail. */
 bool air_stage_fire(driving_stage_t* stage);
+/* L: wheels up or down, in an aeroplane that is in the air. True if the
+ * wheels were set moving. */
+bool air_stage_toggle_gear(driving_stage_t* stage);
 /* Missiles in flight and the blasts they leave behind. */
 void air_stage_step_missiles(driving_stage_t* stage, float dt);
 /* The missiles in flight and the fireballs, drawn in the world. */

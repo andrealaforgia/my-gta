@@ -77,6 +77,7 @@ See `docs/geographic-data.md` and `docs/asset-pipeline.md`.
 | F | get out of the car, walk (space to run), and get back in or steal any car you stand beside |
 | G, click | on foot: fire the pistol; in the jet or the gunship: launch a missile |
 | Q, right click | on foot: punch whoever is in front; they reel and run |
+| L, pad D-pad up | in an aeroplane in the air: wheels up or down (a landing with them up is a crash) |
 | F in an aircraft | get out when down and stopped; in the air, bail out on a parachute (A/D turn, W drift, S flare) |
 | M | the city map over a paused game, with street names and your position |
 | P | pause |

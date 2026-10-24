@@ -48,7 +48,7 @@ static void wing_pair(mesh_data_t* m, float xr, float zfr, float zbr, float yr,
 }
 
 void build_airliner(mesh_data_t* paint, mesh_data_t* trim, mesh_data_t* glass,
-                    mesh_data_t* accent) {
+                    mesh_data_t* accent, mesh_data_t* gear) {
   /* Fuselage, the hump of the upper deck, the tail cone and the fin. */
   mesh_data_add_ellipsoid(paint, vec3(0, 5.3f, 0), vec3(3.2f, 3.4f, 35.0f), 12,
                           22);
@@ -77,16 +77,16 @@ void build_airliner(mesh_data_t* paint, mesh_data_t* trim, mesh_data_t* glass,
         vec3(0.12f, 0.5f, 1.8f));
   }
   /* Landing gear: the nose leg and wheels, the body and the wing bogies. */
-  mesh_data_add_box(trim, vec3(0, 1.6f, -24.0f), vec3(0.12f, 1.6f, 0.12f));
-  mesh_data_add_cylinder_x(trim, vec3(-0.45f, 0.6f, -24.0f), 0.6f, 0.35f, 10);
-  mesh_data_add_cylinder_x(trim, vec3(0.45f, 0.6f, -24.0f), 0.6f, 0.35f, 10);
+  mesh_data_add_box(gear, vec3(0, 1.6f, -24.0f), vec3(0.12f, 1.6f, 0.12f));
+  mesh_data_add_cylinder_x(gear, vec3(-0.45f, 0.6f, -24.0f), 0.6f, 0.35f, 10);
+  mesh_data_add_cylinder_x(gear, vec3(0.45f, 0.6f, -24.0f), 0.6f, 0.35f, 10);
   static const float bogies[3][2] = {{-4.2f, 4.0f}, {4.2f, 4.0f}, {0, 9.0f}};
   for (int i = 0; i < 3; i++) {
     float x = bogies[i][0], z = bogies[i][1];
-    mesh_data_add_box(trim, vec3(x, 2.6f, z), vec3(0.15f, 1.5f, 0.15f));
+    mesh_data_add_box(gear, vec3(x, 2.6f, z), vec3(0.15f, 1.5f, 0.15f));
     for (int k = 0; k < 4; k++)
       mesh_data_add_cylinder_x(
-          trim,
+          gear,
           vec3(x + ((k & 1) ? 0.5f : -0.5f), 0.6f, z + (k & 2 ? 1.1f : -1.1f)),
           0.6f, 0.4f, 10);
   }
@@ -113,7 +113,7 @@ void build_airliner(mesh_data_t* paint, mesh_data_t* trim, mesh_data_t* glass,
 }
 
 void build_jet(mesh_data_t* paint, mesh_data_t* trim, mesh_data_t* glass,
-               mesh_data_t* flame) {
+               mesh_data_t* flame, mesh_data_t* gear) {
   /* Fuselage, long nose, air intake under the cockpit. */
   mesh_data_add_ellipsoid(paint, vec3(0, 1.7f, 0), vec3(0.95f, 0.85f, 7.0f), 10,
                           16);
@@ -127,12 +127,12 @@ void build_jet(mesh_data_t* paint, mesh_data_t* trim, mesh_data_t* glass,
   /* Engine nozzle, gear, and a missile rail under each wing. */
   mesh_data_add_ellipsoid(trim, vec3(0, 1.7f, 7.2f), vec3(0.72f, 0.7f, 0.6f), 6,
                           12);
-  mesh_data_add_box(trim, vec3(0, 0.8f, -4.2f), vec3(0.04f, 0.5f, 0.04f));
-  mesh_data_add_cylinder_x(trim, vec3(0, 0.28f, -4.2f), 0.28f, 0.16f, 10);
+  mesh_data_add_box(gear, vec3(0, 0.8f, -4.2f), vec3(0.04f, 0.5f, 0.04f));
+  mesh_data_add_cylinder_x(gear, vec3(0, 0.28f, -4.2f), 0.28f, 0.16f, 10);
   for (int side = -1; side <= 1; side += 2) {
-    mesh_data_add_box(trim, vec3(side * 1.4f, 0.8f, 1.8f),
+    mesh_data_add_box(gear, vec3(side * 1.4f, 0.8f, 1.8f),
                       vec3(0.04f, 0.5f, 0.05f));
-    mesh_data_add_cylinder_x(trim, vec3(side * 1.4f, 0.3f, 1.8f), 0.3f, 0.2f,
+    mesh_data_add_cylinder_x(gear, vec3(side * 1.4f, 0.3f, 1.8f), 0.3f, 0.2f,
                              10);
     for (int k = 0; k < 2; k++)
       mesh_data_add_box(trim,

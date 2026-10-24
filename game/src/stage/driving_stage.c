@@ -857,11 +857,11 @@ static void draw_controls_hint(driving_stage_t* stage, float x, float scale) {
     return;
   }
   if (stage->piloting > 0) {
-    renderer_draw_text(
-        r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
-        "W/S PITCH  A/D BANK  SHIFT/SPACE POWER UP  CTRL POWER "
-        "DOWN OR BRAKE  C CAMERA  H HORN  G FIRE (JET, GUNSHIP)  F GET OUT "
-        "(DOWN AND STOPPED) OR BAIL OUT IN THE AIR  M MAP");
+    renderer_draw_text(r, x, bottom, scale * 0.9f, vec3(0.6f, 0.6f, 0.6f),
+                       "W/S PITCH  A/D BANK  SHIFT/SPACE POWER UP  CTRL POWER "
+                       "DOWN OR BRAKE  C CAMERA  H HORN  L GEAR  G FIRE (JET, "
+                       "GUNSHIP)  F GET OUT "
+                       "(DOWN AND STOPPED) OR BAIL OUT IN THE AIR  M MAP");
     return;
   }
   renderer_draw_text(
@@ -1542,6 +1542,7 @@ static void handle_events(driving_stage_t* stage, window_events_t events) {
   }
   if (events.interact) driving_stage_interact(stage);
   if (events.fire) driving_stage_fire(stage);
+  if (events.toggle_gear) air_stage_toggle_gear(stage);
   if (events.punch) driving_stage_punch(stage);
   if (events.toggle_pause) stage->paused = !stage->paused;
   if (events.toggle_map) stage->map_open = !stage->map_open;

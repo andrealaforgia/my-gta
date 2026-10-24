@@ -458,8 +458,40 @@ static void a_pistol_shot_is_a_short_loud_crack_that_dies_away(void) {
   free(out);
 }
 
+/* A missile leaves its rail with a thump and a roar that lasts for seconds,
+ * much longer and heavier than a pistol shot, and then fades to nothing. */
+static void a_missile_launch_thumps_roars_for_seconds_and_dies_away(void) {
+  audio_mixer_t mixer = audio_mixer_create(RATE);
+  audio_state_t state = audio_state_default();
+  float* out = malloc(sizeof(float) * RATE * 5);
+  render(&mixer, state, out, RATE);
+  float quiet = peak(out, RATE);
+  audio_mixer_trigger_missile(&mixer);
+  render(&mixer, state, out, RATE * 5);
+  /* A hard thump at the start, then a roar that is still going a second
+   * on, long after a pistol shot has gone. */
+  assert(peak(out, RATE / 8) > quiet + 0.3f);
+  assert(rms(out + RATE, RATE / 2) > 0.04f);
+  assert(rms(out + RATE * 2, RATE / 2) > 0.015f);
+  /* It never clips, and it has gone by the fifth second. */
+  assert(peak(out, RATE * 5) <= 1.0f);
+  assert(peak(out + RATE * 4 + RATE / 2, RATE / 2) < quiet + 0.01f);
+  /* Mostly rumble and rush, not a tone: the loudest short window is not much
+   * louder than the one after it was shifted by a small fraction (no
+   * steady ring), and the signal is dominated by low frequencies. */
+  float low = 0, all = 0, state_low = 0;
+  for (int i = 0; i < RATE * 2; i++) {
+    state_low += (out[i] - state_low) * 0.08f; /* about 600 Hz low-pass */
+    low += state_low * state_low;
+    all += out[i] * out[i];
+  }
+  assert(low > 0.25f * all);
+  free(out);
+}
+
 void run_audio_tests(void) {
   RUN(a_pistol_shot_is_a_short_loud_crack_that_dies_away);
+  RUN(a_missile_launch_thumps_roars_for_seconds_and_dies_away);
   RUN(the_radio_plays_three_distinct_stations_softly_and_goes_off);
   RUN(a_siren_alternates_two_tones_and_swells_as_it_nears);
   RUN(the_horn_is_a_two_note_chord_that_starts_and_stops_quickly);

@@ -54,7 +54,15 @@ aircraft_t aircraft_create(aircraft_kind_t kind, vec3_t position, float yaw) {
   a.position = position;
   a.yaw = yaw;
   a.on_ground = true;
+  a.gear_down = true;
+  a.gear = 1.0f;
   return a;
+}
+
+bool aircraft_toggle_gear(aircraft_t* a) {
+  if (!aircraft_is_fixed_wing(a->kind) || a->on_ground) return false;
+  a->gear_down = !a->gear_down;
+  return true;
 }
 
 aircraft_controls_t aircraft_controls_from_input(driving_input_t input) {
@@ -112,7 +120,9 @@ static aircraft_status_t step_plane(aircraft_t* a, aircraft_controls_t c,
   a->rotor += (4.0f + 50.0f * a->power) * dt;
   a->rotor_speed = 1.0f;
   float thrust = a->power * w->thrust;
-  float drag = w->drag * a->speed * a->speed;
+  /* Wheels in the wind cost a sixth of the drag. */
+  a->gear = clampf(a->gear + (a->gear_down ? dt : -dt) / 4.0f, 0.0f, 1.0f);
+  float drag = w->drag * (0.85f + 0.15f * a->gear) * a->speed * a->speed;
   if (a->on_ground) {
     float rolling = a->speed > 0.2f ? 0.3f + (c.brake > 0 ? 7.0f : 0.0f) : 0.0f;
     if (a->power <= 0.01f && a->speed > 0.2f) rolling += 0.6f;
@@ -155,8 +165,9 @@ static aircraft_status_t step_plane(aircraft_t* a, aircraft_controls_t c,
   advance(a, a->speed * cosf(a->path), dt);
   if (a->position.y <= ground) {
     float sink = -a->climb;
-    bool hard =
-        sink > w->hard_landing || fabsf(a->roll) > 0.4f || a->path < -0.3f;
+    /* Coming down on the belly, with the wheels not locked down, is a wreck. */
+    bool hard = a->gear < 0.8f || sink > w->hard_landing ||
+                fabsf(a->roll) > 0.4f || a->path < -0.3f;
     a->position.y = ground;
     if (hard) return AIRCRAFT_CRASHED;
     a->on_ground = true;

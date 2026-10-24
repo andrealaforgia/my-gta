@@ -111,6 +111,9 @@ static void handle_key(window_events_t* events, SDL_Scancode key) {
     case SDL_SCANCODE_G:
       events->fire = true;
       break;
+    case SDL_SCANCODE_L:
+      events->toggle_gear = true;
+      break;
     case SDL_SCANCODE_Q:
       events->punch = true;
       break;
@@ -144,6 +147,9 @@ static void handle_button(window_events_t* events, Uint8 button) {
       break;
     case SDL_CONTROLLER_BUTTON_BACK:
       events->toggle_camera = true;
+      break;
+    case SDL_CONTROLLER_BUTTON_DPAD_UP:
+      events->toggle_gear = true;
       break;
     default:
       break;

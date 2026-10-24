@@ -315,3 +315,32 @@ The bottom control hint is hard to read against pale ground; left for the
 UI pass. This slice changes no gameplay or rendering. Handling and feel
 still need play-testing. Next is roadmap 0.2: a repeatable camera-path
 benchmark with average and 99th-percentile frame times and a recorded budget.
+
+## Instruments, landing gear and the missile sound (2026-10-24)
+
+Every flight deck now has real instruments, drawn as round dials in the
+aircraft's frame (`aircraft_cockpit.c`): airspeed (needle sweeps 270 degrees to
+a per-kind full scale), altitude over the ground (a long needle once round a
+thousand metres, a short one for ten thousand), a horizon ball that is blue
+above and brown below and is turned by the inverse of the aircraft's pitch and
+roll, and a compass card whose letters are made from the built-in 5x7 font and
+turn against the heading (`-yaw`; the nose points north at yaw 0). Aeroplanes
+add three gear lights (red while the wheels move, green when down and locked,
+dark when up) and a lever. The 747 has a captain's and a first officer's set,
+six windscreen panes, a pedestal with four throttle levers, engine bars and two
+yokes. The numeric HUD is hidden from the seat; the cockpit camera glances a
+little down so the panel is in view. A quad with a repeated corner has a zero
+normal and renders as garbage: use `mesh_data_add_triangle` for triangles.
+
+`aircraft_t` gained `gear_down` and `gear` (1 down .. 0 up, four seconds to
+move). L toggles it (`air_stage_toggle_gear`) but only in the air; the wheels
+are their own mesh and fold into the belly; gear up cuts a sixth of the drag;
+touching down with `gear < 0.8` is a crash. A boarding walker is measured to
+the aircraft's centre line, not its middle (`distance_to_body`), so the nose of
+a 747 is in reach.
+
+`audio_mixer_trigger_missile` makes the launch: a thump falling from about 100
+to 36 Hz, a noise roar that starts bright and darkens as the missile draws away
+(two one-pole filters whose coefficient falls over two seconds), and a rumble
+of three low notes, fading over about four seconds. Nothing in it is a pure
+tone above 100 Hz.

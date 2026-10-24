@@ -13,11 +13,14 @@
 
 /* Where the pilot's eyes are, in the aircraft's own frame. */
 vec3_t aircraft_cockpit_eye(aircraft_kind_t kind);
-/* Draws the flight deck about the aircraft; `stick` is what the pilot is
- * asking for (pitch and roll, -1 to 1) and moves the yoke. */
+/* Draws the flight deck about the aircraft: the panel, the round dials
+ * (airspeed, the blue and brown horizon, altitude over the ground, compass),
+ * the landing-gear lights and lever, the throttle and the yoke or stick.
+ * `stick` is what the pilot is asking for and moves them; `height` is the
+ * metres above the ground. */
 void aircraft_visual_draw_cockpit(const aircraft_visual_t* visual,
                                   renderer_t* renderer, const aircraft_t* a,
-                                  aircraft_controls_t stick);
+                                  aircraft_controls_t stick, float height);
 /* Everything that turns outside the windscreen: the propeller or rotors,
  * which are all of the aircraft that is drawn from inside. */
 void aircraft_visual_draw_spinners(const aircraft_visual_t* visual,

@@ -13,7 +13,8 @@
 typedef struct {
   mesh_handle_t plane_paint, plane_trim, plane_glass, plane_prop;
   mesh_handle_t heli_paint, heli_trim, heli_glass, heli_rotor, heli_tail_rotor;
-  mesh_handle_t canopy; /* a parachute */
+  mesh_handle_t canopy;                              /* a parachute */
+  mesh_handle_t plane_gear, airliner_gear, jet_gear; /* wheels and legs */
   mesh_handle_t airliner_paint, airliner_trim, airliner_glass, airliner_accent;
   mesh_handle_t jet_paint, jet_trim, jet_glass, jet_flame;
   mesh_handle_t gunship_paint, gunship_trim, gunship_glass, gunship_rotor;
@@ -22,7 +23,10 @@ typedef struct {
   mesh_handle_t cockpit_dark[AIRCRAFT_KIND_COUNT];
   mesh_handle_t cockpit_lit[AIRCRAFT_KIND_COUNT];
   mesh_handle_t cockpit_stick[AIRCRAFT_KIND_COUNT];
-  mesh_handle_t horizon_sky, horizon_ground; /* a roll indicator's disc */
+  /* Instruments, shared by every flight deck. */
+  mesh_handle_t gauge_body, gauge_ticks_speed, gauge_ticks_altitude,
+      gauge_needle, gauge_needle_short, compass_card, compass_north, lubber,
+      ball_sky, ball_ground, ball_symbol, light_disc, lever, bar;
 } aircraft_visual_t;
 
 aircraft_visual_t aircraft_visual_create(renderer_t* renderer);

@@ -424,7 +424,8 @@ void air_stage_draw_gauge(driving_stage_t* stage) {
     return;
   }
   const aircraft_t* a = air_stage_piloted(stage);
-  if (!a) return;
+  /* From the cockpit the dials say it all. */
+  if (!a || stage->air_view == 1) return;
   renderer_t* r = stage->renderer;
   float width = (float)stage->window->drawable_width;
   float height = (float)stage->window->drawable_height;
@@ -457,10 +458,13 @@ render_camera_t air_stage_cockpit_camera(const driving_stage_t* stage) {
   transform_t t = aircraft_transform(a);
   vec3_t eye = transform_point(t, aircraft_cockpit_eye(a->kind));
   vec3_t forward = quat_rotate(t.rotation, vec3(0, 0, -1));
+  /* A glance a little down, so the panel is in view. */
+  vec3_t down = quat_rotate(t.rotation, vec3(0, -1, 0));
+  vec3_t look = vec3_add(vec3_scale(forward, 50.0f), vec3_scale(down, 4.0f));
   render_camera_t view = {eye,
-                          vec3_add(eye, vec3_scale(forward, 50.0f)),
+                          vec3_add(eye, look),
                           quat_rotate(t.rotation, vec3(0, 1, 0)),
-                          1.2f,
+                          a->kind == AIRCRAFT_AIRLINER ? 1.4f : 1.2f,
                           0.12f,
                           8000.0f};
   return view;
@@ -469,8 +473,10 @@ render_camera_t air_stage_cockpit_camera(const driving_stage_t* stage) {
 void air_stage_draw_cockpit(driving_stage_t* stage) {
   const aircraft_t* a = air_stage_piloted(stage);
   if (!a || stage->air_view != 1) return;
-  aircraft_visual_draw_cockpit(&stage->air_visual, stage->renderer, a,
-                               stage->air_stick);
+  float ground = height_under(stage, a->position);
+  aircraft_visual_draw_cockpit(
+      &stage->air_visual, stage->renderer, a, stage->air_stick,
+      ground < -999.0f ? 0.0f : a->position.y - ground);
 }
 
 #define MISSILE_SPEED 190.0f
@@ -504,7 +510,7 @@ bool air_stage_fire(driving_stage_t* stage) {
         vec3_add(vec3_scale(forward, MISSILE_SPEED), aircraft_velocity(a));
     stage->missile_next = (stage->missile_next + 1) & 3;
     stage->missile_cooldown = 0.45f;
-    if (stage->audio) audio_device_trigger_shot(stage->audio);
+    if (stage->audio) audio_device_trigger_missile(stage->audio);
     driving_stage_commit_crime(stage);
     return true;
   }
@@ -583,4 +589,17 @@ void air_stage_draw_missiles(driving_stage_t* stage) {
     if (stage->strikes[i].age > 0)
       car_visual_draw_blast(&stage->car_visual, stage->renderer,
                             stage->strikes[i].at, stage->strikes[i].age);
+}
+
+bool air_stage_toggle_gear(driving_stage_t* stage) {
+  aircraft_t* a =
+      stage->piloting > 0 ? &stage->aircraft[stage->piloting - 1] : NULL;
+  if (!a || !aircraft_is_fixed_wing(a->kind)) return false;
+  if (!aircraft_toggle_gear(a)) {
+    driving_stage_say(stage, "WHEELS STAY DOWN ON THE GROUND");
+    return false;
+  }
+  driving_stage_say(stage, a->gear_down ? "GEAR DOWN" : "GEAR UP");
+  if (stage->audio) audio_device_trigger_impact(stage->audio, 0.08f);
+  return true;
 }

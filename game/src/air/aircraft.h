@@ -27,7 +27,9 @@ typedef struct {
   float rotor_speed; /* 0 stopped .. 1 flying speed */
   float yaw_rate;
   bool on_ground;
-  bool doomed; /* left with nobody at the controls: it dives and crashes */
+  bool gear_down; /* the wheels are asked for down (an aeroplane's) */
+  float gear;     /* 1 down and locked .. 0 folded away; takes a few seconds */
+  bool doomed;    /* left with nobody at the controls: it dives and crashes */
 } aircraft_t;
 
 /* What the pilot asks for, each -1 to 1: pitch positive is nose up, roll
@@ -43,6 +45,9 @@ typedef enum { AIRCRAFT_FLYING, AIRCRAFT_CRASHED } aircraft_status_t;
  * rotors. The jet and the gunship carry missiles. */
 bool aircraft_is_fixed_wing(aircraft_kind_t kind);
 bool aircraft_has_missiles(aircraft_kind_t kind);
+/* Raises or lowers the wheels of an aeroplane that is in the air. False if it
+ * cannot: a helicopter, or an aeroplane standing on its wheels. */
+bool aircraft_toggle_gear(aircraft_t* aircraft);
 aircraft_t aircraft_create(aircraft_kind_t kind, vec3_t position, float yaw);
 /* The keys and pad as controls: W pushes the nose down and S pulls it up,
  * A and D bank, Shift or Space add power, Ctrl takes it off. */

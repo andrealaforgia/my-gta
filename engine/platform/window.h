@@ -38,6 +38,7 @@ typedef struct {
   bool punch;        /* Q, the right mouse button, or the pad's B: punch */
   bool next_station; /* E: the next radio station */
   bool interact;     /* F: get out of the car, or into one */
+  bool toggle_gear;  /* L or the pad's D-pad up: wheels up or down */
 } window_events_t;
 
 /* What a menu hears: the arrows, W and S, Return, Esc and the controller. */

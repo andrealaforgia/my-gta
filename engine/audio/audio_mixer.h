@@ -76,6 +76,8 @@ typedef struct {
   float bell_phases[4];
   radio_t radio;
   float shot, shot_lowpass, shot_phase; /* a gunshot's envelope */
+  float missile_age; /* seconds since a launch; large when none */
+  float missile_lowpass[2], missile_phase[4];
 } audio_mixer_t;
 
 audio_state_t audio_state_default(void);
@@ -84,6 +86,9 @@ void audio_mixer_set_state(audio_mixer_t* mixer, audio_state_t state);
 void audio_mixer_trigger_impact(audio_mixer_t* mixer, float strength);
 /* A pistol shot: a crack of noise and a low thump, a quarter of a second. */
 void audio_mixer_trigger_shot(audio_mixer_t* mixer);
+/* A missile leaves its rail: a thump that falls in pitch, a hiss that
+ * breaks into a roar and then a rumble as it flies off, about four seconds. */
+void audio_mixer_trigger_missile(audio_mixer_t* mixer);
 /* A church bell strikes `strikes` times, two seconds apart. Ignored while a
  * peal is still going. */
 void audio_mixer_trigger_bell(audio_mixer_t* mixer, int strikes);
