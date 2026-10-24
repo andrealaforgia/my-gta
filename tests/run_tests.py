@@ -54,7 +54,7 @@ def sources():
 
 def build(destination, sanitize):
     compiler = shlex.split(os.environ.get("CC", "cc"))
-    flags = ["-std=c99", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-DGL_SILENCE_DEPRECATION", "-D_DEFAULT_SOURCE"]
+    flags = ["-std=c99", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-format-truncation", "-DGL_SILENCE_DEPRECATION", "-D_DEFAULT_SOURCE"]
     if sanitize:
         flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
     includes = ["-I" + str(d) for d in source_directories()] + ["-I" + str(ROOT / "tests")]

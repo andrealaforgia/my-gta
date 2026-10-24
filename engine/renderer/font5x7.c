@@ -1,6 +1,7 @@
 #include "font5x7.h"
 
 #include <ctype.h>
+#include <stddef.h>
 
 typedef struct {
   char character;

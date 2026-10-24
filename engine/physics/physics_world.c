@@ -254,8 +254,9 @@ static void gather(physics_world_t* world, aabb_t box) {
     }
   for (size_t k = 0; k < world->oversize_count; k++)
     candidate_add(world, world->oversize[k]);
-  qsort(world->candidates, world->candidate_count, sizeof(uint32_t),
-        compare_indices);
+  if (world->candidate_count > 1)
+    qsort(world->candidates, world->candidate_count, sizeof(uint32_t),
+          compare_indices);
 }
 
 /* ---- colliders ---- */

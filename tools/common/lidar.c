@@ -47,7 +47,8 @@ typedef struct {
 static bool read_header(FILE* file, asc_header_t* h) {
   bool have[5] = {false, false, false, false, false};
   bool west_is_centre = false, south_is_centre = false;
-  h->nodata = -9999.0;
+  asc_header_t blank = {0, 0, 0.0, 0.0, 0.0, -9999.0};
+  *h = blank;
   for (int line = 0; line < 6; line++) {
     char key[32];
     double value;
