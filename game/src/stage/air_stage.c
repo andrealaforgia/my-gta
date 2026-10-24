@@ -65,13 +65,21 @@ static transform_t camera_target(const aircraft_t* a) {
                       quat_from_yaw(a->yaw));
 }
 
+/* How far the walker is from the aircraft's body: from its centre line, not
+ * from its middle, so the nose and the tail of an airliner are in reach. */
+static float distance_to_body(const aircraft_t* a, vec3_t from) {
+  vec3_t heading = aircraft_heading(a);
+  float half = fmaxf(0.0f, aircraft_radius(a->kind) - 3.0f);
+  float dx = from.x - a->position.x, dz = from.z - a->position.z;
+  float along = fmaxf(-half, fminf(half, dx * heading.x + dz * heading.z));
+  return hypotf(dx - heading.x * along, dz - heading.z * along);
+}
+
 static int nearest_index(const driving_stage_t* stage) {
   int best = -1;
   float best_distance = BOARD_REACH;
   for (size_t i = 0; i < stage->aircraft_count; i++) {
-    const aircraft_t* a = &stage->aircraft[i];
-    float d = hypotf(a->position.x - stage->walker.position.x,
-                     a->position.z - stage->walker.position.z);
+    float d = distance_to_body(&stage->aircraft[i], stage->walker.position);
     if (d < best_distance) best = (int)i, best_distance = d;
   }
   return best;

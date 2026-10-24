@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "air_stage.h"
 #include "aircraft_cockpit.h"
 #include "city_generator.h"
 #include "city_import.h"
@@ -396,21 +397,34 @@ static void a_busy_city_runs_for_a_minute_without_trouble(void) {
   assert(run.stage.traffic && run.stage.people);
   assert(run.stage.parked.count > 0 || run.stage.scene.parked_count == 0);
   assert(traffic_car_count(run.stage.traffic) == 20);
+  assert(pedestrians_count(run.stage.people) == 40);
+  vec3_t start_position = car(&run)->position;
+  float furthest = 0;
   driving_input_t throttle = {0.6f, 0, 0.1f, false, false};
   for (int second = 0; second < 60; second++) {
     drive(&run, throttle, 1.0f);
+    furthest =
+        fmaxf(furthest, vec3_distance(car(&run)->position, start_position));
     /* Whatever the car runs into, nothing goes wrong (and police after a
      * crash are quick, so the limit leaves room for them). */
     for (size_t i = 0; i < traffic_car_count(run.stage.traffic); i++) {
       traffic_car_t c = traffic_car(run.stage.traffic, i);
-      assert(isfinite(c.position.x) && isfinite(c.position.z) &&
-             c.speed < 30.0f);
+      assert(isfinite(c.position.x) && isfinite(c.position.y) &&
+             isfinite(c.position.z) && isfinite(c.yaw) && isfinite(c.speed) &&
+             fabsf(c.speed) < 30.0f);
+    }
+    for (size_t i = 0; i < pedestrians_count(run.stage.people); i++) {
+      pedestrian_t person = pedestrians_get(run.stage.people, i);
+      assert(isfinite(person.position.x) && isfinite(person.position.y) &&
+             isfinite(person.position.z) && isfinite(person.yaw) &&
+             isfinite(person.speed));
     }
     if (second % 15 == 14) {
       driving_input_t reverse = {0, 1, -0.3f, false, false};
       drive(&run, reverse, 2.0f);
     }
   }
+  assert(furthest > 10.0f);
   test_traffic_cars = 0;
   test_pedestrians = 0;
   stop(&run);
@@ -649,6 +663,58 @@ static void a_missile_leaves_the_jet_flies_and_goes_off_where_it_strikes(void) {
   assert(stage->strikes[0].age == 0);
   /* A second can follow once the cooldown is over. */
   assert(driving_stage_fire(stage));
+  stop(&run);
+}
+
+/* The 747 stands on the taxiway: it can be boarded where it is and flown off
+ * without hitting anything. */
+static void the_747_can_be_flown_off_from_its_stand(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  aircraft_t* jumbo = board_aircraft(&run, 5);
+  assert(jumbo->kind == AIRCRAFT_AIRLINER);
+  float lifted_at = -1, lowest_speed = 1e9f;
+  for (int i = 0; i < 120 * 90 && stage->piloting == 6; i++) {
+    float t = (float)i / 120.0f;
+    /* Full power from the start, nose up once there is speed to lift on. */
+    driving_input_t fly = {0, jumbo->speed > 56.0f ? 1.0f : 0.0f, 0, true,
+                           false};
+    driving_stage_step(stage, fly, 1.0f / 120.0f);
+    if (lifted_at < 0 && !jumbo->on_ground) lifted_at = t;
+    lowest_speed = fminf(lowest_speed, jumbo->speed);
+  }
+  assert(stage->piloting == 6 && lifted_at > 0 && jumbo->position.y > 30.0f);
+  stop(&run);
+}
+
+/* Standing at the nose or the tail of the 747, thirty metres from its middle,
+ * is close enough to climb in. */
+static void the_747_can_be_boarded_at_its_nose_and_its_tail(void) {
+  city_run_t run;
+  start_in(&run, airport_directory);
+  driving_stage_t* stage = &run.stage;
+  driving_input_t stand = {0, 0, 0, false, false};
+  drive(&run, stand, 1.0f);
+  driving_stage_interact(stage); /* out of the car */
+  aircraft_t* jumbo = &stage->aircraft[5];
+  scene_stream(&stage->scene, jumbo->position, 1 << 20);
+  vec3_t heading = aircraft_heading(jumbo);
+  for (int end = -1; end <= 1; end += 2) {
+    stage->walker.position =
+        vec3_add(jumbo->position, vec3_scale(heading, 36.0f * (float)end));
+    assert(air_stage_nearest(stage) == jumbo);
+    /* But not from the wing tip, or from well beyond the nose. */
+    stage->walker.position =
+        vec3_add(jumbo->position, vec3_scale(heading, 60.0f * (float)end));
+    assert(air_stage_nearest(stage) == NULL);
+  }
+  driving_stage_interact(stage);
+  assert(stage->piloting == 0);
+  stage->walker.position =
+      vec3_add(jumbo->position, vec3_scale(heading, 35.0f));
+  driving_stage_interact(stage);
+  assert(stage->piloting == 6);
   stop(&run);
 }
 
@@ -1265,6 +1331,8 @@ void run_citydrive_tests(void) {
   RUN(the_cockpit_view_looks_from_the_pilots_seat);
   RUN(a_missile_leaves_the_jet_flies_and_goes_off_where_it_strikes);
   RUN(a_plane_has_no_missiles_to_fire);
+  RUN(the_747_can_be_flown_off_from_its_stand);
+  RUN(the_747_can_be_boarded_at_its_nose_and_its_tail);
   RUN(on_foot_the_pistol_fires_leaves_a_trail_and_cools_down);
   RUN(a_reset_stops_a_climb_and_a_blast_so_nothing_is_left_wedged);
   RUN(the_guide_points_at_the_airport_gate_by_a_road_that_reaches_it);

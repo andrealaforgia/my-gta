@@ -52,7 +52,7 @@ CITY_VALIDATE = city-validate
 SNAPSHOT = render_snapshot
 SOUND = render_sound
 
-.PHONY: all tools install dev_install clean lint format test sanitize snapshot sound city new-city fixture-city run run-city play
+.PHONY: all tools install dev_install clean lint format test sanitize soak snapshot sound city new-city fixture-city run run-city play
 
 all: $(TARGET) tools
 
@@ -111,6 +111,9 @@ test:
 
 sanitize:
 	python3 tests/run_tests.py --sanitize
+
+soak:
+	python3 tests/run_tests.py --sanitize citydrive
 
 # make city EXTRACT=data/pordenone.osm CITY=pordenone
 EXTRACT ?= data/pordenone.osm

@@ -8,6 +8,15 @@ AddressSanitizer and UndefinedBehaviorSanitizer. A stub renderer
 (`tests/test_renderer_stub.c`) stands in for OpenGL, so nothing here
 needs a window or a GPU.
 
+`make soak` runs the citydrive group under ASan and UBSan, including a busy
+fixture city driven for 68 simulated seconds with 20 traffic cars and 40
+pedestrians. It checks that the player moves, stays above ground, and that
+traffic and pedestrian positions, headings and speeds remain finite. The
+tracking allocator also checks cleanup. No downloaded city or GPU is needed.
+The `Headless city soak` workflow runs this on Ubuntu and macOS daily at
+03:23 UTC, or on demand through GitHub Actions' Run workflow button. The
+ordinary push workflow continues to run this group in both full test suites.
+
 | Group | Covers |
 |---|---|
 | math | vector, quaternion, matrix, transform, box, ray, plane, frustum and damping behaviour under the ADR-007 conventions |
